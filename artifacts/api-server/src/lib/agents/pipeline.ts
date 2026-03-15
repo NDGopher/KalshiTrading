@@ -332,7 +332,16 @@ export async function scanAndDiscover(): Promise<ScanDiscoverResult> {
   };
 }
 
+export async function bootstrapSettings(): Promise<void> {
+  const [existing] = await db.select().from(tradingSettingsTable).limit(1);
+  if (!existing) {
+    await db.insert(tradingSettingsTable).values({});
+    console.log("[Bootstrap] Created default trading settings row");
+  }
+}
+
 export async function rehydratePipeline(): Promise<void> {
+  await bootstrapSettings();
   const [settings] = await db.select().from(tradingSettingsTable).limit(1);
   if (settings?.pipelineActive) {
     const interval = settings.scanIntervalMinutes || 60;

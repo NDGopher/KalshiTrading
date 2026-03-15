@@ -104,7 +104,7 @@ export default function Opportunities() {
                           {formatPercent(opp.modelProbability * 100)}
                         </td>
                         <td className="px-6 py-4 font-mono font-bold text-right text-primary">
-                          +{formatPercent(opp.edge * 100)}
+                          +{formatPercent(opp.edge)}
                         </td>
                         <td className="px-6 py-4 text-right">
                           <div className="flex items-center justify-end gap-2">

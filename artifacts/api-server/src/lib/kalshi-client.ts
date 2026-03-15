@@ -1,12 +1,42 @@
-const KALSHI_BASE_URL = "https://api.elections.kalshi.com/trade-api/v2";
+const KALSHI_BASE_URL = process.env.KALSHI_BASE_URL || "https://trading-api.kalshi.com/trade-api/v2";
 
-function getHeaders(): Record<string, string> {
+let sessionToken: string | null = null;
+let tokenExpiresAt: number = 0;
+
+async function ensureAuth(): Promise<string> {
   const apiKey = process.env.KALSHI_API_KEY;
   if (!apiKey) {
-    throw new Error("KALSHI_API_KEY environment variable is not set");
+    throw new Error("KALSHI_API_KEY environment variable is not set. Provide a Kalshi API key or login token.");
   }
+
+  const email = process.env.KALSHI_EMAIL;
+  const password = process.env.KALSHI_PASSWORD;
+
+  if (email && password) {
+    if (sessionToken && Date.now() < tokenExpiresAt) {
+      return sessionToken;
+    }
+    const loginRes = await fetch(`${KALSHI_BASE_URL}/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+    if (!loginRes.ok) {
+      throw new Error(`Kalshi login failed: ${loginRes.status} ${await loginRes.text()}`);
+    }
+    const loginData = (await loginRes.json()) as { token: string };
+    sessionToken = loginData.token;
+    tokenExpiresAt = Date.now() + 55 * 60 * 1000;
+    return sessionToken;
+  }
+
+  return apiKey;
+}
+
+async function getHeaders(): Promise<Record<string, string>> {
+  const token = await ensureAuth();
   return {
-    "Authorization": `Bearer ${apiKey}`,
+    "Authorization": `Bearer ${token}`,
     "Content-Type": "application/json",
     "Accept": "application/json",
   };
@@ -14,9 +44,10 @@ function getHeaders(): Record<string, string> {
 
 async function kalshiFetch<T = unknown>(path: string, options: RequestInit = {}): Promise<T> {
   const url = `${KALSHI_BASE_URL}${path}`;
+  const headers = await getHeaders();
   const res = await fetch(url, {
     ...options,
-    headers: { ...getHeaders(), ...(options.headers as Record<string, string> || {}) },
+    headers: { ...headers, ...(options.headers as Record<string, string> || {}) },
   });
 
   if (!res.ok) {
