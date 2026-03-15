@@ -23,6 +23,8 @@ export * from "./cycleResult";
 export * from "./dashboardOverview";
 export * from "./getBacktestResults200";
 export * from "./getBacktestStrategies200";
+export * from "./getBacktestStrategySummary200";
+export * from "./getBacktestStrategySummary200StrategiesItem";
 export * from "./getBacktestTrades200";
 export * from "./getIngestionStats200";
 export * from "./getIngestionStats200DateRange";

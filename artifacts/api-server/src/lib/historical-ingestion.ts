@@ -1,25 +1,74 @@
 import { db, historicalMarketsTable } from "@workspace/db";
-import { getMarkets, type KalshiMarket } from "./kalshi-client.js";
+import { getMarkets, type KalshiMarket, SPORTS_SERIES_TICKERS } from "./kalshi-client.js";
 import { eq, and, gte, lte, sql } from "drizzle-orm";
+
+const SPORT_KEYWORDS = [
+  "nfl", "nba", "mlb", "soccer", "mls", "premier league",
+  "ncaa", "college football", "college basketball",
+  "nhl", "hockey", "ufc", "mma", "tennis", "golf",
+  "world series", "super bowl", "stanley cup", "march madness",
+  "champions league", "la liga", "bundesliga", "serie a",
+];
+
+function isSportsMarket(m: KalshiMarket): boolean {
+  const ticker = m.ticker.toLowerCase();
+  const title = (m.title || "").toLowerCase();
+  if (SPORTS_SERIES_TICKERS.some((s) => ticker.startsWith(s.toLowerCase()))) return true;
+  return SPORT_KEYWORDS.some((kw) => title.includes(kw) || ticker.includes(kw));
+}
 
 export async function ingestSettledMarkets(startDate: string, endDate: string): Promise<{ ingested: number; skipped: number }> {
   const allMarkets: KalshiMarket[] = [];
+
+  const startTime = new Date(startDate).getTime();
+  const endTime = new Date(endDate).getTime();
+  const MAX_PAGES = 50;
+
+  for (const seriesTicker of SPORTS_SERIES_TICKERS) {
+    let cursor: string | undefined;
+    let pages = 0;
+    let pastRange = false;
+    while (pages < MAX_PAGES && !pastRange) {
+      try {
+        const result = await getMarkets({
+          limit: 100,
+          cursor,
+          status: "settled",
+          series_ticker: seriesTicker,
+        });
+        for (const m of result.markets) {
+          const closeTime = new Date(m.close_time).getTime();
+          if (closeTime < startTime) { pastRange = true; break; }
+          if (closeTime <= endTime && m.result) allMarkets.push(m);
+        }
+        cursor = result.cursor;
+        pages++;
+        if (!cursor || result.markets.length < 100) break;
+      } catch {
+        break;
+      }
+    }
+  }
+
+  const seenTickers = new Set(allMarkets.map((m) => m.ticker));
   let cursor: string | undefined;
   let pages = 0;
-  const maxPages = 20;
-
-  while (pages < maxPages) {
+  let pastRange = false;
+  while (pages < MAX_PAGES && !pastRange) {
     try {
       const result = await getMarkets({
         limit: 100,
         cursor,
         status: "settled",
       });
-      const filtered = result.markets.filter((m) => {
-        const closeTime = new Date(m.close_time);
-        return closeTime >= new Date(startDate) && closeTime <= new Date(endDate) && m.result;
-      });
-      allMarkets.push(...filtered);
+      for (const m of result.markets) {
+        const closeTime = new Date(m.close_time).getTime();
+        if (closeTime < startTime) { pastRange = true; break; }
+        if (closeTime <= endTime && m.result && !seenTickers.has(m.ticker) && isSportsMarket(m)) {
+          allMarkets.push(m);
+          seenTickers.add(m.ticker);
+        }
+      }
       cursor = result.cursor;
       pages++;
       if (!cursor || result.markets.length < 100) break;

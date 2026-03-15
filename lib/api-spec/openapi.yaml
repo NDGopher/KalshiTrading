@@ -396,6 +396,58 @@ paths:
                 required:
                   - trades
 
+  /backtest/strategy-summary:
+    get:
+      operationId: getBacktestStrategySummary
+      tags: [backtest]
+      summary: Get per-strategy aggregate backtest results
+      responses:
+        "200":
+          description: Strategy aggregation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  strategies:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        strategyName:
+                          type: string
+                        totalRuns:
+                          type: integer
+                        totalTrades:
+                          type: integer
+                        avgPnl:
+                          type: number
+                        avgWinRate:
+                          type: number
+                        avgRoi:
+                          type: ["number", "null"]
+                        avgClv:
+                          type: ["number", "null"]
+                        avgSharpe:
+                          type: ["number", "null"]
+                        dipCatchSuccessRate:
+                          type: ["number", "null"]
+                        bestRunId:
+                          type: ["integer", "null"]
+                        bestRunPnl:
+                          type: ["number", "null"]
+                      required:
+                        - strategyName
+                        - totalRuns
+                        - totalTrades
+                        - avgPnl
+                        - avgWinRate
+                        - avgRoi
+                        - avgClv
+                        - avgSharpe
+                required:
+                  - strategies
+
   /backtest/ingest:
     post:
       operationId: ingestHistoricalMarkets

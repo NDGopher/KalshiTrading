@@ -449,6 +449,27 @@ export const GetBacktestTradesResponse = zod.object({
 });
 
 /**
+ * @summary Get per-strategy aggregate backtest results
+ */
+export const GetBacktestStrategySummaryResponse = zod.object({
+  strategies: zod.array(
+    zod.object({
+      strategyName: zod.string(),
+      totalRuns: zod.number(),
+      totalTrades: zod.number(),
+      avgPnl: zod.number(),
+      avgWinRate: zod.number(),
+      avgRoi: zod.number().nullable(),
+      avgClv: zod.number().nullable(),
+      avgSharpe: zod.number().nullable(),
+      dipCatchSuccessRate: zod.number().nullish(),
+      bestRunId: zod.number().nullish(),
+      bestRunPnl: zod.number().nullish(),
+    }),
+  ),
+});
+
+/**
  * @summary Ingest settled markets into historical database for backtesting
  */
 export const IngestHistoricalMarketsBody = zod.object({

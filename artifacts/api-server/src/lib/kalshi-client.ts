@@ -255,7 +255,7 @@ export async function getSeries(params: {
   return kalshiFetch(`/series${qs ? `?${qs}` : ""}`);
 }
 
-const SPORTS_SERIES_TICKERS = [
+export const SPORTS_SERIES_TICKERS = [
   "KXNFL", "KXNBA", "KXMLB", "KXNHL", "KXSOC", "KXNCAA",
   "KXSPORT", "KXMVE",
 ];

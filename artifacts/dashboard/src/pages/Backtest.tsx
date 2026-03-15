@@ -48,7 +48,32 @@ interface BacktestTrade {
   distanceFromPeak: number | null;
 }
 
+interface StrategySummary {
+  strategyName: string;
+  totalRuns: number;
+  totalTrades: number;
+  avgPnl: number;
+  avgWinRate: number;
+  avgRoi: number | null;
+  avgClv: number | null;
+  avgSharpe: number | null;
+  dipCatchSuccessRate: number | null;
+  bestRunId: number | null;
+  bestRunPnl: number | null;
+}
+
 const API_BASE = `${import.meta.env.BASE_URL}api`;
+
+function useStrategySummary() {
+  return useQuery({
+    queryKey: ["/api/backtest/strategy-summary"],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/backtest/strategy-summary`);
+      return res.json() as Promise<{ strategies: StrategySummary[] }>;
+    },
+    refetchInterval: 10000,
+  });
+}
 
 function useStrategies() {
   return useQuery({
@@ -127,9 +152,11 @@ export default function Backtest() {
     }
   };
 
+  const { data: summaryData } = useStrategySummary();
   const runs = resultsData?.runs || [];
   const trades = tradesData?.trades || [];
   const selectedRun = runs.find((r) => r.id === selectedRunId);
+  const strategySummaries = summaryData?.strategies || [];
 
   return (
     <Layout>
@@ -285,6 +312,60 @@ export default function Backtest() {
                   </Card>
                 </div>
               </div>
+            )}
+
+            {strategySummaries.length > 0 && (
+              <Card className="glass-panel border-white/10">
+                <CardHeader className="border-b border-white/5 bg-black/20">
+                  <CardTitle className="flex items-center gap-2">
+                    <BarChart3 className="w-5 h-5 text-primary" />
+                    Strategy Performance Summary
+                  </CardTitle>
+                  <CardDescription>Aggregated results across all backtest runs, grouped by strategy</CardDescription>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-white/10 bg-black/30">
+                          <th className="text-left p-3 font-medium text-muted-foreground">Strategy</th>
+                          <th className="text-right p-3 font-medium text-muted-foreground">Runs</th>
+                          <th className="text-right p-3 font-medium text-muted-foreground">Trades</th>
+                          <th className="text-right p-3 font-medium text-muted-foreground">Avg P&L</th>
+                          <th className="text-right p-3 font-medium text-muted-foreground">Win Rate</th>
+                          <th className="text-right p-3 font-medium text-muted-foreground">ROI</th>
+                          <th className="text-right p-3 font-medium text-muted-foreground">CLV</th>
+                          <th className="text-right p-3 font-medium text-muted-foreground">Sharpe</th>
+                          <th className="text-right p-3 font-medium text-muted-foreground">Dip Catch</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {strategySummaries.map((s) => (
+                          <tr key={s.strategyName} className="border-b border-white/5 hover:bg-white/5 transition-colors">
+                            <td className="p-3 font-medium text-white">{s.strategyName}</td>
+                            <td className="p-3 text-right font-mono text-white">{s.totalRuns}</td>
+                            <td className="p-3 text-right font-mono text-white">{s.totalTrades}</td>
+                            <td className={`p-3 text-right font-mono ${s.avgPnl >= 0 ? "text-green-400" : "text-red-400"}`}>
+                              ${s.avgPnl.toFixed(2)}
+                            </td>
+                            <td className="p-3 text-right font-mono text-white">{s.avgWinRate.toFixed(1)}%</td>
+                            <td className={`p-3 text-right font-mono ${(s.avgRoi ?? 0) >= 0 ? "text-green-400" : "text-red-400"}`}>
+                              {s.avgRoi != null ? `${s.avgRoi.toFixed(1)}%` : "—"}
+                            </td>
+                            <td className={`p-3 text-right font-mono ${(s.avgClv ?? 0) >= 0 ? "text-green-400" : "text-red-400"}`}>
+                              {s.avgClv != null ? s.avgClv.toFixed(1) : "—"}
+                            </td>
+                            <td className="p-3 text-right font-mono text-white">{s.avgSharpe != null ? s.avgSharpe.toFixed(2) : "—"}</td>
+                            <td className="p-3 text-right font-mono text-white">
+                              {s.dipCatchSuccessRate != null ? `${s.dipCatchSuccessRate.toFixed(1)}%` : "—"}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+              </Card>
             )}
 
             {trades.length > 0 && (

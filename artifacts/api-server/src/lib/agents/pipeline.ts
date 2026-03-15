@@ -219,9 +219,14 @@ export async function runTradingCycle(): Promise<CycleResult> {
     const riskDecisions = [];
     let effectiveBankroll = bankroll;
     let approvedThisCycle = 0;
+    let strategySkipped = 0;
     for (const audit of approved) {
       const strategyMatches = evaluateStrategies(audit.analysis);
-      const strategyName = strategyMatches.length > 0 ? strategyMatches[0].strategyName : undefined;
+      if (strategyMatches.length === 0) {
+        strategySkipped++;
+        continue;
+      }
+      const strategyName = strategyMatches[0].strategyName;
       const decision = await assessRisk(audit, {
         maxPositionPct: settings.maxPositionPct,
         kellyFraction: settings.kellyFraction,
@@ -240,8 +245,11 @@ export async function runTradingCycle(): Promise<CycleResult> {
     }
     const riskApproved = riskDecisions.filter((d) => d.approved);
     const riskDuration = (Date.now() - riskStart) / 1000;
-    updateAgentStatus("Risk Manager", "idle", `${riskApproved.length}/${riskDecisions.length} risk-approved`);
-    agentResults.push({ agentName: "Risk Manager", status: "success", duration: riskDuration, details: `${riskApproved.length}/${riskDecisions.length} risk-approved` });
+    const riskDetails = strategySkipped > 0
+      ? `${riskApproved.length}/${riskDecisions.length} risk-approved, ${strategySkipped} no strategy match`
+      : `${riskApproved.length}/${riskDecisions.length} risk-approved`;
+    updateAgentStatus("Risk Manager", "idle", riskDetails);
+    agentResults.push({ agentName: "Risk Manager", status: "success", duration: riskDuration, details: riskDetails });
 
     let execStart = Date.now();
     updateAgentStatus("Executor", "running");

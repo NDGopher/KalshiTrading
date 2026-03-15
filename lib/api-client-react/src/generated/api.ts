@@ -25,6 +25,7 @@ import type {
   DashboardOverview,
   GetBacktestResults200,
   GetBacktestStrategies200,
+  GetBacktestStrategySummary200,
   GetBacktestTrades200,
   GetIngestionStats200,
   GetPaperTrades200,
@@ -1611,6 +1612,85 @@ export function useGetBacktestTrades<
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetBacktestTradesQueryOptions(runId, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get per-strategy aggregate backtest results
+ */
+export const getGetBacktestStrategySummaryUrl = () => {
+  return `/api/backtest/strategy-summary`;
+};
+
+export const getBacktestStrategySummary = async (
+  options?: RequestInit,
+): Promise<GetBacktestStrategySummary200> => {
+  return customFetch<GetBacktestStrategySummary200>(
+    getGetBacktestStrategySummaryUrl(),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetBacktestStrategySummaryQueryKey = () => {
+  return [`/api/backtest/strategy-summary`] as const;
+};
+
+export const getGetBacktestStrategySummaryQueryOptions = <
+  TData = Awaited<ReturnType<typeof getBacktestStrategySummary>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getBacktestStrategySummary>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetBacktestStrategySummaryQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getBacktestStrategySummary>>
+  > = ({ signal }) => getBacktestStrategySummary({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getBacktestStrategySummary>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetBacktestStrategySummaryQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getBacktestStrategySummary>>
+>;
+export type GetBacktestStrategySummaryQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get per-strategy aggregate backtest results
+ */
+
+export function useGetBacktestStrategySummary<
+  TData = Awaited<ReturnType<typeof getBacktestStrategySummary>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getBacktestStrategySummary>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetBacktestStrategySummaryQueryOptions(options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

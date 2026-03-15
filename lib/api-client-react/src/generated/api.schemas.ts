@@ -455,6 +455,30 @@ export type GetBacktestTrades200 = {
   trades: BacktestTrade[];
 };
 
+export type GetBacktestStrategySummary200StrategiesItem = {
+  strategyName: string;
+  totalRuns: number;
+  totalTrades: number;
+  avgPnl: number;
+  avgWinRate: number;
+  /** @nullable */
+  avgRoi: number | null;
+  /** @nullable */
+  avgClv: number | null;
+  /** @nullable */
+  avgSharpe: number | null;
+  /** @nullable */
+  dipCatchSuccessRate?: number | null;
+  /** @nullable */
+  bestRunId?: number | null;
+  /** @nullable */
+  bestRunPnl?: number | null;
+};
+
+export type GetBacktestStrategySummary200 = {
+  strategies: GetBacktestStrategySummary200StrategiesItem[];
+};
+
 export type IngestHistoricalMarketsBody = {
   startDate: string;
   endDate: string;
