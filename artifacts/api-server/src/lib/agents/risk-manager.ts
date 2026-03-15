@@ -99,7 +99,7 @@ export async function assessRisk(
     maxSimultaneousPositions?: number;
   },
   bankroll: number,
-  options?: { strategyName?: string; paperMode?: boolean }
+  options?: { strategyName?: string; paperMode?: boolean; additionalOpenPositions?: number }
 ): Promise<RiskDecision> {
   const tradeSource = options?.paperMode ? paperTradesTable : tradesTable;
 
@@ -144,7 +144,7 @@ export async function assessRisk(
     {
       consecutiveLosses,
       drawdownPct,
-      openPositions: openTrades.length,
+      openPositions: openTrades.length + (options?.additionalOpenPositions || 0),
       correlatedPositions,
       adjustedConfidence: audit.adjustedConfidence,
       auditApproved: audit.approved,

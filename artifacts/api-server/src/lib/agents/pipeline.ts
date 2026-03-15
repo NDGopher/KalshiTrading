@@ -217,6 +217,8 @@ export async function runTradingCycle(): Promise<CycleResult> {
     }
 
     const riskDecisions = [];
+    let effectiveBankroll = bankroll;
+    let approvedThisCycle = 0;
     for (const audit of approved) {
       const strategyMatches = evaluateStrategies(audit.analysis);
       const strategyName = strategyMatches.length > 0 ? strategyMatches[0].strategyName : undefined;
@@ -226,8 +228,15 @@ export async function runTradingCycle(): Promise<CycleResult> {
         maxConsecutiveLosses: settings.maxConsecutiveLosses,
         maxDrawdownPct: settings.maxDrawdownPct,
         maxSimultaneousPositions: settings.maxSimultaneousPositions,
-      }, bankroll, { strategyName, paperMode });
+      }, effectiveBankroll, { strategyName, paperMode, additionalOpenPositions: approvedThisCycle });
       riskDecisions.push(decision);
+      if (decision.approved) {
+        const entryPrice = decision.audit.analysis.side === "yes"
+          ? decision.audit.analysis.candidate.yesPrice
+          : decision.audit.analysis.candidate.noPrice;
+        effectiveBankroll -= decision.positionSize * entryPrice;
+        approvedThisCycle++;
+      }
     }
     const riskApproved = riskDecisions.filter((d) => d.approved);
     const riskDuration = (Date.now() - riskStart) / 1000;

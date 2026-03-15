@@ -23,6 +23,7 @@ interface BacktestRun {
   avgClv: number | null;
   bestStreak: number | null;
   worstStreak: number | null;
+  dipCatchSuccessRate: number | null;
   createdAt: string;
 }
 
@@ -43,6 +44,8 @@ interface BacktestTrade {
   confidence: number;
   reasoning: string | null;
   marketResult: string | null;
+  dipCatch: boolean | null;
+  distanceFromPeak: number | null;
 }
 
 const API_BASE = `${import.meta.env.BASE_URL}api`;
@@ -212,39 +215,75 @@ export default function Backtest() {
 
           <div className="lg:col-span-2 space-y-6">
             {selectedRun && (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <Card className="glass-panel border-white/10">
-                  <CardContent className="p-4 text-center">
-                    <div className="text-xs text-muted-foreground uppercase tracking-wider">Total P&L</div>
-                    <div className={`text-2xl font-mono font-bold mt-1 ${selectedRun.totalPnl >= 0 ? "text-green-400" : "text-red-400"}`}>
-                      ${selectedRun.totalPnl?.toFixed(2)}
-                    </div>
-                  </CardContent>
-                </Card>
-                <Card className="glass-panel border-white/10">
-                  <CardContent className="p-4 text-center">
-                    <div className="text-xs text-muted-foreground uppercase tracking-wider">Win Rate</div>
-                    <div className="text-2xl font-mono font-bold mt-1 text-white">
-                      {(selectedRun.winRate * 100).toFixed(1)}%
-                    </div>
-                  </CardContent>
-                </Card>
-                <Card className="glass-panel border-white/10">
-                  <CardContent className="p-4 text-center">
-                    <div className="text-xs text-muted-foreground uppercase tracking-wider">Trades</div>
-                    <div className="text-2xl font-mono font-bold mt-1 text-white">
-                      {selectedRun.tradesSimulated}
-                    </div>
-                  </CardContent>
-                </Card>
-                <Card className="glass-panel border-white/10">
-                  <CardContent className="p-4 text-center">
-                    <div className="text-xs text-muted-foreground uppercase tracking-wider">Sharpe Ratio</div>
-                    <div className="text-2xl font-mono font-bold mt-1 text-white">
-                      {selectedRun.sharpeRatio?.toFixed(2) || "N/A"}
-                    </div>
-                  </CardContent>
-                </Card>
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <Card className="glass-panel border-white/10">
+                    <CardContent className="p-4 text-center">
+                      <div className="text-xs text-muted-foreground uppercase tracking-wider">Total P&L</div>
+                      <div className={`text-2xl font-mono font-bold mt-1 ${selectedRun.totalPnl >= 0 ? "text-green-400" : "text-red-400"}`}>
+                        ${selectedRun.totalPnl?.toFixed(2)}
+                      </div>
+                    </CardContent>
+                  </Card>
+                  <Card className="glass-panel border-white/10">
+                    <CardContent className="p-4 text-center">
+                      <div className="text-xs text-muted-foreground uppercase tracking-wider">Win Rate</div>
+                      <div className="text-2xl font-mono font-bold mt-1 text-white">
+                        {(selectedRun.winRate * 100).toFixed(1)}%
+                      </div>
+                    </CardContent>
+                  </Card>
+                  <Card className="glass-panel border-white/10">
+                    <CardContent className="p-4 text-center">
+                      <div className="text-xs text-muted-foreground uppercase tracking-wider">Trades</div>
+                      <div className="text-2xl font-mono font-bold mt-1 text-white">
+                        {selectedRun.tradesSimulated}
+                      </div>
+                    </CardContent>
+                  </Card>
+                  <Card className="glass-panel border-white/10">
+                    <CardContent className="p-4 text-center">
+                      <div className="text-xs text-muted-foreground uppercase tracking-wider">Sharpe Ratio</div>
+                      <div className="text-2xl font-mono font-bold mt-1 text-white">
+                        {selectedRun.sharpeRatio?.toFixed(2) || "N/A"}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <Card className="glass-panel border-white/10">
+                    <CardContent className="p-4 text-center">
+                      <div className="text-xs text-muted-foreground uppercase tracking-wider">ROI</div>
+                      <div className={`text-lg font-mono font-bold mt-1 ${(selectedRun.roi ?? 0) >= 0 ? "text-green-400" : "text-red-400"}`}>
+                        {selectedRun.roi?.toFixed(1) ?? "N/A"}%
+                      </div>
+                    </CardContent>
+                  </Card>
+                  <Card className="glass-panel border-white/10">
+                    <CardContent className="p-4 text-center">
+                      <div className="text-xs text-muted-foreground uppercase tracking-wider">Avg CLV</div>
+                      <div className={`text-lg font-mono font-bold mt-1 ${(selectedRun.avgClv ?? 0) >= 0 ? "text-green-400" : "text-red-400"}`}>
+                        {selectedRun.avgClv != null ? (selectedRun.avgClv * 100).toFixed(2) + "%" : "N/A"}
+                      </div>
+                    </CardContent>
+                  </Card>
+                  <Card className="glass-panel border-white/10">
+                    <CardContent className="p-4 text-center">
+                      <div className="text-xs text-muted-foreground uppercase tracking-wider">Best / Worst Streak</div>
+                      <div className="text-lg font-mono font-bold mt-1 text-white">
+                        {selectedRun.bestStreak ?? 0}W / {selectedRun.worstStreak ?? 0}L
+                      </div>
+                    </CardContent>
+                  </Card>
+                  <Card className="glass-panel border-white/10">
+                    <CardContent className="p-4 text-center">
+                      <div className="text-xs text-muted-foreground uppercase tracking-wider">Dip Catch Rate</div>
+                      <div className="text-lg font-mono font-bold mt-1 text-white">
+                        {selectedRun.dipCatchSuccessRate != null ? (selectedRun.dipCatchSuccessRate * 100).toFixed(1) + "%" : "N/A"}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
               </div>
             )}
 
@@ -257,22 +296,26 @@ export default function Backtest() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="p-0">
-                  <div className="overflow-x-auto max-h-96">
+                  <div className="overflow-x-auto max-h-[500px]">
                     <table className="w-full text-sm">
                       <thead className="sticky top-0 bg-card/90 backdrop-blur-sm border-b border-white/5">
                         <tr>
                           <th className="text-left p-3 text-muted-foreground font-medium">Market</th>
+                          <th className="text-left p-3 text-muted-foreground font-medium">Strategy</th>
                           <th className="text-center p-3 text-muted-foreground font-medium">Side</th>
                           <th className="text-right p-3 text-muted-foreground font-medium">Entry</th>
                           <th className="text-right p-3 text-muted-foreground font-medium">Edge</th>
+                          <th className="text-right p-3 text-muted-foreground font-medium">CLV</th>
                           <th className="text-right p-3 text-muted-foreground font-medium">P&L</th>
+                          <th className="text-center p-3 text-muted-foreground font-medium">Settled</th>
                           <th className="text-center p-3 text-muted-foreground font-medium">Result</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-white/5">
                         {trades.map((t) => (
-                          <tr key={t.id} className="hover:bg-white/5 transition-colors">
-                            <td className="p-3 max-w-[200px] truncate text-white">{t.title}</td>
+                          <tr key={t.id} className="hover:bg-white/5 transition-colors group">
+                            <td className="p-3 max-w-[180px] truncate text-white" title={t.reasoning || undefined}>{t.title}</td>
+                            <td className="p-3 text-xs text-muted-foreground">{t.strategyName}</td>
                             <td className="p-3 text-center">
                               <span className={`px-2 py-0.5 rounded text-xs font-bold uppercase ${t.side === "yes" ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"}`}>
                                 {t.side}
@@ -280,9 +323,13 @@ export default function Backtest() {
                             </td>
                             <td className="p-3 text-right font-mono text-white">${t.entryPrice.toFixed(2)}</td>
                             <td className="p-3 text-right font-mono text-white">{t.edge.toFixed(1)}%</td>
+                            <td className={`p-3 text-right font-mono ${t.clv != null ? (t.clv >= 0 ? "text-green-400" : "text-red-400") : "text-muted-foreground"}`}>
+                              {t.clv != null ? (t.clv * 100).toFixed(2) + "%" : "-"}
+                            </td>
                             <td className={`p-3 text-right font-mono font-bold ${t.pnl >= 0 ? "text-green-400" : "text-red-400"}`}>
                               ${t.pnl.toFixed(2)}
                             </td>
+                            <td className="p-3 text-center text-xs text-muted-foreground">{t.marketResult || "-"}</td>
                             <td className="p-3 text-center">
                               <span className={`px-2 py-0.5 rounded text-xs font-bold ${t.outcome === "won" ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"}`}>
                                 {t.outcome}
