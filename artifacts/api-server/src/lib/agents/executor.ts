@@ -97,7 +97,7 @@ export async function executeTrade(decision: RiskDecision): Promise<ExecutionRes
 
   await db
     .update(tradesTable)
-    .set({ status: "pending" })
+    .set({ status: "failed" })
     .where(eq(tradesTable.id, pendingTrade.id));
 
   return {

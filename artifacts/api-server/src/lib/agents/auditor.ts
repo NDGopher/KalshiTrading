@@ -58,7 +58,7 @@ export function auditTrade(
   const penaltyPerFlag = settings.confidencePenaltyPct / 100;
   adjustedConfidence = Math.max(0, adjustedConfidence - (flags.length * penaltyPerFlag));
 
-  const approved = flags.length === 0 || (flags.length <= 1 && adjustedConfidence > 0.4 && analysis.edge >= settings.minEdge);
+  const approved = flags.length === 0;
 
   return {
     analysis,

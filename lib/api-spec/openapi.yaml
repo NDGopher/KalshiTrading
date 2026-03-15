@@ -99,7 +99,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [open, won, lost, pending, cancelled]
+            enum: [open, won, lost, pending, cancelled, failed]
       responses:
         "200":
           description: List of trades
@@ -374,7 +374,7 @@ components:
           type: ["number", "null"]
         status:
           type: string
-          enum: [open, won, lost, pending, cancelled]
+          enum: [open, won, lost, pending, cancelled, failed]
         modelProbability:
           type: number
         edge:

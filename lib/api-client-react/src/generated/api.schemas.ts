@@ -66,6 +66,7 @@ export const TradeStatus = {
   lost: "lost",
   pending: "pending",
   cancelled: "cancelled",
+  failed: "failed",
 } as const;
 
 export interface Trade {
@@ -238,6 +239,7 @@ export const ListTradesStatus = {
   lost: "lost",
   pending: "pending",
   cancelled: "cancelled",
+  failed: "failed",
 } as const;
 
 export type ListAgentRunsParams = {
