@@ -201,17 +201,54 @@ export default function Brain() {
 
             <Card className="glass-panel border-white/10">
               <CardHeader className="border-b border-white/5 bg-black/20 py-3">
-                <CardTitle className="text-base">API Cost Tracker</CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base">API Cost Tracker</CardTitle>
+                  {costs?.budgetPaused && (
+                    <Badge variant="destructive" className="text-[10px]">BUDGET PAUSED</Badge>
+                  )}
+                </div>
               </CardHeader>
               <CardContent className="p-4 space-y-3">
-                <div className="flex justify-between items-center">
-                  <span className="text-xs text-muted-foreground">Today</span>
-                  <span className="text-sm font-mono font-bold text-white">${costs?.daily?.costUsd?.toFixed(4) || "0.00"}</span>
+                <div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs text-muted-foreground">Today</span>
+                    <span className="text-sm font-mono font-bold text-white">
+                      ${costs?.daily?.costUsd?.toFixed(4) || "0.00"}
+                      {costs?.daily?.budgetUsd > 0 && <span className="text-muted-foreground/60 text-xs"> / ${costs.daily.budgetUsd}</span>}
+                    </span>
+                  </div>
+                  {costs?.daily?.budgetUsd > 0 && (
+                    <div className="w-full h-1.5 bg-white/5 rounded-full mt-1.5 overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all ${costs.daily.exceeded ? "bg-destructive" : "bg-primary"}`}
+                        style={{ width: `${Math.min(100, ((costs.daily.costUsd || 0) / costs.daily.budgetUsd) * 100)}%` }}
+                      />
+                    </div>
+                  )}
                 </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-xs text-muted-foreground">This Month</span>
-                  <span className="text-sm font-mono font-bold text-white">${costs?.monthly?.costUsd?.toFixed(4) || "0.00"}</span>
+                <div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs text-muted-foreground">This Month</span>
+                    <span className="text-sm font-mono font-bold text-white">
+                      ${costs?.monthly?.costUsd?.toFixed(4) || "0.00"}
+                      {costs?.monthly?.budgetUsd > 0 && <span className="text-muted-foreground/60 text-xs"> / ${costs.monthly.budgetUsd}</span>}
+                    </span>
+                  </div>
+                  {costs?.monthly?.budgetUsd > 0 && (
+                    <div className="w-full h-1.5 bg-white/5 rounded-full mt-1.5 overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all ${costs.monthly.exceeded ? "bg-destructive" : "bg-primary"}`}
+                        style={{ width: `${Math.min(100, ((costs.monthly.costUsd || 0) / costs.monthly.budgetUsd) * 100)}%` }}
+                      />
+                    </div>
+                  )}
                 </div>
+                {costs?.monthly?.projectedUsd > 0 && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs text-muted-foreground">Projected</span>
+                    <span className="text-sm font-mono text-muted-foreground">${costs.monthly.projectedUsd.toFixed(4)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between items-center">
                   <span className="text-xs text-muted-foreground">All Time</span>
                   <span className="text-sm font-mono font-bold text-white">${costs?.allTime?.costUsd?.toFixed(4) || "0.00"}</span>

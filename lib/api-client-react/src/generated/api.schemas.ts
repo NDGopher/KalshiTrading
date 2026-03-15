@@ -11,6 +11,7 @@ export interface HealthStatus {
 
 export interface DashboardOverview {
   balance: number;
+  balanceError?: boolean;
   totalPnl: number;
   todayPnl: number;
   winRate: number;

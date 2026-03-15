@@ -28,6 +28,7 @@ router.get("/dashboard/overview", async (_req, res): Promise<void> => {
   const openPositions = tradeSource.filter((t) => t.status === "open").length;
 
   let balance = 0;
+  let balanceError = false;
   if (paperMode) {
     balance = settings?.paperBalance || 5000;
   } else {
@@ -36,6 +37,7 @@ router.get("/dashboard/overview", async (_req, res): Promise<void> => {
       balance = balanceData.balance / 100;
     } catch {
       balance = 0;
+      balanceError = true;
     }
   }
 
@@ -43,6 +45,7 @@ router.get("/dashboard/overview", async (_req, res): Promise<void> => {
 
   res.json({
     balance,
+    balanceError,
     totalPnl,
     todayPnl,
     winRate,
@@ -60,11 +63,13 @@ router.get("/portfolio/balance", async (_req, res): Promise<void> => {
     res.json({
       balance: balanceData.balance / 100,
       availableBalance: (balanceData.portfolio_value || balanceData.balance) / 100,
+      error: false,
     });
   } catch {
     res.json({
       balance: 0,
       availableBalance: 0,
+      error: true,
     });
   }
 });

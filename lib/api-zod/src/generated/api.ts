@@ -21,6 +21,7 @@ export const HealthCheckResponse = zod.object({
  */
 export const GetDashboardOverviewResponse = zod.object({
   balance: zod.number(),
+  balanceError: zod.boolean().optional(),
   totalPnl: zod.number(),
   todayPnl: zod.number(),
   winRate: zod.number(),

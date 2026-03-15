@@ -22,25 +22,27 @@ export default function Trades() {
 
   const isPositive = (val?: number | null) => (val || 0) >= 0;
 
+  type TradeItem = NonNullable<typeof tradesData>["trades"][number];
+
   const clvStats = useMemo(() => {
     const trades = tradesData?.trades || [];
-    const closedWithClv = trades.filter((t: any) => t.clv != null && t.status !== "open");
+    const closedWithClv = trades.filter((t: TradeItem) => t.clv != null && t.status !== "open");
     if (closedWithClv.length === 0) return null;
-    const avgClv = closedWithClv.reduce((sum: number, t: any) => sum + (t.clv || 0), 0) / closedWithClv.length;
-    const positiveClv = closedWithClv.filter((t: any) => (t.clv || 0) > 0).length;
+    const avgClv = closedWithClv.reduce((sum, t) => sum + (t.clv || 0), 0) / closedWithClv.length;
+    const positiveClv = closedWithClv.filter((t) => (t.clv || 0) > 0).length;
     const clvHitRate = positiveClv / closedWithClv.length;
     return { avgClv, clvHitRate, count: closedWithClv.length };
   }, [tradesData]);
 
   const edgeStats = useMemo(() => {
     const trades = tradesData?.trades || [];
-    const closedTrades = trades.filter((t: any) => t.status === "won" || t.status === "lost");
+    const closedTrades = trades.filter((t: TradeItem) => t.status === "won" || t.status === "lost");
     if (closedTrades.length === 0) return null;
-    const highEdge = closedTrades.filter((t: any) => t.edge >= 10);
-    const highEdgeWins = highEdge.filter((t: any) => t.status === "won").length;
+    const highEdge = closedTrades.filter((t) => t.edge >= 10);
+    const highEdgeWins = highEdge.filter((t) => t.status === "won").length;
     const highEdgeWinRate = highEdge.length > 0 ? highEdgeWins / highEdge.length : 0;
-    const lowEdge = closedTrades.filter((t: any) => t.edge < 10);
-    const lowEdgeWins = lowEdge.filter((t: any) => t.status === "won").length;
+    const lowEdge = closedTrades.filter((t) => t.edge < 10);
+    const lowEdgeWins = lowEdge.filter((t) => t.status === "won").length;
     const lowEdgeWinRate = lowEdge.length > 0 ? lowEdgeWins / lowEdge.length : 0;
     return { highEdgeCount: highEdge.length, highEdgeWinRate, lowEdgeCount: lowEdge.length, lowEdgeWinRate };
   }, [tradesData]);
@@ -207,7 +209,7 @@ export default function Trades() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/5">
-                    {tradesData.trades.map((trade: any) => (
+                    {tradesData.trades.map((trade) => (
                       <tr key={trade.id} className="hover:bg-white/[0.02] transition-colors group">
                         <td className="px-6 py-4 whitespace-nowrap text-muted-foreground text-xs">
                           {format(new Date(trade.createdAt), "MMM d, HH:mm")}

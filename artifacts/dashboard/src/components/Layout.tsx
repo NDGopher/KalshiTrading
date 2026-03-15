@@ -121,14 +121,45 @@ export function Layout({ children }: LayoutProps) {
                 <div className="flex items-center gap-1.5 mb-2">
                   <DollarSign className="w-3 h-3 text-primary" />
                   <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">API Costs</span>
+                  {costs.budgetPaused && (
+                    <span className="px-1 py-0.5 rounded text-[8px] font-bold bg-destructive/20 text-destructive border border-destructive/30">PAUSED</span>
+                  )}
                 </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-[10px] text-muted-foreground">Today</span>
-                  <span className="text-xs font-mono text-white">${costs.daily?.costUsd?.toFixed(4) || "0.00"}</span>
-                </div>
-                <div className="flex justify-between items-center mt-1">
-                  <span className="text-[10px] text-muted-foreground">Month</span>
-                  <span className="text-xs font-mono text-white">${costs.monthly?.costUsd?.toFixed(4) || "0.00"}</span>
+                <div className="space-y-2">
+                  <div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-[10px] text-muted-foreground">Today</span>
+                      <span className="text-xs font-mono text-white">
+                        ${costs.daily?.costUsd?.toFixed(4) || "0.00"}
+                        {costs.daily?.budgetUsd > 0 && <span className="text-muted-foreground/60"> / ${costs.daily.budgetUsd}</span>}
+                      </span>
+                    </div>
+                    {costs.daily?.budgetUsd > 0 && (
+                      <div className="w-full h-1 bg-white/5 rounded-full mt-1 overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all ${costs.daily.exceeded ? "bg-destructive" : "bg-primary"}`}
+                          style={{ width: `${Math.min(100, ((costs.daily.costUsd || 0) / costs.daily.budgetUsd) * 100)}%` }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-[10px] text-muted-foreground">Month</span>
+                      <span className="text-xs font-mono text-white">
+                        ${costs.monthly?.costUsd?.toFixed(4) || "0.00"}
+                        {costs.monthly?.budgetUsd > 0 && <span className="text-muted-foreground/60"> / ${costs.monthly.budgetUsd}</span>}
+                      </span>
+                    </div>
+                    {costs.monthly?.budgetUsd > 0 && (
+                      <div className="w-full h-1 bg-white/5 rounded-full mt-1 overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all ${costs.monthly.exceeded ? "bg-destructive" : "bg-primary"}`}
+                          style={{ width: `${Math.min(100, ((costs.monthly.costUsd || 0) / costs.monthly.budgetUsd) * 100)}%` }}
+                        />
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -158,7 +189,9 @@ export function Layout({ children }: LayoutProps) {
                 )}
               </div>
               <span className="font-mono font-bold text-white">
-                {overview ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(overview.balance) : '...'}
+                {!overview ? '...' : overview.balanceError ? (
+                  <span className="text-destructive text-xs">Balance unavailable</span>
+                ) : new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(overview.balance)}
               </span>
             </div>
           </div>
