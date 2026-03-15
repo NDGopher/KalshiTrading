@@ -61,7 +61,7 @@ router.put("/settings", async (req, res): Promise<void> => {
 
   const current = await ensureSettings();
 
-  const updateData: any = {};
+  const updateData: Partial<typeof tradingSettingsTable.$inferInsert> = {};
   if (parsed.data.maxPositionPct !== undefined) updateData.maxPositionPct = parsed.data.maxPositionPct;
   if (parsed.data.kellyFraction !== undefined) updateData.kellyFraction = parsed.data.kellyFraction;
   if (parsed.data.maxConsecutiveLosses !== undefined) updateData.maxConsecutiveLosses = parsed.data.maxConsecutiveLosses;

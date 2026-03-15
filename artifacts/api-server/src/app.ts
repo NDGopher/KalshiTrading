@@ -11,7 +11,7 @@ app.use(express.urlencoded({ extended: true }));
 const API_SECRET = process.env.API_SECRET;
 
 function authMiddleware(req: Request, res: Response, next: NextFunction): void {
-  if (req.path === "/api/health") {
+  if (req.path === "/api/healthz") {
     next();
     return;
   }

@@ -27,7 +27,7 @@ export const GetDashboardOverviewResponse = zod.object({
   totalTrades: zod.number(),
   openPositions: zod.number(),
   pipelineActive: zod.boolean(),
-  lastRunAt: zod.date().nullish(),
+  lastRunAt: zod.string().nullish(),
 });
 
 /**
@@ -38,7 +38,7 @@ export const TriggerMarketScanResponse = zod.object({
   marketsScanned: zod.number(),
   opportunitiesFound: zod.number(),
   scanDuration: zod.number(),
-  timestamp: zod.date(),
+  timestamp: zod.string(),
 });
 
 /**
@@ -56,8 +56,8 @@ export const GetMarketOpportunitiesResponseItem = zod.object({
   confidence: zod.number(),
   side: zod.enum(["yes", "no"]),
   volume24h: zod.number().optional(),
-  expiresAt: zod.date(),
-  createdAt: zod.date(),
+  expiresAt: zod.string(),
+  createdAt: zod.string(),
 });
 export const GetMarketOpportunitiesResponse = zod.array(
   GetMarketOpportunitiesResponseItem,
@@ -95,8 +95,8 @@ export const ListTradesResponse = zod.object({
       auditorFlags: zod.array(zod.string()).optional(),
       riskScore: zod.number(),
       kellyFraction: zod.number(),
-      createdAt: zod.date(),
-      closedAt: zod.date().nullish(),
+      createdAt: zod.string(),
+      closedAt: zod.string().nullish(),
     }),
   ),
   total: zod.number(),
@@ -128,7 +128,7 @@ export const GetTradeStatsResponse = zod.object({
 export const GetAgentStatusResponseItem = zod.object({
   name: zod.string(),
   status: zod.enum(["idle", "running", "error", "disabled"]),
-  lastRunAt: zod.date().nullish(),
+  lastRunAt: zod.string().nullish(),
   lastResult: zod.string().nullish(),
   errorMessage: zod.string().nullish(),
 });
@@ -150,7 +150,7 @@ export const ListAgentRunsResponseItem = zod.object({
   status: zod.enum(["success", "error", "skipped"]),
   duration: zod.number(),
   details: zod.string().nullish(),
-  createdAt: zod.date(),
+  createdAt: zod.string(),
 });
 export const ListAgentRunsResponse = zod.array(ListAgentRunsResponseItem);
 
@@ -184,7 +184,7 @@ export const RunTradingCycleResponse = zod.object({
       status: zod.enum(["success", "error", "skipped"]),
       duration: zod.number(),
       details: zod.string().nullish(),
-      createdAt: zod.date(),
+      createdAt: zod.string(),
     }),
   ),
 });

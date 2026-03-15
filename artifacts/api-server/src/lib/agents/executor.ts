@@ -39,7 +39,7 @@ export async function executeTrade(decision: RiskDecision): Promise<ExecutionRes
         (analysis.side === "yes" ? candidate.yesPrice : candidate.noPrice) * 100
       );
 
-      const orderParams: any = {
+      const orderParams: Record<string, string | number> = {
         ticker: candidate.market.ticker,
         action: "buy" as const,
         side: analysis.side,
@@ -85,8 +85,8 @@ export async function executeTrade(decision: RiskDecision): Promise<ExecutionRes
         orderId: result.order.order_id,
         tradeId: pendingTrade.id,
       };
-    } catch (error: any) {
-      lastError = error.message || "Unknown execution error";
+    } catch (error: unknown) {
+      lastError = error instanceof Error ? error.message : "Unknown execution error";
       console.error(`Execution attempt ${attempt}/${MAX_RETRIES} failed:`, lastError);
 
       if (attempt < MAX_RETRIES) {

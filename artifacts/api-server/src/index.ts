@@ -1,4 +1,5 @@
 import app from "./app";
+import { rehydratePipeline } from "./lib/agents/pipeline.js";
 
 const rawPort = process.env["PORT"];
 
@@ -16,4 +17,7 @@ if (Number.isNaN(port) || port <= 0) {
 
 app.listen(port, () => {
   console.log(`Server listening on port ${port}`);
+  rehydratePipeline().catch((err: unknown) => {
+    console.error("Failed to rehydrate pipeline on startup:", err);
+  });
 });

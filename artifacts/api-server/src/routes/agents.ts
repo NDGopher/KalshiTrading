@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, agentRunsTable, tradingSettingsTable } from "@workspace/db";
-import { desc } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import {
   getAgentStatuses,
   runTradingCycle,
@@ -55,8 +55,12 @@ router.post("/agents/toggle", async (req, res): Promise<void> => {
     return;
   }
 
+  const [settings] = await db.select().from(tradingSettingsTable).limit(1);
+  if (settings) {
+    await db.update(tradingSettingsTable).set({ pipelineActive: parsed.data.active }).where(eq(tradingSettingsTable.id, settings.id));
+  }
+
   if (parsed.data.active) {
-    const [settings] = await db.select().from(tradingSettingsTable).limit(1);
     const interval = settings?.scanIntervalMinutes || 60;
     startPipeline(interval);
     res.json(

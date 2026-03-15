@@ -285,7 +285,6 @@ components:
           type: boolean
         lastRunAt:
           type: ["string", "null"]
-          format: date-time
       required:
         - balance
         - totalPnl
@@ -306,7 +305,6 @@ components:
           type: number
         timestamp:
           type: string
-          format: date-time
       required:
         - marketsScanned
         - opportunitiesFound
@@ -339,10 +337,8 @@ components:
           type: number
         expiresAt:
           type: string
-          format: date-time
         createdAt:
           type: string
-          format: date-time
       required:
         - id
         - kalshiTicker
@@ -397,10 +393,8 @@ components:
           type: number
         createdAt:
           type: string
-          format: date-time
         closedAt:
           type: ["string", "null"]
-          format: date-time
       required:
         - id
         - kalshiTicker
@@ -480,7 +474,6 @@ components:
           enum: [idle, running, error, disabled]
         lastRunAt:
           type: ["string", "null"]
-          format: date-time
         lastResult:
           type: ["string", "null"]
         errorMessage:
@@ -505,7 +498,6 @@ components:
           type: ["string", "null"]
         createdAt:
           type: string
-          format: date-time
       required:
         - id
         - agentName

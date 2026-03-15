@@ -104,10 +104,11 @@ export async function runTradingCycle(): Promise<CycleResult> {
       const scanDuration = (Date.now() - scanStart) / 1000;
       updateAgentStatus("Scanner", "idle", `Scanned ${scanResult.totalScanned} markets, found ${scanResult.candidates.length} candidates`);
       agentResults.push({ agentName: "Scanner", status: "success", duration: scanDuration, details: `Scanned ${scanResult.totalScanned} markets, ${scanResult.candidates.length} candidates` });
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : "Unknown error";
       const scanDuration = (Date.now() - scanStart) / 1000;
-      updateAgentStatus("Scanner", "error", undefined, err.message);
-      agentResults.push({ agentName: "Scanner", status: "error", duration: scanDuration, details: err.message });
+      updateAgentStatus("Scanner", "error", undefined, errMsg);
+      agentResults.push({ agentName: "Scanner", status: "error", duration: scanDuration, details: errMsg });
       pipelineRunning = false;
       return { marketsScanned: 0, opportunitiesFound: 0, tradesExecuted: 0, tradesSkipped: 0, totalDuration: (Date.now() - cycleStart) / 1000, agentResults };
     }
@@ -128,10 +129,11 @@ export async function runTradingCycle(): Promise<CycleResult> {
       const withEdge = analyses.filter((a) => a.edge > 0);
       updateAgentStatus("Analyst", "idle", `Analyzed ${analyses.length} markets, ${withEdge.length} with edge`);
       agentResults.push({ agentName: "Analyst", status: "success", duration: analysisDuration, details: `${withEdge.length}/${analyses.length} markets have edge` });
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : "Unknown error";
       const analysisDuration = (Date.now() - analysisStart) / 1000;
-      updateAgentStatus("Analyst", "error", undefined, err.message);
-      agentResults.push({ agentName: "Analyst", status: "error", duration: analysisDuration, details: err.message });
+      updateAgentStatus("Analyst", "error", undefined, errMsg);
+      agentResults.push({ agentName: "Analyst", status: "error", duration: analysisDuration, details: errMsg });
       pipelineRunning = false;
       return { marketsScanned: scanResult.totalScanned, opportunitiesFound: 0, tradesExecuted: 0, tradesSkipped: 0, totalDuration: (Date.now() - cycleStart) / 1000, agentResults };
     }
@@ -220,12 +222,13 @@ export async function runTradingCycle(): Promise<CycleResult> {
       totalDuration: (Date.now() - cycleStart) / 1000,
       agentResults,
     };
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const errMsg = err instanceof Error ? err.message : "Unknown error";
     pipelineRunning = false;
     return {
       marketsScanned: 0, opportunitiesFound: 0, tradesExecuted: 0,
       tradesSkipped: 0, totalDuration: (Date.now() - cycleStart) / 1000,
-      agentResults: [{ agentName: "Pipeline", status: "error", duration: (Date.now() - cycleStart) / 1000, details: err.message }],
+      agentResults: [{ agentName: "Pipeline", status: "error", duration: (Date.now() - cycleStart) / 1000, details: errMsg }],
     };
   }
 }
@@ -251,4 +254,15 @@ export function stopPipeline() {
 
 export function isPipelineActive(): boolean {
   return pipelineInterval !== null;
+}
+
+export async function rehydratePipeline(): Promise<void> {
+  const [settings] = await db.select().from(tradingSettingsTable).limit(1);
+  if (settings?.pipelineActive) {
+    const interval = settings.scanIntervalMinutes || 60;
+    startPipeline(interval);
+    console.log(`Pipeline rehydrated from DB: active with ${interval} minute interval`);
+  } else {
+    console.log("Pipeline rehydration: not active in DB settings");
+  }
 }
