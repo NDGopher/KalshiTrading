@@ -5,33 +5,27 @@
  * Kalshi Sports AI Trading System API
  * OpenAPI spec version: 0.1.0
  */
-import type { TradeSide } from "./tradeSide";
-import type { TradeStatus } from "./tradeStatus";
 
-export interface Trade {
+export interface PaperTrade {
   id: number;
   kalshiTicker: string;
   title: string;
-  side: TradeSide;
+  side: string;
   entryPrice: number;
   /** @nullable */
   exitPrice?: number | null;
   quantity: number;
   /** @nullable */
   pnl?: number | null;
-  status: TradeStatus;
+  status: string;
   /** @nullable */
   strategyName?: string | null;
   modelProbability: number;
   edge: number;
   confidence: number;
-  /** @nullable */
-  clv?: number | null;
-  /** @nullable */
-  analystReasoning?: string | null;
-  auditorFlags?: string[];
   riskScore: number;
   kellyFraction: number;
+  simulatedBalance: number;
   createdAt: string;
   /** @nullable */
   closedAt?: string | null;

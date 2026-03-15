@@ -8,6 +8,7 @@ import Opportunities from "@/pages/Opportunities";
 import Trades from "@/pages/Trades";
 import Agents from "@/pages/Agents";
 import Settings from "@/pages/Settings";
+import Backtest from "@/pages/Backtest";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient({
@@ -27,6 +28,7 @@ function Router() {
       <Route path="/trades" component={Trades} />
       <Route path="/agents" component={Agents} />
       <Route path="/settings" component={Settings} />
+      <Route path="/backtest" component={Backtest} />
       <Route component={NotFound} />
     </Switch>
   );

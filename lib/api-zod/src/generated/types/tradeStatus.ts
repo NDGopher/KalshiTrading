@@ -13,4 +13,6 @@ export const TradeStatus = {
   won: "won",
   lost: "lost",
   pending: "pending",
+  cancelled: "cancelled",
+  failed: "failed",
 } as const;

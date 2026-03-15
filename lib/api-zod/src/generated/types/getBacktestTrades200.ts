@@ -5,10 +5,8 @@
  * Kalshi Sports AI Trading System API
  * OpenAPI spec version: 0.1.0
  */
+import type { BacktestTrade } from "./backtestTrade";
 
-export interface ScanResult {
-  marketsScanned: number;
-  opportunitiesFound: number;
-  scanDuration: number;
-  timestamp: string;
-}
+export type GetBacktestTrades200 = {
+  trades: BacktestTrade[];
+};

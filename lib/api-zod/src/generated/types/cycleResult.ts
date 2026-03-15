@@ -14,4 +14,5 @@ export interface CycleResult {
   tradesSkipped: number;
   totalDuration: number;
   agentResults: AgentRun[];
+  paperMode?: boolean;
 }

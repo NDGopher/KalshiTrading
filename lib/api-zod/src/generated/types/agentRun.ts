@@ -14,5 +14,5 @@ export interface AgentRun {
   duration: number;
   /** @nullable */
   details?: string | null;
-  createdAt: Date;
+  createdAt: string;
 }

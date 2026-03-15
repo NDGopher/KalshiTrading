@@ -15,5 +15,6 @@ export interface DashboardOverview {
   openPositions: number;
   pipelineActive: boolean;
   /** @nullable */
-  lastRunAt?: Date | null;
+  lastRunAt?: string | null;
+  paperTradingMode?: boolean;
 }

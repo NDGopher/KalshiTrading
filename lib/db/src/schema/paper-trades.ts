@@ -1,8 +1,8 @@
-import { pgTable, text, serial, timestamp, integer, real, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, real, integer, timestamp, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
-export const tradesTable = pgTable("trades", {
+export const paperTradesTable = pgTable("paper_trades", {
   id: serial("id").primaryKey(),
   kalshiTicker: text("kalshi_ticker").notNull(),
   title: text("title").notNull(),
@@ -11,21 +11,20 @@ export const tradesTable = pgTable("trades", {
   exitPrice: real("exit_price"),
   quantity: integer("quantity").notNull(),
   pnl: real("pnl"),
-  status: text("status").notNull().default("pending"),
+  status: text("status").notNull().default("open"),
   strategyName: text("strategy_name"),
   modelProbability: real("model_probability").notNull(),
   edge: real("edge").notNull(),
   confidence: real("confidence").notNull(),
-  clv: real("clv"),
   analystReasoning: text("analyst_reasoning"),
   auditorFlags: jsonb("auditor_flags").$type<string[]>().default([]),
   riskScore: real("risk_score").notNull(),
   kellyFraction: real("kelly_fraction").notNull(),
-  kalshiOrderId: text("kalshi_order_id"),
+  simulatedBalance: real("simulated_balance").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   closedAt: timestamp("closed_at", { withTimezone: true }),
 });
 
-export const insertTradeSchema = createInsertSchema(tradesTable).omit({ id: true, createdAt: true });
-export type InsertTrade = z.infer<typeof insertTradeSchema>;
-export type Trade = typeof tradesTable.$inferSelect;
+export const insertPaperTradeSchema = createInsertSchema(paperTradesTable).omit({ id: true, createdAt: true });
+export type InsertPaperTrade = z.infer<typeof insertPaperTradeSchema>;
+export type PaperTrade = typeof paperTradesTable.$inferSelect;

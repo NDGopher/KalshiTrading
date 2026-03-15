@@ -5,19 +5,23 @@
  * Kalshi Sports AI Trading System API
  * OpenAPI spec version: 0.1.0
  */
-import type { MarketOpportunitySide } from "./marketOpportunitySide";
 
-export interface MarketOpportunity {
+export interface BacktestTrade {
   id: number;
+  backtestRunId: number;
   kalshiTicker: string;
   title: string;
-  category: string;
-  currentYesPrice: number;
+  strategyName: string;
+  side: string;
+  entryPrice: number;
+  exitPrice: number;
+  quantity: number;
+  pnl: number;
+  outcome: string;
   modelProbability: number;
   edge: number;
   confidence: number;
-  side: MarketOpportunitySide;
-  volume24h?: number;
-  expiresAt: string;
+  /** @nullable */
+  marketResult?: string | null;
   createdAt: string;
 }

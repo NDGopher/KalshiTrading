@@ -8,6 +8,12 @@ export interface ReconciliationResult {
   errors: number;
 }
 
+function computeClv(trade: typeof tradesTable.$inferSelect, closingPrice: number): number {
+  const impliedEntryProb = trade.side === "yes" ? trade.entryPrice : 1 - trade.entryPrice;
+  const impliedClosingProb = trade.side === "yes" ? closingPrice : 1 - closingPrice;
+  return impliedClosingProb - impliedEntryProb;
+}
+
 export async function reconcileOpenTrades(): Promise<ReconciliationResult> {
   const openTrades = await db
     .select()
@@ -37,6 +43,9 @@ export async function reconcileOpenTrades(): Promise<ReconciliationResult> {
 
       const { market } = await getMarket(trade.kalshiTicker);
 
+      const lastPrice = parseFloat(market.last_price_dollars || "0");
+      const clv = lastPrice > 0 ? computeClv(trade, lastPrice) : null;
+
       if (market.result && market.result !== "") {
         const won =
           (trade.side === "yes" && market.result === "yes") ||
@@ -44,18 +53,26 @@ export async function reconcileOpenTrades(): Promise<ReconciliationResult> {
 
         const payout = won ? trade.quantity * (1 - trade.entryPrice) : -trade.quantity * trade.entryPrice;
 
+        const closingClv = computeClv(trade, won ? 1.0 : 0.0);
+
         await db
           .update(tradesTable)
           .set({
             status: won ? "won" : "lost",
             exitPrice: won ? 1.0 : 0.0,
             pnl: payout,
+            clv: closingClv,
             closedAt: new Date(),
           })
           .where(eq(tradesTable.id, trade.id));
 
         settled++;
         reconciled++;
+      } else if (clv !== null && trade.clv === null) {
+        await db
+          .update(tradesTable)
+          .set({ clv })
+          .where(eq(tradesTable.id, trade.id));
       }
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : "Unknown error";

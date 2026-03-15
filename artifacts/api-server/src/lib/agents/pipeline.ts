@@ -7,6 +7,7 @@ import { assessRisk } from "./risk-manager.js";
 import { executeTrade, type ExecutionResult } from "./executor.js";
 import { reconcileOpenTrades } from "./reconciler.js";
 import { getBalance } from "../kalshi-client.js";
+import { evaluateStrategies } from "../strategies/index.js";
 
 interface AgentRunLog {
   agentName: string;
@@ -22,6 +23,7 @@ export interface CycleResult {
   tradesSkipped: number;
   totalDuration: number;
   agentResults: AgentRunLog[];
+  paperMode?: boolean;
 }
 
 let pipelineInterval: ReturnType<typeof setInterval> | null = null;
@@ -100,6 +102,8 @@ export async function runTradingCycle(): Promise<CycleResult> {
       };
     }
 
+    const paperMode = settings.paperTradingMode;
+
     let scanStart = Date.now();
     updateAgentStatus("Scanner", "running");
     let scanResult;
@@ -161,6 +165,7 @@ export async function runTradingCycle(): Promise<CycleResult> {
     await db.delete(marketOpportunitiesTable);
     for (const audit of auditResults) {
       const { analysis } = audit;
+      const strategyMatches = evaluateStrategies(analysis);
       await db.insert(marketOpportunitiesTable).values({
         kalshiTicker: analysis.candidate.market.ticker,
         title: analysis.candidate.market.title || analysis.candidate.market.ticker,
@@ -178,27 +183,34 @@ export async function runTradingCycle(): Promise<CycleResult> {
     if (approved.length === 0) {
       for (const run of agentResults) await logAgentRun(run);
       pipelineRunning = false;
-      return { marketsScanned: scanResult.totalScanned, opportunitiesFound: auditResults.length, tradesExecuted: 0, tradesSkipped: auditResults.length, totalDuration: (Date.now() - cycleStart) / 1000, agentResults };
+      return { marketsScanned: scanResult.totalScanned, opportunitiesFound: auditResults.length, tradesExecuted: 0, tradesSkipped: auditResults.length, totalDuration: (Date.now() - cycleStart) / 1000, agentResults, paperMode };
     }
 
     let riskStart = Date.now();
     updateAgentStatus("Risk Manager", "running");
-    let balanceData;
-    try {
-      balanceData = await getBalance();
-    } catch {
-      balanceData = { balance: 10000 };
+    let bankroll: number;
+    if (paperMode) {
+      bankroll = settings.paperBalance;
+    } else {
+      try {
+        const balanceData = await getBalance();
+        bankroll = balanceData.balance / 100;
+      } catch {
+        bankroll = 10000;
+      }
     }
-    const bankroll = balanceData.balance / 100;
 
     const riskDecisions = [];
     for (const audit of approved) {
+      const strategyMatches = evaluateStrategies(audit.analysis);
+      const strategyName = strategyMatches.length > 0 ? strategyMatches[0].strategyName : undefined;
       const decision = await assessRisk(audit, {
         maxPositionPct: settings.maxPositionPct,
         kellyFraction: settings.kellyFraction,
         maxConsecutiveLosses: settings.maxConsecutiveLosses,
         maxDrawdownPct: settings.maxDrawdownPct,
-      }, bankroll);
+        maxSimultaneousPositions: settings.maxSimultaneousPositions,
+      }, bankroll, { strategyName, paperMode });
       riskDecisions.push(decision);
     }
     const riskApproved = riskDecisions.filter((d) => d.approved);
@@ -210,24 +222,29 @@ export async function runTradingCycle(): Promise<CycleResult> {
     updateAgentStatus("Executor", "running");
     let executed = 0;
     for (const decision of riskApproved) {
-      const result = await executeTrade(decision);
+      const result = await executeTrade(decision, paperMode);
       if (result.executed) executed++;
     }
     const execDuration = (Date.now() - execStart) / 1000;
-    updateAgentStatus("Executor", "idle", `Executed ${executed}/${riskApproved.length} trades`);
-    agentResults.push({ agentName: "Executor", status: "success", duration: execDuration, details: `${executed}/${riskApproved.length} executed` });
+    const modeLabel = paperMode ? " (paper)" : "";
+    updateAgentStatus("Executor", "idle", `Executed ${executed}/${riskApproved.length} trades${modeLabel}`);
+    agentResults.push({ agentName: "Executor", status: "success", duration: execDuration, details: `${executed}/${riskApproved.length} executed${modeLabel}` });
 
-    let reconStart = Date.now();
-    updateAgentStatus("Reconciler", "running");
-    try {
-      const reconResult = await reconcileOpenTrades();
-      const reconDuration = (Date.now() - reconStart) / 1000;
-      updateAgentStatus("Reconciler", "idle", `${reconResult.settled} settled, ${reconResult.errors} errors`);
-      agentResults.push({ agentName: "Reconciler", status: "success", duration: reconDuration, details: `${reconResult.settled} settled, ${reconResult.errors} errors` });
-    } catch (reconErr: unknown) {
-      const reconMsg = reconErr instanceof Error ? reconErr.message : "Unknown error";
-      updateAgentStatus("Reconciler", "error", undefined, reconMsg);
-      agentResults.push({ agentName: "Reconciler", status: "error", duration: (Date.now() - reconStart) / 1000, details: reconMsg });
+    if (!paperMode) {
+      let reconStart = Date.now();
+      updateAgentStatus("Reconciler", "running");
+      try {
+        const reconResult = await reconcileOpenTrades();
+        const reconDuration = (Date.now() - reconStart) / 1000;
+        updateAgentStatus("Reconciler", "idle", `${reconResult.settled} settled, ${reconResult.errors} errors`);
+        agentResults.push({ agentName: "Reconciler", status: "success", duration: reconDuration, details: `${reconResult.settled} settled, ${reconResult.errors} errors` });
+      } catch (reconErr: unknown) {
+        const reconMsg = reconErr instanceof Error ? reconErr.message : "Unknown error";
+        updateAgentStatus("Reconciler", "error", undefined, reconMsg);
+        agentResults.push({ agentName: "Reconciler", status: "error", duration: (Date.now() - reconStart) / 1000, details: reconMsg });
+      }
+    } else {
+      agentResults.push({ agentName: "Reconciler", status: "skipped", duration: 0, details: "Skipped in paper trading mode" });
     }
 
     for (const run of agentResults) {
@@ -242,6 +259,7 @@ export async function runTradingCycle(): Promise<CycleResult> {
       tradesSkipped: auditResults.length - executed,
       totalDuration: (Date.now() - cycleStart) / 1000,
       agentResults,
+      paperMode,
     };
   } catch (err: unknown) {
     const errMsg = err instanceof Error ? err.message : "Unknown error";

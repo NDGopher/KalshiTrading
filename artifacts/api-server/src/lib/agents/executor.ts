@@ -1,5 +1,5 @@
 import { createOrder, getOrder } from "../kalshi-client.js";
-import { db, tradesTable } from "@workspace/db";
+import { db, tradesTable, paperTradesTable, tradingSettingsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import type { RiskDecision } from "./risk-manager.js";
 
@@ -9,6 +9,7 @@ export interface ExecutionResult {
   orderId?: string;
   tradeId?: number;
   error?: string;
+  paper?: boolean;
 }
 
 const MAX_RETRIES = 3;
@@ -18,13 +19,70 @@ async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export async function executeTrade(decision: RiskDecision): Promise<ExecutionResult> {
+async function executePaperTrade(decision: RiskDecision): Promise<ExecutionResult> {
+  const { audit } = decision;
+  const { analysis } = audit;
+  const { candidate } = analysis;
+
+  const [settings] = await db.select().from(tradingSettingsTable).limit(1);
+  const currentBalance = settings?.paperBalance || 5000;
+  const entryPrice = analysis.side === "yes" ? candidate.yesPrice : candidate.noPrice;
+  const cost = decision.positionSize * entryPrice;
+
+  if (cost > currentBalance) {
+    return {
+      decision,
+      executed: false,
+      error: `Insufficient paper balance: need $${cost.toFixed(2)}, have $${currentBalance.toFixed(2)}`,
+      paper: true,
+    };
+  }
+
+  const [paperTrade] = await db
+    .insert(paperTradesTable)
+    .values({
+      kalshiTicker: candidate.market.ticker,
+      title: candidate.market.title || candidate.market.ticker,
+      side: analysis.side,
+      entryPrice,
+      quantity: decision.positionSize,
+      status: "open",
+      strategyName: decision.strategyName || null,
+      modelProbability: analysis.modelProbability,
+      edge: analysis.edge,
+      confidence: audit.adjustedConfidence,
+      analystReasoning: analysis.reasoning,
+      auditorFlags: audit.flags,
+      riskScore: decision.riskScore,
+      kellyFraction: decision.kellyFraction,
+      simulatedBalance: currentBalance - cost,
+    })
+    .returning();
+
+  await db
+    .update(tradingSettingsTable)
+    .set({ paperBalance: currentBalance - cost })
+    .where(eq(tradingSettingsTable.id, settings!.id));
+
+  return {
+    decision,
+    executed: true,
+    tradeId: paperTrade.id,
+    paper: true,
+  };
+}
+
+export async function executeTrade(decision: RiskDecision, paperMode?: boolean): Promise<ExecutionResult> {
   if (!decision.approved) {
     return {
       decision,
       executed: false,
       error: decision.rejectReason || "Not approved by risk manager",
     };
+  }
+
+  if (paperMode) {
+    return executePaperTrade(decision);
   }
 
   const { audit } = decision;
@@ -40,6 +98,7 @@ export async function executeTrade(decision: RiskDecision): Promise<ExecutionRes
       entryPrice: analysis.side === "yes" ? candidate.yesPrice : candidate.noPrice,
       quantity: decision.positionSize,
       status: "pending",
+      strategyName: decision.strategyName || null,
       modelProbability: analysis.modelProbability,
       edge: analysis.edge,
       confidence: audit.adjustedConfidence,

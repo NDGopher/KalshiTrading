@@ -19,15 +19,26 @@ import type {
 import type {
   AgentRun,
   AgentStatus,
+  ApiCostSummary,
+  BacktestRunRequest,
   CycleResult,
   DashboardOverview,
+  GetBacktestResults200,
+  GetBacktestStrategies200,
+  GetBacktestTrades200,
+  GetPaperTrades200,
+  GetPaperTradesParams,
   HealthStatus,
   ListAgentRunsParams,
   ListTradesParams,
   MarketOpportunity,
+  PaperTradeStats,
   PipelineStatus,
   PortfolioBalance,
   Position,
+  ReconcilePaperTrades200,
+  ResetPaperTrades200,
+  RunBacktest200,
   ScanResult,
   TogglePipelineBody,
   TradeListResponse,
@@ -70,11 +81,11 @@ export const getHealthCheckQueryOptions = <
   TData = Awaited<ReturnType<typeof healthCheck>>,
   TError = ErrorType<unknown>,
 >(options?: {
-  query?: Partial<UseQueryOptions<
+  query?: UseQueryOptions<
     Awaited<ReturnType<typeof healthCheck>>,
     TError,
     TData
-  >>;
+  >;
   request?: SecondParameter<typeof customFetch>;
 }) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
@@ -105,11 +116,11 @@ export function useHealthCheck<
   TData = Awaited<ReturnType<typeof healthCheck>>,
   TError = ErrorType<unknown>,
 >(options?: {
-  query?: Partial<UseQueryOptions<
+  query?: UseQueryOptions<
     Awaited<ReturnType<typeof healthCheck>>,
     TError,
     TData
-  >>;
+  >;
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getHealthCheckQueryOptions(options);
@@ -146,11 +157,11 @@ export const getGetDashboardOverviewQueryOptions = <
   TData = Awaited<ReturnType<typeof getDashboardOverview>>,
   TError = ErrorType<unknown>,
 >(options?: {
-  query?: Partial<UseQueryOptions<
+  query?: UseQueryOptions<
     Awaited<ReturnType<typeof getDashboardOverview>>,
     TError,
     TData
-  >>;
+  >;
   request?: SecondParameter<typeof customFetch>;
 }) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
@@ -181,11 +192,11 @@ export function useGetDashboardOverview<
   TData = Awaited<ReturnType<typeof getDashboardOverview>>,
   TError = ErrorType<unknown>,
 >(options?: {
-  query?: Partial<UseQueryOptions<
+  query?: UseQueryOptions<
     Awaited<ReturnType<typeof getDashboardOverview>>,
     TError,
     TData
-  >>;
+  >;
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetDashboardOverviewQueryOptions(options);
@@ -304,11 +315,11 @@ export const getGetMarketOpportunitiesQueryOptions = <
   TData = Awaited<ReturnType<typeof getMarketOpportunities>>,
   TError = ErrorType<unknown>,
 >(options?: {
-  query?: Partial<UseQueryOptions<
+  query?: UseQueryOptions<
     Awaited<ReturnType<typeof getMarketOpportunities>>,
     TError,
     TData
-  >>;
+  >;
   request?: SecondParameter<typeof customFetch>;
 }) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
@@ -340,11 +351,11 @@ export function useGetMarketOpportunities<
   TData = Awaited<ReturnType<typeof getMarketOpportunities>>,
   TError = ErrorType<unknown>,
 >(options?: {
-  query?: Partial<UseQueryOptions<
+  query?: UseQueryOptions<
     Awaited<ReturnType<typeof getMarketOpportunities>>,
     TError,
     TData
-  >>;
+  >;
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetMarketOpportunitiesQueryOptions(options);
@@ -396,11 +407,11 @@ export const getListTradesQueryOptions = <
 >(
   params?: ListTradesParams,
   options?: {
-    query?: Partial<UseQueryOptions<
+    query?: UseQueryOptions<
       Awaited<ReturnType<typeof listTrades>>,
       TError,
       TData
-    >>;
+    >;
     request?: SecondParameter<typeof customFetch>;
   },
 ) => {
@@ -434,11 +445,11 @@ export function useListTrades<
 >(
   params?: ListTradesParams,
   options?: {
-    query?: Partial<UseQueryOptions<
+    query?: UseQueryOptions<
       Awaited<ReturnType<typeof listTrades>>,
       TError,
       TData
-    >>;
+    >;
     request?: SecondParameter<typeof customFetch>;
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
@@ -476,11 +487,11 @@ export const getGetTradeStatsQueryOptions = <
   TData = Awaited<ReturnType<typeof getTradeStats>>,
   TError = ErrorType<unknown>,
 >(options?: {
-  query?: Partial<UseQueryOptions<
+  query?: UseQueryOptions<
     Awaited<ReturnType<typeof getTradeStats>>,
     TError,
     TData
-  >>;
+  >;
   request?: SecondParameter<typeof customFetch>;
 }) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
@@ -511,11 +522,11 @@ export function useGetTradeStats<
   TData = Awaited<ReturnType<typeof getTradeStats>>,
   TError = ErrorType<unknown>,
 >(options?: {
-  query?: Partial<UseQueryOptions<
+  query?: UseQueryOptions<
     Awaited<ReturnType<typeof getTradeStats>>,
     TError,
     TData
-  >>;
+  >;
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetTradeStatsQueryOptions(options);
@@ -552,11 +563,11 @@ export const getGetAgentStatusQueryOptions = <
   TData = Awaited<ReturnType<typeof getAgentStatus>>,
   TError = ErrorType<unknown>,
 >(options?: {
-  query?: Partial<UseQueryOptions<
+  query?: UseQueryOptions<
     Awaited<ReturnType<typeof getAgentStatus>>,
     TError,
     TData
-  >>;
+  >;
   request?: SecondParameter<typeof customFetch>;
 }) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
@@ -587,11 +598,11 @@ export function useGetAgentStatus<
   TData = Awaited<ReturnType<typeof getAgentStatus>>,
   TError = ErrorType<unknown>,
 >(options?: {
-  query?: Partial<UseQueryOptions<
+  query?: UseQueryOptions<
     Awaited<ReturnType<typeof getAgentStatus>>,
     TError,
     TData
-  >>;
+  >;
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetAgentStatusQueryOptions(options);
@@ -643,11 +654,11 @@ export const getListAgentRunsQueryOptions = <
 >(
   params?: ListAgentRunsParams,
   options?: {
-    query?: Partial<UseQueryOptions<
+    query?: UseQueryOptions<
       Awaited<ReturnType<typeof listAgentRuns>>,
       TError,
       TData
-    >>;
+    >;
     request?: SecondParameter<typeof customFetch>;
   },
 ) => {
@@ -681,11 +692,11 @@ export function useListAgentRuns<
 >(
   params?: ListAgentRunsParams,
   options?: {
-    query?: Partial<UseQueryOptions<
+    query?: UseQueryOptions<
       Awaited<ReturnType<typeof listAgentRuns>>,
       TError,
       TData
-    >>;
+    >;
     request?: SecondParameter<typeof customFetch>;
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
@@ -892,11 +903,11 @@ export const getGetSettingsQueryOptions = <
   TData = Awaited<ReturnType<typeof getSettings>>,
   TError = ErrorType<unknown>,
 >(options?: {
-  query?: Partial<UseQueryOptions<
+  query?: UseQueryOptions<
     Awaited<ReturnType<typeof getSettings>>,
     TError,
     TData
-  >>;
+  >;
   request?: SecondParameter<typeof customFetch>;
 }) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
@@ -927,11 +938,11 @@ export function useGetSettings<
   TData = Awaited<ReturnType<typeof getSettings>>,
   TError = ErrorType<unknown>,
 >(options?: {
-  query?: Partial<UseQueryOptions<
+  query?: UseQueryOptions<
     Awaited<ReturnType<typeof getSettings>>,
     TError,
     TData
-  >>;
+  >;
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetSettingsQueryOptions(options);
@@ -1055,11 +1066,11 @@ export const getGetPortfolioBalanceQueryOptions = <
   TData = Awaited<ReturnType<typeof getPortfolioBalance>>,
   TError = ErrorType<unknown>,
 >(options?: {
-  query?: Partial<UseQueryOptions<
+  query?: UseQueryOptions<
     Awaited<ReturnType<typeof getPortfolioBalance>>,
     TError,
     TData
-  >>;
+  >;
   request?: SecondParameter<typeof customFetch>;
 }) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
@@ -1090,11 +1101,11 @@ export function useGetPortfolioBalance<
   TData = Awaited<ReturnType<typeof getPortfolioBalance>>,
   TError = ErrorType<unknown>,
 >(options?: {
-  query?: Partial<UseQueryOptions<
+  query?: UseQueryOptions<
     Awaited<ReturnType<typeof getPortfolioBalance>>,
     TError,
     TData
-  >>;
+  >;
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetPortfolioBalanceQueryOptions(options);
@@ -1131,11 +1142,11 @@ export const getGetPositionsQueryOptions = <
   TData = Awaited<ReturnType<typeof getPositions>>,
   TError = ErrorType<unknown>,
 >(options?: {
-  query?: Partial<UseQueryOptions<
+  query?: UseQueryOptions<
     Awaited<ReturnType<typeof getPositions>>,
     TError,
     TData
-  >>;
+  >;
   request?: SecondParameter<typeof customFetch>;
 }) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
@@ -1166,11 +1177,11 @@ export function useGetPositions<
   TData = Awaited<ReturnType<typeof getPositions>>,
   TError = ErrorType<unknown>,
 >(options?: {
-  query?: Partial<UseQueryOptions<
+  query?: UseQueryOptions<
     Awaited<ReturnType<typeof getPositions>>,
     TError,
     TData
-  >>;
+  >;
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetPositionsQueryOptions(options);
@@ -1181,3 +1192,733 @@ export function useGetPositions<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * @summary List available strategies
+ */
+export const getGetBacktestStrategiesUrl = () => {
+  return `/api/backtest/strategies`;
+};
+
+export const getBacktestStrategies = async (
+  options?: RequestInit,
+): Promise<GetBacktestStrategies200> => {
+  return customFetch<GetBacktestStrategies200>(getGetBacktestStrategiesUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetBacktestStrategiesQueryKey = () => {
+  return [`/api/backtest/strategies`] as const;
+};
+
+export const getGetBacktestStrategiesQueryOptions = <
+  TData = Awaited<ReturnType<typeof getBacktestStrategies>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getBacktestStrategies>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetBacktestStrategiesQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getBacktestStrategies>>
+  > = ({ signal }) => getBacktestStrategies({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getBacktestStrategies>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetBacktestStrategiesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getBacktestStrategies>>
+>;
+export type GetBacktestStrategiesQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List available strategies
+ */
+
+export function useGetBacktestStrategies<
+  TData = Awaited<ReturnType<typeof getBacktestStrategies>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getBacktestStrategies>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetBacktestStrategiesQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Run a backtest
+ */
+export const getRunBacktestUrl = () => {
+  return `/api/backtest/run`;
+};
+
+export const runBacktest = async (
+  backtestRunRequest: BacktestRunRequest,
+  options?: RequestInit,
+): Promise<RunBacktest200> => {
+  return customFetch<RunBacktest200>(getRunBacktestUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(backtestRunRequest),
+  });
+};
+
+export const getRunBacktestMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof runBacktest>>,
+    TError,
+    { data: BodyType<BacktestRunRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof runBacktest>>,
+  TError,
+  { data: BodyType<BacktestRunRequest> },
+  TContext
+> => {
+  const mutationKey = ["runBacktest"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof runBacktest>>,
+    { data: BodyType<BacktestRunRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return runBacktest(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RunBacktestMutationResult = NonNullable<
+  Awaited<ReturnType<typeof runBacktest>>
+>;
+export type RunBacktestMutationBody = BodyType<BacktestRunRequest>;
+export type RunBacktestMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Run a backtest
+ */
+export const useRunBacktest = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof runBacktest>>,
+    TError,
+    { data: BodyType<BacktestRunRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof runBacktest>>,
+  TError,
+  { data: BodyType<BacktestRunRequest> },
+  TContext
+> => {
+  return useMutation(getRunBacktestMutationOptions(options));
+};
+
+/**
+ * @summary Get backtest results
+ */
+export const getGetBacktestResultsUrl = () => {
+  return `/api/backtest/results`;
+};
+
+export const getBacktestResults = async (
+  options?: RequestInit,
+): Promise<GetBacktestResults200> => {
+  return customFetch<GetBacktestResults200>(getGetBacktestResultsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetBacktestResultsQueryKey = () => {
+  return [`/api/backtest/results`] as const;
+};
+
+export const getGetBacktestResultsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getBacktestResults>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getBacktestResults>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetBacktestResultsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getBacktestResults>>
+  > = ({ signal }) => getBacktestResults({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getBacktestResults>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetBacktestResultsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getBacktestResults>>
+>;
+export type GetBacktestResultsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get backtest results
+ */
+
+export function useGetBacktestResults<
+  TData = Awaited<ReturnType<typeof getBacktestResults>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getBacktestResults>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetBacktestResultsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get trades for a backtest run
+ */
+export const getGetBacktestTradesUrl = (runId: number) => {
+  return `/api/backtest/trades/${runId}`;
+};
+
+export const getBacktestTrades = async (
+  runId: number,
+  options?: RequestInit,
+): Promise<GetBacktestTrades200> => {
+  return customFetch<GetBacktestTrades200>(getGetBacktestTradesUrl(runId), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetBacktestTradesQueryKey = (runId: number) => {
+  return [`/api/backtest/trades/${runId}`] as const;
+};
+
+export const getGetBacktestTradesQueryOptions = <
+  TData = Awaited<ReturnType<typeof getBacktestTrades>>,
+  TError = ErrorType<unknown>,
+>(
+  runId: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getBacktestTrades>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetBacktestTradesQueryKey(runId);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getBacktestTrades>>
+  > = ({ signal }) => getBacktestTrades(runId, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!runId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getBacktestTrades>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetBacktestTradesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getBacktestTrades>>
+>;
+export type GetBacktestTradesQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get trades for a backtest run
+ */
+
+export function useGetBacktestTrades<
+  TData = Awaited<ReturnType<typeof getBacktestTrades>>,
+  TError = ErrorType<unknown>,
+>(
+  runId: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getBacktestTrades>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetBacktestTradesQueryOptions(runId, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get API cost breakdown
+ */
+export const getGetApiCostsUrl = () => {
+  return `/api/costs`;
+};
+
+export const getApiCosts = async (
+  options?: RequestInit,
+): Promise<ApiCostSummary> => {
+  return customFetch<ApiCostSummary>(getGetApiCostsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetApiCostsQueryKey = () => {
+  return [`/api/costs`] as const;
+};
+
+export const getGetApiCostsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getApiCosts>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getApiCosts>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetApiCostsQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getApiCosts>>> = ({
+    signal,
+  }) => getApiCosts({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getApiCosts>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetApiCostsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getApiCosts>>
+>;
+export type GetApiCostsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get API cost breakdown
+ */
+
+export function useGetApiCosts<
+  TData = Awaited<ReturnType<typeof getApiCosts>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getApiCosts>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetApiCostsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary List paper trades
+ */
+export const getGetPaperTradesUrl = (params?: GetPaperTradesParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/paper-trades?${stringifiedParams}`
+    : `/api/paper-trades`;
+};
+
+export const getPaperTrades = async (
+  params?: GetPaperTradesParams,
+  options?: RequestInit,
+): Promise<GetPaperTrades200> => {
+  return customFetch<GetPaperTrades200>(getGetPaperTradesUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetPaperTradesQueryKey = (params?: GetPaperTradesParams) => {
+  return [`/api/paper-trades`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetPaperTradesQueryOptions = <
+  TData = Awaited<ReturnType<typeof getPaperTrades>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetPaperTradesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getPaperTrades>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetPaperTradesQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getPaperTrades>>> = ({
+    signal,
+  }) => getPaperTrades(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getPaperTrades>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetPaperTradesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getPaperTrades>>
+>;
+export type GetPaperTradesQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List paper trades
+ */
+
+export function useGetPaperTrades<
+  TData = Awaited<ReturnType<typeof getPaperTrades>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetPaperTradesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getPaperTrades>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetPaperTradesQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get paper trading statistics
+ */
+export const getGetPaperTradeStatsUrl = () => {
+  return `/api/paper-trades/stats`;
+};
+
+export const getPaperTradeStats = async (
+  options?: RequestInit,
+): Promise<PaperTradeStats> => {
+  return customFetch<PaperTradeStats>(getGetPaperTradeStatsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetPaperTradeStatsQueryKey = () => {
+  return [`/api/paper-trades/stats`] as const;
+};
+
+export const getGetPaperTradeStatsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getPaperTradeStats>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getPaperTradeStats>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetPaperTradeStatsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getPaperTradeStats>>
+  > = ({ signal }) => getPaperTradeStats({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getPaperTradeStats>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetPaperTradeStatsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getPaperTradeStats>>
+>;
+export type GetPaperTradeStatsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get paper trading statistics
+ */
+
+export function useGetPaperTradeStats<
+  TData = Awaited<ReturnType<typeof getPaperTradeStats>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getPaperTradeStats>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetPaperTradeStatsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Reconcile open paper trades
+ */
+export const getReconcilePaperTradesUrl = () => {
+  return `/api/paper-trades/reconcile`;
+};
+
+export const reconcilePaperTrades = async (
+  options?: RequestInit,
+): Promise<ReconcilePaperTrades200> => {
+  return customFetch<ReconcilePaperTrades200>(getReconcilePaperTradesUrl(), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getReconcilePaperTradesMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof reconcilePaperTrades>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof reconcilePaperTrades>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationKey = ["reconcilePaperTrades"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof reconcilePaperTrades>>,
+    void
+  > = () => {
+    return reconcilePaperTrades(requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ReconcilePaperTradesMutationResult = NonNullable<
+  Awaited<ReturnType<typeof reconcilePaperTrades>>
+>;
+
+export type ReconcilePaperTradesMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Reconcile open paper trades
+ */
+export const useReconcilePaperTrades = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof reconcilePaperTrades>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof reconcilePaperTrades>>,
+  TError,
+  void,
+  TContext
+> => {
+  return useMutation(getReconcilePaperTradesMutationOptions(options));
+};
+
+/**
+ * @summary Reset paper trading
+ */
+export const getResetPaperTradesUrl = () => {
+  return `/api/paper-trades/reset`;
+};
+
+export const resetPaperTrades = async (
+  options?: RequestInit,
+): Promise<ResetPaperTrades200> => {
+  return customFetch<ResetPaperTrades200>(getResetPaperTradesUrl(), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getResetPaperTradesMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof resetPaperTrades>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof resetPaperTrades>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationKey = ["resetPaperTrades"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof resetPaperTrades>>,
+    void
+  > = () => {
+    return resetPaperTrades(requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ResetPaperTradesMutationResult = NonNullable<
+  Awaited<ReturnType<typeof resetPaperTrades>>
+>;
+
+export type ResetPaperTradesMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Reset paper trading
+ */
+export const useResetPaperTrades = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof resetPaperTrades>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof resetPaperTrades>>,
+  TError,
+  void,
+  TContext
+> => {
+  return useMutation(getResetPaperTradesMutationOptions(options));
+};

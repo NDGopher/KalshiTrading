@@ -6,9 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface ScanResult {
-  marketsScanned: number;
-  opportunitiesFound: number;
-  scanDuration: number;
-  timestamp: string;
-}
+export type RunBacktest200 = {
+  runId: number;
+  message: string;
+};

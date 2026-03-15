@@ -5,6 +5,9 @@ import marketsRouter from "./markets";
 import tradesRouter from "./trades";
 import agentsRouter from "./agents";
 import settingsRouter from "./settings";
+import backtestRouter from "./backtest";
+import costsRouter from "./costs";
+import paperTradesRouter from "./paper-trades";
 
 const router: IRouter = Router();
 
@@ -14,5 +17,8 @@ router.use(marketsRouter);
 router.use(tradesRouter);
 router.use(agentsRouter);
 router.use(settingsRouter);
+router.use(backtestRouter);
+router.use(costsRouter);
+router.use(paperTradesRouter);
 
 export default router;

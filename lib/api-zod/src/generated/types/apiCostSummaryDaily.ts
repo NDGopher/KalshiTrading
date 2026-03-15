@@ -6,9 +6,9 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface ScanResult {
-  marketsScanned: number;
-  opportunitiesFound: number;
-  scanDuration: number;
-  timestamp: string;
-}
+export type ApiCostSummaryDaily = {
+  costUsd: number;
+  calls: number;
+  inputTokens: number;
+  outputTokens: number;
+};

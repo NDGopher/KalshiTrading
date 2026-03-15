@@ -7,7 +7,9 @@ import {
   Cpu, 
   Settings, 
   TrendingUp,
-  Zap
+  Zap,
+  FlaskConical,
+  FileText
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useGetDashboardOverview } from "@workspace/api-client-react";
@@ -25,12 +27,12 @@ export function Layout({ children }: LayoutProps) {
     { href: "/opportunities", label: "Opportunities", icon: Activity },
     { href: "/trades", label: "Trade History", icon: History },
     { href: "/agents", label: "Agent Status", icon: Cpu },
+    { href: "/backtest", label: "Backtest", icon: FlaskConical },
     { href: "/settings", label: "Settings", icon: Settings },
   ];
 
   return (
     <div className="min-h-screen bg-background text-foreground flex">
-      {/* Sidebar */}
       <aside className="w-64 border-r border-white/5 bg-card/30 backdrop-blur-xl flex flex-col fixed inset-y-0 z-10">
         <div className="h-16 flex items-center px-6 border-b border-white/5">
           <div className="flex items-center gap-2">
@@ -63,7 +65,6 @@ export function Layout({ children }: LayoutProps) {
           })}
         </div>
 
-        {/* Pipeline Status Indicator */}
         <div className="p-4 border-t border-white/5 bg-black/20">
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium text-muted-foreground">Pipeline</span>
@@ -84,6 +85,12 @@ export function Layout({ children }: LayoutProps) {
               )}
             </div>
           </div>
+          {overview?.paperTradingMode && (
+            <div className="mt-1.5 flex items-center gap-1.5">
+              <FileText className="w-3 h-3 text-yellow-400" />
+              <span className="text-xs font-bold text-yellow-400 uppercase tracking-wider">Paper Mode</span>
+            </div>
+          )}
           {overview?.lastRunAt && (
              <div className="mt-2 text-xs text-muted-foreground/70 flex items-center gap-1">
                <Zap className="w-3 h-3" />
@@ -93,7 +100,6 @@ export function Layout({ children }: LayoutProps) {
         </div>
       </aside>
 
-      {/* Main Content */}
       <main className="flex-1 ml-64 flex flex-col min-h-screen">
         <header className="h-16 border-b border-white/5 bg-background/80 backdrop-blur-md sticky top-0 z-10 flex items-center justify-between px-8">
           <h1 className="font-display font-semibold text-lg text-white">
@@ -101,7 +107,9 @@ export function Layout({ children }: LayoutProps) {
           </h1>
           <div className="flex items-center gap-4">
             <div className="flex flex-col items-end">
-              <span className="text-xs text-muted-foreground">Portfolio Balance</span>
+              <span className="text-xs text-muted-foreground">
+                {overview?.paperTradingMode ? "Paper Balance" : "Portfolio Balance"}
+              </span>
               <span className="font-mono font-bold text-white">
                 {overview ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(overview.balance) : '...'}
               </span>

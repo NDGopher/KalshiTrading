@@ -3,3 +3,7 @@ export * from "./agent-runs";
 export * from "./trading-settings";
 export * from "./market-opportunities";
 export * from "./positions";
+export * from "./api-costs";
+export * from "./backtest-runs";
+export * from "./backtest-trades";
+export * from "./paper-trades";

@@ -28,6 +28,7 @@ export const GetDashboardOverviewResponse = zod.object({
   openPositions: zod.number(),
   pipelineActive: zod.boolean(),
   lastRunAt: zod.string().nullish(),
+  paperTradingMode: zod.boolean().optional(),
 });
 
 /**
@@ -73,7 +74,9 @@ export const listTradesQueryOffsetDefault = 0;
 export const ListTradesQueryParams = zod.object({
   limit: zod.coerce.number().default(listTradesQueryLimitDefault),
   offset: zod.coerce.number().default(listTradesQueryOffsetDefault),
-  status: zod.enum(["open", "won", "lost", "pending", "cancelled", "failed"]).optional(),
+  status: zod
+    .enum(["open", "won", "lost", "pending", "cancelled", "failed"])
+    .optional(),
 });
 
 export const ListTradesResponse = zod.object({
@@ -87,10 +90,19 @@ export const ListTradesResponse = zod.object({
       exitPrice: zod.number().nullish(),
       quantity: zod.number(),
       pnl: zod.number().nullish(),
-      status: zod.enum(["open", "won", "lost", "pending", "cancelled", "failed"]),
+      status: zod.enum([
+        "open",
+        "won",
+        "lost",
+        "pending",
+        "cancelled",
+        "failed",
+      ]),
+      strategyName: zod.string().nullish(),
       modelProbability: zod.number(),
       edge: zod.number(),
       confidence: zod.number(),
+      clv: zod.number().nullish(),
       analystReasoning: zod.string().nullish(),
       auditorFlags: zod.array(zod.string()).optional(),
       riskScore: zod.number(),
@@ -187,6 +199,7 @@ export const RunTradingCycleResponse = zod.object({
       createdAt: zod.string(),
     }),
   ),
+  paperMode: zod.boolean().optional(),
 });
 
 /**
@@ -199,6 +212,7 @@ export const GetSettingsResponse = zod.object({
   kellyFraction: zod.number(),
   maxConsecutiveLosses: zod.number(),
   maxDrawdownPct: zod.number(),
+  maxSimultaneousPositions: zod.number(),
   minEdge: zod.number(),
   minLiquidity: zod.number(),
   minTimeToExpiry: zod.number(),
@@ -206,8 +220,10 @@ export const GetSettingsResponse = zod.object({
   sportFilters: zod.array(zod.string()),
   scanIntervalMinutes: zod.number(),
   pipelineActive: zod.boolean(),
-  kalshiApiKeySet: zod.boolean(),
-  kalshiBaseUrl: zod.string().nullable(),
+  paperTradingMode: zod.boolean(),
+  paperBalance: zod.number(),
+  dailyBudgetUsd: zod.number(),
+  monthlyBudgetUsd: zod.number(),
 });
 
 /**
@@ -219,6 +235,7 @@ export const UpdateSettingsBody = zod.object({
   kellyFraction: zod.number().optional(),
   maxConsecutiveLosses: zod.number().optional(),
   maxDrawdownPct: zod.number().optional(),
+  maxSimultaneousPositions: zod.number().optional(),
   minEdge: zod.number().optional(),
   minLiquidity: zod.number().optional(),
   minTimeToExpiry: zod.number().optional(),
@@ -226,8 +243,10 @@ export const UpdateSettingsBody = zod.object({
   sportFilters: zod.array(zod.string()).optional(),
   scanIntervalMinutes: zod.number().optional(),
   pipelineActive: zod.boolean().optional(),
-  kalshiApiKey: zod.string().optional(),
-  kalshiBaseUrl: zod.string().nullable().optional(),
+  paperTradingMode: zod.boolean().optional(),
+  paperBalance: zod.number().optional(),
+  dailyBudgetUsd: zod.number().optional(),
+  monthlyBudgetUsd: zod.number().optional(),
 });
 
 export const UpdateSettingsResponse = zod.object({
@@ -236,6 +255,7 @@ export const UpdateSettingsResponse = zod.object({
   kellyFraction: zod.number(),
   maxConsecutiveLosses: zod.number(),
   maxDrawdownPct: zod.number(),
+  maxSimultaneousPositions: zod.number(),
   minEdge: zod.number(),
   minLiquidity: zod.number(),
   minTimeToExpiry: zod.number(),
@@ -243,8 +263,10 @@ export const UpdateSettingsResponse = zod.object({
   sportFilters: zod.array(zod.string()),
   scanIntervalMinutes: zod.number(),
   pipelineActive: zod.boolean(),
-  kalshiApiKeySet: zod.boolean(),
-  kalshiBaseUrl: zod.string().nullable(),
+  paperTradingMode: zod.boolean(),
+  paperBalance: zod.number(),
+  dailyBudgetUsd: zod.number(),
+  monthlyBudgetUsd: zod.number(),
 });
 
 /**
@@ -271,3 +293,172 @@ export const GetPositionsResponseItem = zod.object({
   marketStatus: zod.string(),
 });
 export const GetPositionsResponse = zod.array(GetPositionsResponseItem);
+
+/**
+ * @summary List available strategies
+ */
+export const GetBacktestStrategiesResponse = zod.object({
+  strategies: zod.array(zod.string()),
+});
+
+/**
+ * @summary Run a backtest
+ */
+export const RunBacktestBody = zod.object({
+  strategyName: zod.string().optional(),
+  startDate: zod.string(),
+  endDate: zod.string(),
+  initialBankroll: zod.number().optional(),
+  maxPositionPct: zod.number().optional(),
+  kellyFraction: zod.number().optional(),
+  minEdge: zod.number().optional(),
+  minLiquidity: zod.number().optional(),
+  useAiAnalysis: zod.boolean().optional(),
+});
+
+export const RunBacktestResponse = zod.object({
+  runId: zod.number(),
+  message: zod.string(),
+});
+
+/**
+ * @summary Get backtest results
+ */
+export const GetBacktestResultsResponse = zod.object({
+  runs: zod.array(
+    zod.object({
+      id: zod.number(),
+      strategyName: zod.string(),
+      status: zod.string(),
+      startDate: zod.string(),
+      endDate: zod.string(),
+      marketsEvaluated: zod.number(),
+      tradesSimulated: zod.number(),
+      totalPnl: zod.number(),
+      winRate: zod.number(),
+      sharpeRatio: zod.number().nullish(),
+      maxDrawdown: zod.number().nullish(),
+      avgEdge: zod.number().nullish(),
+      errorMessage: zod.string().nullish(),
+      createdAt: zod.string(),
+      completedAt: zod.string().nullish(),
+    }),
+  ),
+});
+
+/**
+ * @summary Get trades for a backtest run
+ */
+export const GetBacktestTradesParams = zod.object({
+  runId: zod.coerce.number(),
+});
+
+export const GetBacktestTradesResponse = zod.object({
+  trades: zod.array(
+    zod.object({
+      id: zod.number(),
+      backtestRunId: zod.number(),
+      kalshiTicker: zod.string(),
+      title: zod.string(),
+      strategyName: zod.string(),
+      side: zod.string(),
+      entryPrice: zod.number(),
+      exitPrice: zod.number(),
+      quantity: zod.number(),
+      pnl: zod.number(),
+      outcome: zod.string(),
+      modelProbability: zod.number(),
+      edge: zod.number(),
+      confidence: zod.number(),
+      marketResult: zod.string().nullish(),
+      createdAt: zod.string(),
+    }),
+  ),
+});
+
+/**
+ * @summary Get API cost breakdown
+ */
+export const GetApiCostsResponse = zod.object({
+  daily: zod.object({
+    costUsd: zod.number(),
+    calls: zod.number(),
+    inputTokens: zod.number(),
+    outputTokens: zod.number(),
+  }),
+  monthly: zod.object({
+    costUsd: zod.number(),
+    calls: zod.number(),
+    inputTokens: zod.number(),
+    outputTokens: zod.number(),
+  }),
+  allTime: zod.object({
+    costUsd: zod.number(),
+    calls: zod.number(),
+  }),
+  recentCalls: zod.array(zod.object({}).passthrough()),
+});
+
+/**
+ * @summary List paper trades
+ */
+export const getPaperTradesQueryLimitDefault = 50;
+
+export const GetPaperTradesQueryParams = zod.object({
+  limit: zod.coerce.number().default(getPaperTradesQueryLimitDefault),
+});
+
+export const GetPaperTradesResponse = zod.object({
+  trades: zod.array(
+    zod.object({
+      id: zod.number(),
+      kalshiTicker: zod.string(),
+      title: zod.string(),
+      side: zod.string(),
+      entryPrice: zod.number(),
+      exitPrice: zod.number().nullish(),
+      quantity: zod.number(),
+      pnl: zod.number().nullish(),
+      status: zod.string(),
+      strategyName: zod.string().nullish(),
+      modelProbability: zod.number(),
+      edge: zod.number(),
+      confidence: zod.number(),
+      riskScore: zod.number(),
+      kellyFraction: zod.number(),
+      simulatedBalance: zod.number(),
+      createdAt: zod.string(),
+      closedAt: zod.string().nullish(),
+    }),
+  ),
+});
+
+/**
+ * @summary Get paper trading statistics
+ */
+export const GetPaperTradeStatsResponse = zod.object({
+  paperBalance: zod.number(),
+  totalTrades: zod.number(),
+  openTrades: zod.number(),
+  closedTrades: zod.number(),
+  wins: zod.number(),
+  losses: zod.number(),
+  totalPnl: zod.number(),
+  winRate: zod.number(),
+});
+
+/**
+ * @summary Reconcile open paper trades
+ */
+export const ReconcilePaperTradesResponse = zod.object({
+  settled: zod.number().optional(),
+  errors: zod.number().optional(),
+  total: zod.number().optional(),
+});
+
+/**
+ * @summary Reset paper trading
+ */
+export const ResetPaperTradesResponse = zod.object({
+  message: zod.string().optional(),
+});

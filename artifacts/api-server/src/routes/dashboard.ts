@@ -1,71 +1,71 @@
 import { Router, type IRouter } from "express";
-import { db, tradesTable, positionsTable } from "@workspace/db";
+import { db, tradesTable, positionsTable, tradingSettingsTable, paperTradesTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { getBalance, getPositions, getMarket } from "../lib/kalshi-client.js";
 import { isPipelineActive } from "../lib/agents/pipeline.js";
-import {
-  GetDashboardOverviewResponse,
-  GetPortfolioBalanceResponse,
-  GetPositionsResponse,
-} from "@workspace/api-zod";
 
 const router: IRouter = Router();
 
 router.get("/dashboard/overview", async (_req, res): Promise<void> => {
-  const trades = await db.select().from(tradesTable);
+  const [settings] = await db.select().from(tradingSettingsTable).limit(1);
+  const paperMode = settings?.paperTradingMode || false;
 
-  const totalTrades = trades.length;
-  const wins = trades.filter((t) => t.status === "won").length;
+  const tradeSource = paperMode
+    ? await db.select().from(paperTradesTable)
+    : await db.select().from(tradesTable);
+
+  const completedTrades = tradeSource.filter((t) => t.status === "won" || t.status === "lost");
+  const totalTrades = completedTrades.length;
+  const wins = completedTrades.filter((t) => t.status === "won").length;
   const winRate = totalTrades > 0 ? (wins / totalTrades) * 100 : 0;
-  const totalPnl = trades.reduce((sum, t) => sum + (t.pnl || 0), 0);
+  const totalPnl = tradeSource.reduce((sum, t) => sum + (t.pnl || 0), 0);
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const todayTrades = trades.filter((t) => new Date(t.createdAt) >= today);
+  const todayTrades = tradeSource.filter((t) => new Date(t.createdAt) >= today);
   const todayPnl = todayTrades.reduce((sum, t) => sum + (t.pnl || 0), 0);
 
-  const openPositions = trades.filter((t) => t.status === "open").length;
+  const openPositions = tradeSource.filter((t) => t.status === "open").length;
 
   let balance = 0;
-  try {
-    const balanceData = await getBalance();
-    balance = balanceData.balance / 100;
-  } catch {
-    balance = 0;
+  if (paperMode) {
+    balance = settings?.paperBalance || 5000;
+  } else {
+    try {
+      const balanceData = await getBalance();
+      balance = balanceData.balance / 100;
+    } catch {
+      balance = 0;
+    }
   }
 
-  const lastTrade = trades.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+  const lastTrade = tradeSource.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
 
-  res.json(
-    GetDashboardOverviewResponse.parse({
-      balance,
-      totalPnl,
-      todayPnl,
-      winRate,
-      totalTrades,
-      openPositions,
-      pipelineActive: isPipelineActive(),
-      lastRunAt: lastTrade?.createdAt?.toISOString() || null,
-    })
-  );
+  res.json({
+    balance,
+    totalPnl,
+    todayPnl,
+    winRate,
+    totalTrades,
+    openPositions,
+    pipelineActive: isPipelineActive(),
+    lastRunAt: lastTrade?.createdAt?.toISOString() || null,
+    paperTradingMode: paperMode,
+  });
 });
 
 router.get("/portfolio/balance", async (_req, res): Promise<void> => {
   try {
     const balanceData = await getBalance();
-    res.json(
-      GetPortfolioBalanceResponse.parse({
-        balance: balanceData.balance / 100,
-        availableBalance: (balanceData.portfolio_value || balanceData.balance) / 100,
-      })
-    );
+    res.json({
+      balance: balanceData.balance / 100,
+      availableBalance: (balanceData.portfolio_value || balanceData.balance) / 100,
+    });
   } catch {
-    res.json(
-      GetPortfolioBalanceResponse.parse({
-        balance: 0,
-        availableBalance: 0,
-      })
-    );
+    res.json({
+      balance: 0,
+      availableBalance: 0,
+    });
   }
 });
 
@@ -114,18 +114,16 @@ router.get("/portfolio/positions", async (_req, res): Promise<void> => {
   const positions = await db.select().from(positionsTable);
 
   res.json(
-    GetPositionsResponse.parse(
-      positions.map((p) => ({
-        ticker: p.kalshiTicker,
-        title: p.title,
-        side: p.side,
-        quantity: p.quantity,
-        avgPrice: p.avgPrice,
-        currentPrice: p.currentPrice,
-        unrealizedPnl: p.unrealizedPnl,
-        marketStatus: p.marketStatus,
-      }))
-    )
+    positions.map((p) => ({
+      ticker: p.kalshiTicker,
+      title: p.title,
+      side: p.side,
+      quantity: p.quantity,
+      avgPrice: p.avgPrice,
+      currentPrice: p.currentPrice,
+      unrealizedPnl: p.unrealizedPnl,
+      marketStatus: p.marketStatus,
+    }))
   );
 });
 

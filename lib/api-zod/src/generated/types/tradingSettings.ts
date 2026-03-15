@@ -12,6 +12,7 @@ export interface TradingSettings {
   kellyFraction: number;
   maxConsecutiveLosses: number;
   maxDrawdownPct: number;
+  maxSimultaneousPositions: number;
   minEdge: number;
   minLiquidity: number;
   minTimeToExpiry: number;
@@ -19,4 +20,8 @@ export interface TradingSettings {
   sportFilters: string[];
   scanIntervalMinutes: number;
   pipelineActive: boolean;
+  paperTradingMode: boolean;
+  paperBalance: number;
+  dailyBudgetUsd: number;
+  monthlyBudgetUsd: number;
 }

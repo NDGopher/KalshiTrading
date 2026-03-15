@@ -1,5 +1,5 @@
-import { db, tradesTable } from "@workspace/db";
-import { desc, eq } from "drizzle-orm";
+import { db, tradesTable, paperTradesTable } from "@workspace/db";
+import { desc, eq, inArray } from "drizzle-orm";
 import type { AuditResult } from "./auditor.js";
 
 export interface RiskDecision {
@@ -9,6 +9,7 @@ export interface RiskDecision {
   kellyFraction: number;
   riskScore: number;
   rejectReason?: string;
+  strategyName?: string;
 }
 
 export async function assessRisk(
@@ -18,13 +19,17 @@ export async function assessRisk(
     kellyFraction: number;
     maxConsecutiveLosses: number;
     maxDrawdownPct: number;
+    maxSimultaneousPositions?: number;
   },
-  bankroll: number // in dollars (Kalshi balance / 100)
+  bankroll: number,
+  options?: { strategyName?: string; paperMode?: boolean }
 ): Promise<RiskDecision> {
+  const tradeSource = options?.paperMode ? paperTradesTable : tradesTable;
+
   const recentTrades = await db
     .select()
-    .from(tradesTable)
-    .orderBy(desc(tradesTable.createdAt))
+    .from(tradeSource)
+    .orderBy(desc(tradeSource.createdAt))
     .limit(settings.maxConsecutiveLosses + 5);
 
   let consecutiveLosses = 0;
@@ -44,10 +49,11 @@ export async function assessRisk(
       kellyFraction: 0,
       riskScore: 1,
       rejectReason: `Streak halt: ${consecutiveLosses} consecutive losses (max ${settings.maxConsecutiveLosses})`,
+      strategyName: options?.strategyName,
     };
   }
 
-  const allTrades = await db.select().from(tradesTable);
+  const allTrades = await db.select().from(tradeSource);
   const totalPnl = allTrades.reduce((sum, t) => sum + (t.pnl || 0), 0);
   const initialBankroll = bankroll - totalPnl;
   const drawdown = initialBankroll > 0 ? (-Math.min(0, totalPnl) / initialBankroll) * 100 : 0;
@@ -60,6 +66,21 @@ export async function assessRisk(
       kellyFraction: 0,
       riskScore: 1,
       rejectReason: `Drawdown halt: ${drawdown.toFixed(1)}% (max ${settings.maxDrawdownPct}%)`,
+      strategyName: options?.strategyName,
+    };
+  }
+
+  const maxPositions = settings.maxSimultaneousPositions || 8;
+  const openTrades = allTrades.filter((t) => t.status === "open");
+  if (openTrades.length >= maxPositions) {
+    return {
+      audit,
+      approved: false,
+      positionSize: 0,
+      kellyFraction: 0,
+      riskScore: 0.9,
+      rejectReason: `Position cap: ${openTrades.length} open positions (max ${maxPositions})`,
+      strategyName: options?.strategyName,
     };
   }
 
@@ -72,7 +93,6 @@ export async function assessRisk(
   const fullKelly = b > 0 ? (b * p - q) / b : 0;
   const quarterKelly = Math.max(0, fullKelly * settings.kellyFraction);
 
-  const openTrades = allTrades.filter((t) => t.status === "open");
   const openTickerCategories = new Set(openTrades.map((t) => t.kalshiTicker.split("-").slice(0, 2).join("-")));
   const candidateCategory = analysis.candidate.market.ticker.split("-").slice(0, 2).join("-");
   const correlatedPositions = openTickerCategories.has(candidateCategory) ? openTrades.filter((t) => t.kalshiTicker.split("-").slice(0, 2).join("-") === candidateCategory).length : 0;
@@ -86,6 +106,7 @@ export async function assessRisk(
       kellyFraction: 0,
       riskScore: 0.8,
       rejectReason: `Correlation cap: ${correlatedPositions} positions in same event category "${candidateCategory}" (max ${maxCorrelatedPositions})`,
+      strategyName: options?.strategyName,
     };
   }
 
@@ -104,5 +125,6 @@ export async function assessRisk(
     positionSize,
     kellyFraction: quarterKelly,
     riskScore,
+    strategyName: options?.strategyName,
   };
 }

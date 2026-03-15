@@ -19,6 +19,12 @@ tags:
     description: Agent pipeline control
   - name: settings
     description: Trading settings
+  - name: backtest
+    description: Backtesting engine
+  - name: costs
+    description: API cost tracking
+  - name: paper-trades
+    description: Paper trading
 paths:
   /healthz:
     get:
@@ -256,6 +262,187 @@ paths:
                 items:
                   $ref: "#/components/schemas/Position"
 
+  /backtest/strategies:
+    get:
+      operationId: getBacktestStrategies
+      tags: [backtest]
+      summary: List available strategies
+      responses:
+        "200":
+          description: Strategy names
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  strategies:
+                    type: array
+                    items:
+                      type: string
+                required:
+                  - strategies
+
+  /backtest/run:
+    post:
+      operationId: runBacktest
+      tags: [backtest]
+      summary: Run a backtest
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BacktestRunRequest"
+      responses:
+        "200":
+          description: Backtest started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  runId:
+                    type: integer
+                  message:
+                    type: string
+                required:
+                  - runId
+                  - message
+
+  /backtest/results:
+    get:
+      operationId: getBacktestResults
+      tags: [backtest]
+      summary: Get backtest results
+      responses:
+        "200":
+          description: List of backtest runs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  runs:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/BacktestRun"
+                required:
+                  - runs
+
+  /backtest/trades/{runId}:
+    get:
+      operationId: getBacktestTrades
+      tags: [backtest]
+      summary: Get trades for a backtest run
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Backtest trades
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  trades:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/BacktestTrade"
+                required:
+                  - trades
+
+  /costs:
+    get:
+      operationId: getApiCosts
+      tags: [costs]
+      summary: Get API cost breakdown
+      responses:
+        "200":
+          description: Cost data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiCostSummary"
+
+  /paper-trades:
+    get:
+      operationId: getPaperTrades
+      tags: [paper-trades]
+      summary: List paper trades
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        "200":
+          description: Paper trades
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  trades:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/PaperTrade"
+                required:
+                  - trades
+
+  /paper-trades/stats:
+    get:
+      operationId: getPaperTradeStats
+      tags: [paper-trades]
+      summary: Get paper trading statistics
+      responses:
+        "200":
+          description: Paper trading stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaperTradeStats"
+
+  /paper-trades/reconcile:
+    post:
+      operationId: reconcilePaperTrades
+      tags: [paper-trades]
+      summary: Reconcile open paper trades
+      responses:
+        "200":
+          description: Reconciliation result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  settled:
+                    type: integer
+                  errors:
+                    type: integer
+                  total:
+                    type: integer
+
+  /paper-trades/reset:
+    post:
+      operationId: resetPaperTrades
+      tags: [paper-trades]
+      summary: Reset paper trading
+      responses:
+        "200":
+          description: Reset result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+
 components:
   schemas:
     HealthStatus:
@@ -285,6 +472,8 @@ components:
           type: boolean
         lastRunAt:
           type: ["string", "null"]
+        paperTradingMode:
+          type: boolean
       required:
         - balance
         - totalPnl
@@ -375,12 +564,16 @@ components:
         status:
           type: string
           enum: [open, won, lost, pending, cancelled, failed]
+        strategyName:
+          type: ["string", "null"]
         modelProbability:
           type: number
         edge:
           type: number
         confidence:
           type: number
+        clv:
+          type: ["number", "null"]
         analystReasoning:
           type: ["string", "null"]
         auditorFlags:
@@ -541,6 +734,8 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AgentRun"
+        paperMode:
+          type: boolean
       required:
         - marketsScanned
         - opportunitiesFound
@@ -562,6 +757,8 @@ components:
           type: integer
         maxDrawdownPct:
           type: number
+        maxSimultaneousPositions:
+          type: integer
         minEdge:
           type: number
         minLiquidity:
@@ -578,12 +775,21 @@ components:
           type: integer
         pipelineActive:
           type: boolean
+        paperTradingMode:
+          type: boolean
+        paperBalance:
+          type: number
+        dailyBudgetUsd:
+          type: number
+        monthlyBudgetUsd:
+          type: number
       required:
         - id
         - maxPositionPct
         - kellyFraction
         - maxConsecutiveLosses
         - maxDrawdownPct
+        - maxSimultaneousPositions
         - minEdge
         - minLiquidity
         - minTimeToExpiry
@@ -591,6 +797,10 @@ components:
         - sportFilters
         - scanIntervalMinutes
         - pipelineActive
+        - paperTradingMode
+        - paperBalance
+        - dailyBudgetUsd
+        - monthlyBudgetUsd
 
     UpdateSettingsBody:
       type: object
@@ -603,6 +813,8 @@ components:
           type: integer
         maxDrawdownPct:
           type: number
+        maxSimultaneousPositions:
+          type: integer
         minEdge:
           type: number
         minLiquidity:
@@ -619,6 +831,14 @@ components:
           type: integer
         pipelineActive:
           type: boolean
+        paperTradingMode:
+          type: boolean
+        paperBalance:
+          type: number
+        dailyBudgetUsd:
+          type: number
+        monthlyBudgetUsd:
+          type: number
 
     PortfolioBalance:
       type: object
@@ -660,3 +880,254 @@ components:
         - currentPrice
         - unrealizedPnl
         - marketStatus
+
+    BacktestRunRequest:
+      type: object
+      properties:
+        strategyName:
+          type: string
+        startDate:
+          type: string
+        endDate:
+          type: string
+        initialBankroll:
+          type: number
+        maxPositionPct:
+          type: number
+        kellyFraction:
+          type: number
+        minEdge:
+          type: number
+        minLiquidity:
+          type: number
+        useAiAnalysis:
+          type: boolean
+      required:
+        - startDate
+        - endDate
+
+    BacktestRun:
+      type: object
+      properties:
+        id:
+          type: integer
+        strategyName:
+          type: string
+        status:
+          type: string
+        startDate:
+          type: string
+        endDate:
+          type: string
+        marketsEvaluated:
+          type: integer
+        tradesSimulated:
+          type: integer
+        totalPnl:
+          type: number
+        winRate:
+          type: number
+        sharpeRatio:
+          type: ["number", "null"]
+        maxDrawdown:
+          type: ["number", "null"]
+        avgEdge:
+          type: ["number", "null"]
+        errorMessage:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        completedAt:
+          type: ["string", "null"]
+      required:
+        - id
+        - strategyName
+        - status
+        - startDate
+        - endDate
+        - marketsEvaluated
+        - tradesSimulated
+        - totalPnl
+        - winRate
+        - createdAt
+
+    BacktestTrade:
+      type: object
+      properties:
+        id:
+          type: integer
+        backtestRunId:
+          type: integer
+        kalshiTicker:
+          type: string
+        title:
+          type: string
+        strategyName:
+          type: string
+        side:
+          type: string
+        entryPrice:
+          type: number
+        exitPrice:
+          type: number
+        quantity:
+          type: integer
+        pnl:
+          type: number
+        outcome:
+          type: string
+        modelProbability:
+          type: number
+        edge:
+          type: number
+        confidence:
+          type: number
+        marketResult:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+      required:
+        - id
+        - backtestRunId
+        - kalshiTicker
+        - title
+        - strategyName
+        - side
+        - entryPrice
+        - exitPrice
+        - quantity
+        - pnl
+        - outcome
+        - modelProbability
+        - edge
+        - confidence
+        - createdAt
+
+    ApiCostSummary:
+      type: object
+      properties:
+        daily:
+          type: object
+          properties:
+            costUsd:
+              type: number
+            calls:
+              type: integer
+            inputTokens:
+              type: integer
+            outputTokens:
+              type: integer
+          required: [costUsd, calls, inputTokens, outputTokens]
+        monthly:
+          type: object
+          properties:
+            costUsd:
+              type: number
+            calls:
+              type: integer
+            inputTokens:
+              type: integer
+            outputTokens:
+              type: integer
+          required: [costUsd, calls, inputTokens, outputTokens]
+        allTime:
+          type: object
+          properties:
+            costUsd:
+              type: number
+            calls:
+              type: integer
+          required: [costUsd, calls]
+        recentCalls:
+          type: array
+          items:
+            type: object
+      required:
+        - daily
+        - monthly
+        - allTime
+        - recentCalls
+
+    PaperTrade:
+      type: object
+      properties:
+        id:
+          type: integer
+        kalshiTicker:
+          type: string
+        title:
+          type: string
+        side:
+          type: string
+        entryPrice:
+          type: number
+        exitPrice:
+          type: ["number", "null"]
+        quantity:
+          type: integer
+        pnl:
+          type: ["number", "null"]
+        status:
+          type: string
+        strategyName:
+          type: ["string", "null"]
+        modelProbability:
+          type: number
+        edge:
+          type: number
+        confidence:
+          type: number
+        riskScore:
+          type: number
+        kellyFraction:
+          type: number
+        simulatedBalance:
+          type: number
+        createdAt:
+          type: string
+        closedAt:
+          type: ["string", "null"]
+      required:
+        - id
+        - kalshiTicker
+        - title
+        - side
+        - entryPrice
+        - quantity
+        - status
+        - modelProbability
+        - edge
+        - confidence
+        - riskScore
+        - kellyFraction
+        - simulatedBalance
+        - createdAt
+
+    PaperTradeStats:
+      type: object
+      properties:
+        paperBalance:
+          type: number
+        totalTrades:
+          type: integer
+        openTrades:
+          type: integer
+        closedTrades:
+          type: integer
+        wins:
+          type: integer
+        losses:
+          type: integer
+        totalPnl:
+          type: number
+        winRate:
+          type: number
+      required:
+        - paperBalance
+        - totalTrades
+        - openTrades
+        - closedTrades
+        - wins
+        - losses
+        - totalPnl
+        - winRate

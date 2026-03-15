@@ -1,4 +1,6 @@
 import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { db, apiCostsTable, tradingSettingsTable } from "@workspace/db";
+import { sql, gte, and } from "drizzle-orm";
 import type { ScanCandidate } from "./scanner.js";
 
 export interface AnalysisResult {
@@ -8,6 +10,52 @@ export interface AnalysisResult {
   confidence: number;
   side: "yes" | "no";
   reasoning: string;
+}
+
+const HAIKU_INPUT_COST_PER_M = 0.80;
+const HAIKU_OUTPUT_COST_PER_M = 4.00;
+
+async function checkBudget(): Promise<{ allowed: boolean; reason?: string }> {
+  const [settings] = await db.select().from(tradingSettingsTable).limit(1);
+  if (!settings) return { allowed: true };
+
+  const now = new Date();
+  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  const [dailyResult] = await db
+    .select({ total: sql<number>`coalesce(sum(${apiCostsTable.costUsd}), 0)` })
+    .from(apiCostsTable)
+    .where(gte(apiCostsTable.createdAt, startOfDay));
+  const dailySpend = Number(dailyResult?.total || 0);
+
+  const [monthlyResult] = await db
+    .select({ total: sql<number>`coalesce(sum(${apiCostsTable.costUsd}), 0)` })
+    .from(apiCostsTable)
+    .where(gte(apiCostsTable.createdAt, startOfMonth));
+  const monthlySpend = Number(monthlyResult?.total || 0);
+
+  if (settings.dailyBudgetUsd > 0 && dailySpend >= settings.dailyBudgetUsd) {
+    return { allowed: false, reason: `Daily API budget exceeded: $${dailySpend.toFixed(2)} / $${settings.dailyBudgetUsd}` };
+  }
+  if (settings.monthlyBudgetUsd > 0 && monthlySpend >= settings.monthlyBudgetUsd) {
+    return { allowed: false, reason: `Monthly API budget exceeded: $${monthlySpend.toFixed(2)} / $${settings.monthlyBudgetUsd}` };
+  }
+
+  return { allowed: true };
+}
+
+async function logApiCost(model: string, inputTokens: number, outputTokens: number, agentName: string, marketTicker?: string): Promise<void> {
+  const costUsd = (inputTokens / 1_000_000) * HAIKU_INPUT_COST_PER_M + (outputTokens / 1_000_000) * HAIKU_OUTPUT_COST_PER_M;
+  await db.insert(apiCostsTable).values({
+    provider: "anthropic",
+    model,
+    inputTokens,
+    outputTokens,
+    costUsd,
+    agentName,
+    marketTicker,
+  });
 }
 
 function deriveMarketSignals(candidate: ScanCandidate) {
@@ -25,6 +73,12 @@ function deriveMarketSignals(candidate: ScanCandidate) {
 }
 
 export async function analyzeMarket(candidate: ScanCandidate): Promise<AnalysisResult> {
+  const budgetCheck = await checkBudget();
+  if (!budgetCheck.allowed) {
+    console.warn(`[Analyst] ${budgetCheck.reason}`);
+    return createDefaultResult(candidate);
+  }
+
   const { market, yesPrice, volume24h, liquidity, hoursToExpiry, spread } = candidate;
   const signals = deriveMarketSignals(candidate);
 
@@ -64,6 +118,10 @@ Respond in EXACTLY this JSON format:
       max_tokens: 512,
       messages: [{ role: "user", content: prompt }],
     });
+
+    const inputTokens = message.usage?.input_tokens || 0;
+    const outputTokens = message.usage?.output_tokens || 0;
+    await logApiCost("claude-haiku-4-5", inputTokens, outputTokens, "Analyst", market.ticker);
 
     const text = message.content[0].type === "text" ? message.content[0].text : "";
     const jsonMatch = text.match(/\{[\s\S]*\}/);

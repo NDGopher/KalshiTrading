@@ -11,7 +11,7 @@ export interface AgentStatus {
   name: string;
   status: AgentStatusStatus;
   /** @nullable */
-  lastRunAt?: Date | null;
+  lastRunAt?: string | null;
   /** @nullable */
   lastResult?: string | null;
   /** @nullable */

@@ -6,36 +6,54 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useEffect, useState, useCallback } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import { DollarSign, FileText, Shield } from "lucide-react";
 
 const settingsSchema = z.object({
   maxPositionPct: z.coerce.number().min(1).max(50),
   kellyFraction: z.coerce.number().min(0.1).max(1.0),
   maxDrawdownPct: z.coerce.number().min(5).max(100),
   maxConsecutiveLosses: z.coerce.number().min(1).max(20),
+  maxSimultaneousPositions: z.coerce.number().min(1).max(50),
   minEdge: z.coerce.number().min(1).max(50),
   minLiquidity: z.coerce.number().min(10),
   minTimeToExpiry: z.coerce.number().min(1),
   scanIntervalMinutes: z.coerce.number().min(5).max(1440),
   confidencePenaltyPct: z.coerce.number().min(0).max(50),
   sportFilters: z.string(),
+  dailyBudgetUsd: z.coerce.number().min(0),
+  monthlyBudgetUsd: z.coerce.number().min(0),
 });
 
 type SettingsFormValues = z.infer<typeof settingsSchema>;
 
 const API_BASE = `${import.meta.env.BASE_URL}api`;
 
+function useCosts() {
+  return useQuery({
+    queryKey: ["/api/costs"],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/costs`);
+      return res.json();
+    },
+    refetchInterval: 30000,
+  });
+}
+
 export default function Settings() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { data: settings, isLoading } = useGetSettings();
+  const { data: costs } = useCosts();
 
   const [kalshiApiKey, setKalshiApiKey] = useState("");
   const [kalshiBaseUrl, setKalshiBaseUrl] = useState("");
   const [credSaving, setCredSaving] = useState(false);
   const [testingConnection, setTestingConnection] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<{ success: boolean; message: string } | null>(null);
+  const [paperMode, setPaperMode] = useState(false);
+  const [togglingPaper, setTogglingPaper] = useState(false);
   
   const updateMutation = useUpdateSettings({
     mutation: {
@@ -60,14 +78,18 @@ export default function Settings() {
         kellyFraction: settings.kellyFraction,
         maxDrawdownPct: settings.maxDrawdownPct,
         maxConsecutiveLosses: settings.maxConsecutiveLosses,
+        maxSimultaneousPositions: (settings as any).maxSimultaneousPositions || 8,
         minEdge: settings.minEdge,
         minLiquidity: settings.minLiquidity,
         minTimeToExpiry: settings.minTimeToExpiry,
         scanIntervalMinutes: settings.scanIntervalMinutes,
         confidencePenaltyPct: settings.confidencePenaltyPct,
         sportFilters: (settings.sportFilters || []).join(", "),
+        dailyBudgetUsd: (settings as any).dailyBudgetUsd || 5,
+        monthlyBudgetUsd: (settings as any).monthlyBudgetUsd || 50,
       });
-      setKalshiBaseUrl(settings.kalshiBaseUrl || "");
+      setKalshiBaseUrl((settings as any).kalshiBaseUrl || "");
+      setPaperMode((settings as any).paperTradingMode || false);
     }
   }, [settings, reset]);
 
@@ -79,12 +101,41 @@ export default function Settings() {
     updateMutation.mutate({ data: payload });
   };
 
+  const togglePaperMode = useCallback(async () => {
+    setTogglingPaper(true);
+    try {
+      await fetch(`${API_BASE}/settings`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paperTradingMode: !paperMode }),
+      });
+      setPaperMode(!paperMode);
+      queryClient.invalidateQueries({ queryKey: ['/api/settings'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/dashboard/overview'] });
+      toast({ title: paperMode ? "Live Mode" : "Paper Mode", description: paperMode ? "Switched to live trading." : "Switched to paper trading with $5,000 simulated balance." });
+    } catch {
+      toast({ title: "Error", description: "Failed to toggle mode.", variant: "destructive" });
+    } finally {
+      setTogglingPaper(false);
+    }
+  }, [paperMode, queryClient, toast]);
+
+  const resetPaper = useCallback(async () => {
+    try {
+      await fetch(`${API_BASE}/paper-trades/reset`, { method: "POST" });
+      queryClient.invalidateQueries({ queryKey: ['/api/settings'] });
+      toast({ title: "Paper Trading Reset", description: "Balance restored to $5,000." });
+    } catch {
+      toast({ title: "Error", description: "Failed to reset paper trades.", variant: "destructive" });
+    }
+  }, [queryClient, toast]);
+
   const saveCredentials = useCallback(async () => {
     setCredSaving(true);
     try {
       const body: Record<string, string | null> = {};
       if (kalshiApiKey) body.kalshiApiKey = kalshiApiKey;
-      if (kalshiBaseUrl !== (settings?.kalshiBaseUrl || "")) body.kalshiBaseUrl = kalshiBaseUrl || null;
+      if (kalshiBaseUrl !== ((settings as any)?.kalshiBaseUrl || "")) body.kalshiBaseUrl = kalshiBaseUrl || null;
       await fetch(`${API_BASE}/settings`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -124,18 +175,62 @@ export default function Settings() {
         
         <div>
           <h2 className="text-3xl font-bold font-display text-white tracking-tight">Configuration</h2>
-          <p className="text-muted-foreground mt-1">Manage API credentials, risk parameters, and agent constraints.</p>
+          <p className="text-muted-foreground mt-1">Manage API credentials, risk parameters, trading mode, and budget.</p>
         </div>
 
         {isLoading ? (
           <div className="text-center p-12 text-muted-foreground">Loading settings...</div>
         ) : (
           <div className="space-y-6">
+
+            <Card className="glass-panel border-white/10">
+              <CardHeader className="border-b border-white/5 bg-black/20">
+                <CardTitle className="flex items-center gap-2">
+                  <FileText className="w-5 h-5 text-yellow-400" />
+                  Trading Mode
+                </CardTitle>
+                <CardDescription>
+                  Switch between live and paper trading. Paper mode uses a simulated $5,000 balance.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="flex items-center gap-3">
+                      <span className={`px-3 py-1.5 rounded-lg text-sm font-bold ${paperMode ? "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30" : "bg-green-500/20 text-green-400 border border-green-500/30"}`}>
+                        {paperMode ? "PAPER TRADING" : "LIVE TRADING"}
+                      </span>
+                      {paperMode && (
+                        <span className="text-sm text-muted-foreground">
+                          Balance: ${((settings as any)?.paperBalance || 5000).toFixed(2)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {paperMode && (
+                      <Button variant="outline" size="sm" onClick={resetPaper}>
+                        Reset Paper
+                      </Button>
+                    )}
+                    <Button
+                      onClick={togglePaperMode}
+                      disabled={togglingPaper}
+                      variant={paperMode ? "default" : "outline"}
+                      className={paperMode ? "bg-green-600 hover:bg-green-700 text-white" : ""}
+                    >
+                      {togglingPaper ? "Switching..." : paperMode ? "Go Live" : "Switch to Paper"}
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
             <Card className="glass-panel border-white/10">
               <CardHeader className="border-b border-white/5 bg-black/20">
                 <CardTitle>Kalshi API Credentials</CardTitle>
                 <CardDescription>
-                  {settings?.kalshiApiKeySet
+                  {(settings as any)?.kalshiApiKeySet
                     ? "API key is configured."
                     : "No API key set. Configure one to enable trading."}
                 </CardDescription>
@@ -148,7 +243,7 @@ export default function Settings() {
                       type="password"
                       value={kalshiApiKey}
                       onChange={(e) => setKalshiApiKey(e.target.value)}
-                      placeholder={settings?.kalshiApiKeySet ? "••••••••••••" : "Enter Kalshi API key"}
+                      placeholder={(settings as any)?.kalshiApiKeySet ? "••••••••••••" : "Enter Kalshi API key"}
                       className="flex h-10 w-full rounded-md border border-white/10 bg-black/50 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary/50"
                     />
                     <p className="text-xs text-muted-foreground">Write-only. Never displayed after saving.</p>
@@ -169,7 +264,7 @@ export default function Settings() {
                   <Button
                     type="button"
                     onClick={saveCredentials}
-                    disabled={credSaving || (!kalshiApiKey && kalshiBaseUrl === (settings?.kalshiBaseUrl || ""))}
+                    disabled={credSaving || (!kalshiApiKey && kalshiBaseUrl === ((settings as any)?.kalshiBaseUrl || ""))}
                     className="bg-primary text-black hover:bg-primary/90 font-semibold"
                   >
                     {credSaving ? "Saving..." : "Save Credentials"}
@@ -195,7 +290,10 @@ export default function Settings() {
             
             <Card className="glass-panel border-white/10">
               <CardHeader className="border-b border-white/5 bg-black/20">
-                <CardTitle>Position Sizing & Drawdown</CardTitle>
+                <CardTitle className="flex items-center gap-2">
+                  <Shield className="w-5 h-5 text-primary" />
+                  Position Sizing & Drawdown
+                </CardTitle>
                 <CardDescription>Control how much capital is deployed.</CardDescription>
               </CardHeader>
               <CardContent className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -239,6 +337,16 @@ export default function Settings() {
                     className="flex h-10 w-full rounded-md border border-white/10 bg-black/50 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary/50"
                   />
                   <p className="text-xs text-muted-foreground">Circuit breaker for losing streaks.</p>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-white">Max Simultaneous Positions</label>
+                  <input 
+                    type="number"
+                    {...register("maxSimultaneousPositions")}
+                    className="flex h-10 w-full rounded-md border border-white/10 bg-black/50 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary/50"
+                  />
+                  <p className="text-xs text-muted-foreground">Maximum open positions at once.</p>
                 </div>
               </CardContent>
             </Card>
@@ -286,7 +394,6 @@ export default function Settings() {
                     {...register("confidencePenaltyPct")}
                     className="flex h-10 w-full rounded-md border border-white/10 bg-black/50 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary/50"
                   />
-                  {errors.confidencePenaltyPct && <p className="text-xs text-destructive">{errors.confidencePenaltyPct.message}</p>}
                   <p className="text-xs text-muted-foreground">Penalty applied to analyst confidence scores.</p>
                 </div>
 
@@ -299,6 +406,57 @@ export default function Settings() {
                   />
                   <p className="text-xs text-muted-foreground">How often the Scanner agent runs.</p>
                 </div>
+              </CardContent>
+            </Card>
+
+            <Card className="glass-panel border-white/10">
+              <CardHeader className="border-b border-white/5 bg-black/20">
+                <CardTitle className="flex items-center gap-2">
+                  <DollarSign className="w-5 h-5 text-primary" />
+                  API Budget Caps
+                </CardTitle>
+                <CardDescription>Control AI API spending. Pipeline pauses when limits are reached.</CardDescription>
+              </CardHeader>
+              <CardContent className="p-6 space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-white">Daily Budget (USD)</label>
+                    <input 
+                      type="number" step="0.01"
+                      {...register("dailyBudgetUsd")}
+                      className="flex h-10 w-full rounded-md border border-white/10 bg-black/50 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary/50"
+                    />
+                    <p className="text-xs text-muted-foreground">Max API spend per day. Set 0 for unlimited.</p>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-white">Monthly Budget (USD)</label>
+                    <input 
+                      type="number" step="0.01"
+                      {...register("monthlyBudgetUsd")}
+                      className="flex h-10 w-full rounded-md border border-white/10 bg-black/50 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary/50"
+                    />
+                    <p className="text-xs text-muted-foreground">Max API spend per month. Set 0 for unlimited.</p>
+                  </div>
+                </div>
+                {costs && (
+                  <div className="grid grid-cols-3 gap-4 pt-2">
+                    <div className="p-3 rounded-lg bg-black/30 border border-white/5 text-center">
+                      <div className="text-xs text-muted-foreground uppercase tracking-wider">Today</div>
+                      <div className="text-lg font-mono font-bold text-white mt-1">${costs.daily?.costUsd?.toFixed(4) || "0.00"}</div>
+                      <div className="text-xs text-muted-foreground">{costs.daily?.calls || 0} calls</div>
+                    </div>
+                    <div className="p-3 rounded-lg bg-black/30 border border-white/5 text-center">
+                      <div className="text-xs text-muted-foreground uppercase tracking-wider">This Month</div>
+                      <div className="text-lg font-mono font-bold text-white mt-1">${costs.monthly?.costUsd?.toFixed(4) || "0.00"}</div>
+                      <div className="text-xs text-muted-foreground">{costs.monthly?.calls || 0} calls</div>
+                    </div>
+                    <div className="p-3 rounded-lg bg-black/30 border border-white/5 text-center">
+                      <div className="text-xs text-muted-foreground uppercase tracking-wider">All Time</div>
+                      <div className="text-lg font-mono font-bold text-white mt-1">${costs.allTime?.costUsd?.toFixed(4) || "0.00"}</div>
+                      <div className="text-xs text-muted-foreground">{costs.allTime?.calls || 0} calls</div>
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
 

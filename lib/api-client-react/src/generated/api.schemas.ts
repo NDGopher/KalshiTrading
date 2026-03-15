@@ -19,6 +19,7 @@ export interface DashboardOverview {
   pipelineActive: boolean;
   /** @nullable */
   lastRunAt?: string | null;
+  paperTradingMode?: boolean;
 }
 
 export interface ScanResult {
@@ -81,9 +82,13 @@ export interface Trade {
   /** @nullable */
   pnl?: number | null;
   status: TradeStatus;
+  /** @nullable */
+  strategyName?: string | null;
   modelProbability: number;
   edge: number;
   confidence: number;
+  /** @nullable */
+  clv?: number | null;
   /** @nullable */
   analystReasoning?: string | null;
   auditorFlags?: string[];
@@ -170,6 +175,7 @@ export interface CycleResult {
   tradesSkipped: number;
   totalDuration: number;
   agentResults: AgentRun[];
+  paperMode?: boolean;
 }
 
 export interface TradingSettings {
@@ -178,6 +184,7 @@ export interface TradingSettings {
   kellyFraction: number;
   maxConsecutiveLosses: number;
   maxDrawdownPct: number;
+  maxSimultaneousPositions: number;
   minEdge: number;
   minLiquidity: number;
   minTimeToExpiry: number;
@@ -185,8 +192,10 @@ export interface TradingSettings {
   sportFilters: string[];
   scanIntervalMinutes: number;
   pipelineActive: boolean;
-  kalshiApiKeySet: boolean;
-  kalshiBaseUrl: string | null;
+  paperTradingMode: boolean;
+  paperBalance: number;
+  dailyBudgetUsd: number;
+  monthlyBudgetUsd: number;
 }
 
 export interface UpdateSettingsBody {
@@ -194,6 +203,7 @@ export interface UpdateSettingsBody {
   kellyFraction?: number;
   maxConsecutiveLosses?: number;
   maxDrawdownPct?: number;
+  maxSimultaneousPositions?: number;
   minEdge?: number;
   minLiquidity?: number;
   minTimeToExpiry?: number;
@@ -201,8 +211,10 @@ export interface UpdateSettingsBody {
   sportFilters?: string[];
   scanIntervalMinutes?: number;
   pipelineActive?: boolean;
-  kalshiApiKey?: string;
-  kalshiBaseUrl?: string | null;
+  paperTradingMode?: boolean;
+  paperBalance?: number;
+  dailyBudgetUsd?: number;
+  monthlyBudgetUsd?: number;
 }
 
 export interface PortfolioBalance {
@@ -228,6 +240,125 @@ export interface Position {
   marketStatus: string;
 }
 
+export interface BacktestRunRequest {
+  strategyName?: string;
+  startDate: string;
+  endDate: string;
+  initialBankroll?: number;
+  maxPositionPct?: number;
+  kellyFraction?: number;
+  minEdge?: number;
+  minLiquidity?: number;
+  useAiAnalysis?: boolean;
+}
+
+export interface BacktestRun {
+  id: number;
+  strategyName: string;
+  status: string;
+  startDate: string;
+  endDate: string;
+  marketsEvaluated: number;
+  tradesSimulated: number;
+  totalPnl: number;
+  winRate: number;
+  /** @nullable */
+  sharpeRatio?: number | null;
+  /** @nullable */
+  maxDrawdown?: number | null;
+  /** @nullable */
+  avgEdge?: number | null;
+  /** @nullable */
+  errorMessage?: string | null;
+  createdAt: string;
+  /** @nullable */
+  completedAt?: string | null;
+}
+
+export interface BacktestTrade {
+  id: number;
+  backtestRunId: number;
+  kalshiTicker: string;
+  title: string;
+  strategyName: string;
+  side: string;
+  entryPrice: number;
+  exitPrice: number;
+  quantity: number;
+  pnl: number;
+  outcome: string;
+  modelProbability: number;
+  edge: number;
+  confidence: number;
+  /** @nullable */
+  marketResult?: string | null;
+  createdAt: string;
+}
+
+export type ApiCostSummaryDaily = {
+  costUsd: number;
+  calls: number;
+  inputTokens: number;
+  outputTokens: number;
+};
+
+export type ApiCostSummaryMonthly = {
+  costUsd: number;
+  calls: number;
+  inputTokens: number;
+  outputTokens: number;
+};
+
+export type ApiCostSummaryAllTime = {
+  costUsd: number;
+  calls: number;
+};
+
+export type ApiCostSummaryRecentCallsItem = { [key: string]: unknown };
+
+export interface ApiCostSummary {
+  daily: ApiCostSummaryDaily;
+  monthly: ApiCostSummaryMonthly;
+  allTime: ApiCostSummaryAllTime;
+  recentCalls: ApiCostSummaryRecentCallsItem[];
+}
+
+export interface PaperTrade {
+  id: number;
+  kalshiTicker: string;
+  title: string;
+  side: string;
+  entryPrice: number;
+  /** @nullable */
+  exitPrice?: number | null;
+  quantity: number;
+  /** @nullable */
+  pnl?: number | null;
+  status: string;
+  /** @nullable */
+  strategyName?: string | null;
+  modelProbability: number;
+  edge: number;
+  confidence: number;
+  riskScore: number;
+  kellyFraction: number;
+  simulatedBalance: number;
+  createdAt: string;
+  /** @nullable */
+  closedAt?: string | null;
+}
+
+export interface PaperTradeStats {
+  paperBalance: number;
+  totalTrades: number;
+  openTrades: number;
+  closedTrades: number;
+  wins: number;
+  losses: number;
+  totalPnl: number;
+  winRate: number;
+}
+
 export type ListTradesParams = {
   limit?: number;
   offset?: number;
@@ -248,4 +379,39 @@ export const ListTradesStatus = {
 
 export type ListAgentRunsParams = {
   limit?: number;
+};
+
+export type GetBacktestStrategies200 = {
+  strategies: string[];
+};
+
+export type RunBacktest200 = {
+  runId: number;
+  message: string;
+};
+
+export type GetBacktestResults200 = {
+  runs: BacktestRun[];
+};
+
+export type GetBacktestTrades200 = {
+  trades: BacktestTrade[];
+};
+
+export type GetPaperTradesParams = {
+  limit?: number;
+};
+
+export type GetPaperTrades200 = {
+  trades: PaperTrade[];
+};
+
+export type ReconcilePaperTrades200 = {
+  settled?: number;
+  errors?: number;
+  total?: number;
+};
+
+export type ResetPaperTrades200 = {
+  message?: string;
 };
