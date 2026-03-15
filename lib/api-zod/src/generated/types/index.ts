@@ -22,6 +22,7 @@ export * from "./backtestTrade";
 export * from "./cycleResult";
 export * from "./dashboardOverview";
 export * from "./getBacktestResults200";
+export * from "./getBacktestResults200StrategyAggregatesItem";
 export * from "./getBacktestStrategies200";
 export * from "./getBacktestStrategySummary200";
 export * from "./getBacktestStrategySummary200StrategiesItem";

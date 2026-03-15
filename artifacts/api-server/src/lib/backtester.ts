@@ -39,7 +39,9 @@ function simulateHoursBeforeClose(market: KalshiMarket): number {
   const closeTime = new Date(market.close_time).getTime();
   const duration = closeTime - openTime;
   if (duration <= 0) return 4;
-  const entryFraction = 0.3 + Math.random() * 0.5;
+  const hash = deterministicHash(market.ticker + market.close_time);
+  const hashFrac = (hash % 1000) / 1000;
+  const entryFraction = 0.3 + hashFrac * 0.5;
   return Math.max(0.5, (duration * (1 - entryFraction)) / (1000 * 60 * 60));
 }
 

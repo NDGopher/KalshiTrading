@@ -435,8 +435,29 @@ export type RunBacktest200 = {
   message: string;
 };
 
+export type GetBacktestResults200StrategyAggregatesItem = {
+  strategyName: string;
+  totalRuns: number;
+  totalTrades: number;
+  avgPnl: number;
+  avgWinRate: number;
+  /** @nullable */
+  avgRoi?: number | null;
+  /** @nullable */
+  avgClv?: number | null;
+  /** @nullable */
+  avgSharpe?: number | null;
+  /** @nullable */
+  dipCatchSuccessRate?: number | null;
+  /** @nullable */
+  bestRunId?: number | null;
+  /** @nullable */
+  bestRunPnl?: number | null;
+};
+
 export type GetBacktestResults200 = {
   runs: BacktestRun[];
+  strategyAggregates: GetBacktestResults200StrategyAggregatesItem[];
 };
 
 export type ListBacktestTradesParams = {

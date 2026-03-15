@@ -64,17 +64,6 @@ interface StrategySummary {
 
 const API_BASE = `${import.meta.env.BASE_URL}api`;
 
-function useStrategySummary() {
-  return useQuery({
-    queryKey: ["/api/backtest/strategy-summary"],
-    queryFn: async () => {
-      const res = await fetch(`${API_BASE}/backtest/strategy-summary`);
-      return res.json() as Promise<{ strategies: StrategySummary[] }>;
-    },
-    refetchInterval: 10000,
-  });
-}
-
 function useStrategies() {
   return useQuery({
     queryKey: ["/api/backtest/strategies"],
@@ -90,7 +79,7 @@ function useBacktestResults() {
     queryKey: ["/api/backtest/results"],
     queryFn: async () => {
       const res = await fetch(`${API_BASE}/backtest/results`);
-      return res.json() as Promise<{ runs: BacktestRun[] }>;
+      return res.json() as Promise<{ runs: BacktestRun[]; strategyAggregates: StrategySummary[] }>;
     },
     refetchInterval: 5000,
   });
@@ -152,11 +141,10 @@ export default function Backtest() {
     }
   };
 
-  const { data: summaryData } = useStrategySummary();
   const runs = resultsData?.runs || [];
   const trades = tradesData?.trades || [];
   const selectedRun = runs.find((r) => r.id === selectedRunId);
-  const strategySummaries = summaryData?.strategies || [];
+  const strategySummaries = resultsData?.strategyAggregates || [];
 
   return (
     <Layout>

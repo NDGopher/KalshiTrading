@@ -313,10 +313,10 @@ paths:
     get:
       operationId: getBacktestResults
       tags: [backtest]
-      summary: Get backtest results
+      summary: Get backtest results with per-strategy aggregates
       responses:
         "200":
-          description: List of backtest runs
+          description: List of backtest runs plus per-strategy aggregates
           content:
             application/json:
               schema:
@@ -326,8 +326,42 @@ paths:
                     type: array
                     items:
                       $ref: "#/components/schemas/BacktestRun"
+                  strategyAggregates:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        strategyName:
+                          type: string
+                        totalRuns:
+                          type: integer
+                        totalTrades:
+                          type: integer
+                        avgPnl:
+                          type: number
+                        avgWinRate:
+                          type: number
+                        avgRoi:
+                          type: ["number", "null"]
+                        avgClv:
+                          type: ["number", "null"]
+                        avgSharpe:
+                          type: ["number", "null"]
+                        dipCatchSuccessRate:
+                          type: ["number", "null"]
+                        bestRunId:
+                          type: ["integer", "null"]
+                        bestRunPnl:
+                          type: ["number", "null"]
+                      required:
+                        - strategyName
+                        - totalRuns
+                        - totalTrades
+                        - avgPnl
+                        - avgWinRate
                 required:
                   - runs
+                  - strategyAggregates
 
   /backtest/trades:
     get:

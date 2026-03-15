@@ -69,12 +69,21 @@ export async function reconcileOpenTrades(): Promise<ReconciliationResult> {
 
         settled++;
         reconciled++;
-      } else if (lastPrice > 0 && !trade.closingLinePrice) {
-        const clv = computeClv(trade, lastPrice);
-        await db
-          .update(tradesTable)
-          .set({ closingLinePrice: lastPrice, clv })
-          .where(eq(tradesTable.id, trade.id));
+      } else if (lastPrice > 0) {
+        const rawEventStart = (market as unknown as Record<string, unknown>).event_start_time;
+        const eventStart = typeof rawEventStart === "string"
+          ? new Date(rawEventStart).getTime()
+          : null;
+        const now = Date.now();
+        const isEventStarted = eventStart ? now >= eventStart : false;
+
+        if (!trade.closingLinePrice || isEventStarted) {
+          const clv = computeClv(trade, lastPrice);
+          await db
+            .update(tradesTable)
+            .set({ closingLinePrice: lastPrice, clv })
+            .where(eq(tradesTable.id, trade.id));
+        }
       }
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : "Unknown error";

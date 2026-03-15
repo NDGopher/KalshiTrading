@@ -344,7 +344,7 @@ export const RunBacktestResponse = zod.object({
 });
 
 /**
- * @summary Get backtest results
+ * @summary Get backtest results with per-strategy aggregates
  */
 export const GetBacktestResultsResponse = zod.object({
   runs: zod.array(
@@ -369,6 +369,21 @@ export const GetBacktestResultsResponse = zod.object({
       errorMessage: zod.string().nullish(),
       createdAt: zod.string(),
       completedAt: zod.string().nullish(),
+    }),
+  ),
+  strategyAggregates: zod.array(
+    zod.object({
+      strategyName: zod.string(),
+      totalRuns: zod.number(),
+      totalTrades: zod.number(),
+      avgPnl: zod.number(),
+      avgWinRate: zod.number(),
+      avgRoi: zod.number().nullish(),
+      avgClv: zod.number().nullish(),
+      avgSharpe: zod.number().nullish(),
+      dipCatchSuccessRate: zod.number().nullish(),
+      bestRunId: zod.number().nullish(),
+      bestRunPnl: zod.number().nullish(),
     }),
   ),
 });

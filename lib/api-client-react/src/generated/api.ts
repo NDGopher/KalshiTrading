@@ -1361,7 +1361,7 @@ export const useRunBacktest = <
 };
 
 /**
- * @summary Get backtest results
+ * @summary Get backtest results with per-strategy aggregates
  */
 export const getGetBacktestResultsUrl = () => {
   return `/api/backtest/results`;
@@ -1412,7 +1412,7 @@ export type GetBacktestResultsQueryResult = NonNullable<
 export type GetBacktestResultsQueryError = ErrorType<unknown>;
 
 /**
- * @summary Get backtest results
+ * @summary Get backtest results with per-strategy aggregates
  */
 
 export function useGetBacktestResults<

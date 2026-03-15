@@ -74,14 +74,57 @@ router.post("/backtest/run", async (req, res) => {
   }
 });
 
+function computeStrategyAggregates(runs: (typeof backtestRunsTable.$inferSelect)[]) {
+  const completed = runs.filter((r) => r.status === "completed");
+  const strategyMap = new Map<string, {
+    runs: number; totalPnl: number; totalWinRate: number;
+    totalRoi: number; roiCount: number;
+    totalClv: number; clvCount: number;
+    totalSharpe: number; sharpeCount: number;
+    totalTrades: number; dipCatchAttempts: number; dipCatchRate: number;
+    bestRun: typeof completed[0] | null;
+  }>();
+  for (const run of completed) {
+    const existing = strategyMap.get(run.strategyName) || {
+      runs: 0, totalPnl: 0, totalWinRate: 0, totalRoi: 0, roiCount: 0,
+      totalClv: 0, clvCount: 0, totalSharpe: 0, sharpeCount: 0,
+      totalTrades: 0, dipCatchAttempts: 0, dipCatchRate: 0, bestRun: null,
+    };
+    existing.runs++;
+    existing.totalPnl += run.totalPnl;
+    existing.totalWinRate += run.winRate;
+    existing.totalTrades += run.tradesSimulated;
+    if (run.roi != null) { existing.totalRoi += run.roi; existing.roiCount++; }
+    if (run.avgClv != null) { existing.totalClv += run.avgClv; existing.clvCount++; }
+    if (run.sharpeRatio != null) { existing.totalSharpe += run.sharpeRatio; existing.sharpeCount++; }
+    if (run.dipCatchSuccessRate != null) { existing.dipCatchAttempts++; existing.dipCatchRate += run.dipCatchSuccessRate; }
+    if (!existing.bestRun || run.totalPnl > existing.bestRun.totalPnl) existing.bestRun = run;
+    strategyMap.set(run.strategyName, existing);
+  }
+  return Array.from(strategyMap.entries()).map(([name, data]) => ({
+    strategyName: name,
+    totalRuns: data.runs,
+    totalTrades: data.totalTrades,
+    avgPnl: data.runs > 0 ? data.totalPnl / data.runs : 0,
+    avgWinRate: data.runs > 0 ? data.totalWinRate / data.runs : 0,
+    avgRoi: data.roiCount > 0 ? data.totalRoi / data.roiCount : null,
+    avgClv: data.clvCount > 0 ? data.totalClv / data.clvCount : null,
+    avgSharpe: data.sharpeCount > 0 ? data.totalSharpe / data.sharpeCount : null,
+    dipCatchSuccessRate: data.dipCatchAttempts > 0 ? data.dipCatchRate / data.dipCatchAttempts : null,
+    bestRunId: data.bestRun?.id ?? null,
+    bestRunPnl: data.bestRun?.totalPnl ?? null,
+  }));
+}
+
 router.get("/backtest/results", async (_req, res) => {
   try {
     const runs = await db
       .select()
       .from(backtestRunsTable)
       .orderBy(desc(backtestRunsTable.createdAt))
-      .limit(20);
-    res.json({ runs });
+      .limit(50);
+    const strategyAggregates = computeStrategyAggregates(runs);
+    res.json({ runs, strategyAggregates });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Unknown error";
     res.status(500).json({ error: msg });
@@ -136,59 +179,8 @@ router.get("/backtest/strategy-summary", async (_req, res) => {
     const runs = await db
       .select()
       .from(backtestRunsTable)
-      .where(eq(backtestRunsTable.status, "completed"))
       .orderBy(desc(backtestRunsTable.completedAt));
-
-    const strategyMap = new Map<string, {
-      runs: number;
-      totalPnl: number;
-      totalWinRate: number;
-      totalRoi: number; roiCount: number;
-      totalClv: number; clvCount: number;
-      totalSharpe: number; sharpeCount: number;
-      totalTrades: number;
-      dipCatchAttempts: number;
-      dipCatchRate: number;
-      bestRun: typeof runs[0] | null;
-    }>();
-
-    for (const run of runs) {
-      const existing = strategyMap.get(run.strategyName) || {
-        runs: 0, totalPnl: 0, totalWinRate: 0, totalRoi: 0, roiCount: 0,
-        totalClv: 0, clvCount: 0, totalSharpe: 0, sharpeCount: 0,
-        totalTrades: 0, dipCatchAttempts: 0, dipCatchRate: 0, bestRun: null,
-      };
-      existing.runs++;
-      existing.totalPnl += run.totalPnl;
-      existing.totalWinRate += run.winRate;
-      existing.totalTrades += run.tradesSimulated;
-      if (run.roi != null) { existing.totalRoi += run.roi; existing.roiCount++; }
-      if (run.avgClv != null) { existing.totalClv += run.avgClv; existing.clvCount++; }
-      if (run.sharpeRatio != null) { existing.totalSharpe += run.sharpeRatio; existing.sharpeCount++; }
-      if (run.dipCatchSuccessRate != null) {
-        existing.dipCatchAttempts++;
-        existing.dipCatchRate += run.dipCatchSuccessRate;
-      }
-      if (!existing.bestRun || run.totalPnl > existing.bestRun.totalPnl) {
-        existing.bestRun = run;
-      }
-      strategyMap.set(run.strategyName, existing);
-    }
-
-    const strategies = Array.from(strategyMap.entries()).map(([name, data]) => ({
-      strategyName: name,
-      totalRuns: data.runs,
-      totalTrades: data.totalTrades,
-      avgPnl: data.runs > 0 ? data.totalPnl / data.runs : 0,
-      avgWinRate: data.runs > 0 ? data.totalWinRate / data.runs : 0,
-      avgRoi: data.roiCount > 0 ? data.totalRoi / data.roiCount : null,
-      avgClv: data.clvCount > 0 ? data.totalClv / data.clvCount : null,
-      avgSharpe: data.sharpeCount > 0 ? data.totalSharpe / data.sharpeCount : null,
-      dipCatchSuccessRate: data.dipCatchAttempts > 0 ? data.dipCatchRate / data.dipCatchAttempts : null,
-      bestRunId: data.bestRun?.id ?? null,
-      bestRunPnl: data.bestRun?.totalPnl ?? null,
-    }));
-
+    const strategies = computeStrategyAggregates(runs);
     res.json({ strategies });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Unknown error";

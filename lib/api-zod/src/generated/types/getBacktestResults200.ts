@@ -6,7 +6,9 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { BacktestRun } from "./backtestRun";
+import type { GetBacktestResults200StrategyAggregatesItem } from "./getBacktestResults200StrategyAggregatesItem";
 
 export type GetBacktestResults200 = {
   runs: BacktestRun[];
+  strategyAggregates: GetBacktestResults200StrategyAggregatesItem[];
 };
