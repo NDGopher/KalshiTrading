@@ -37,24 +37,36 @@ router.post("/backtest/run", async (req, res) => {
     }
 
     const validStrategies = getStrategyNames();
-    if (!validStrategies.includes(strategyName)) {
-      res.status(400).json({ error: `Invalid strategy. Valid: ${validStrategies.join(", ")}` });
+    if (strategyName !== "All" && !validStrategies.includes(strategyName)) {
+      res.status(400).json({ error: `Invalid strategy. Valid: All, ${validStrategies.join(", ")}` });
       return;
     }
 
-    const runId = await runBacktest({
-      strategyName,
-      startDate,
-      endDate,
-      initialBankroll,
-      maxPositionPct,
-      kellyFraction,
-      minEdge,
-      minLiquidity,
-      useAiAnalysis,
-    });
+    const strategiesToRun = strategyName === "All" ? validStrategies : [strategyName];
+    const runIds: number[] = [];
 
-    res.json({ runId, message: "Backtest completed" });
+    for (const strat of strategiesToRun) {
+      const runId = await runBacktest({
+        strategyName: strat,
+        startDate,
+        endDate,
+        initialBankroll,
+        maxPositionPct,
+        kellyFraction,
+        minEdge,
+        minLiquidity,
+        useAiAnalysis,
+      });
+      runIds.push(runId);
+    }
+
+    res.json({
+      runIds,
+      runId: runIds[0],
+      message: strategiesToRun.length > 1
+        ? `Backtest completed for ${strategiesToRun.length} strategies`
+        : "Backtest completed",
+    });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Unknown error";
     res.status(500).json({ error: msg });

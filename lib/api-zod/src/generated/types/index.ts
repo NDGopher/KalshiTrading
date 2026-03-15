@@ -51,4 +51,5 @@ export * from "./tradeSide";
 export * from "./tradeStats";
 export * from "./tradeStatus";
 export * from "./tradingSettings";
+export * from "./tradingSettingsBudgetStatus";
 export * from "./updateSettingsBody";

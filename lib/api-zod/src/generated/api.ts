@@ -224,6 +224,17 @@ export const GetSettingsResponse = zod.object({
   paperBalance: zod.number(),
   dailyBudgetUsd: zod.number(),
   monthlyBudgetUsd: zod.number(),
+  kalshiApiKeySet: zod.boolean().optional(),
+  kalshiBaseUrl: zod.string().nullish(),
+  budgetStatus: zod
+    .object({
+      dailySpend: zod.number(),
+      monthlySpend: zod.number(),
+      dailyExceeded: zod.boolean(),
+      monthlyExceeded: zod.boolean(),
+      budgetPaused: zod.boolean(),
+    })
+    .optional(),
 });
 
 /**
@@ -267,6 +278,17 @@ export const UpdateSettingsResponse = zod.object({
   paperBalance: zod.number(),
   dailyBudgetUsd: zod.number(),
   monthlyBudgetUsd: zod.number(),
+  kalshiApiKeySet: zod.boolean().optional(),
+  kalshiBaseUrl: zod.string().nullish(),
+  budgetStatus: zod
+    .object({
+      dailySpend: zod.number(),
+      monthlySpend: zod.number(),
+      dailyExceeded: zod.boolean(),
+      monthlyExceeded: zod.boolean(),
+      budgetPaused: zod.boolean(),
+    })
+    .optional(),
 });
 
 /**

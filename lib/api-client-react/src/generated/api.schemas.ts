@@ -178,6 +178,14 @@ export interface CycleResult {
   paperMode?: boolean;
 }
 
+export type TradingSettingsBudgetStatus = {
+  dailySpend: number;
+  monthlySpend: number;
+  dailyExceeded: boolean;
+  monthlyExceeded: boolean;
+  budgetPaused: boolean;
+};
+
 export interface TradingSettings {
   id: number;
   maxPositionPct: number;
@@ -196,6 +204,10 @@ export interface TradingSettings {
   paperBalance: number;
   dailyBudgetUsd: number;
   monthlyBudgetUsd: number;
+  kalshiApiKeySet?: boolean;
+  /** @nullable */
+  kalshiBaseUrl?: string | null;
+  budgetStatus?: TradingSettingsBudgetStatus;
 }
 
 export interface UpdateSettingsBody {

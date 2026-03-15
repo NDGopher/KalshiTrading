@@ -824,6 +824,24 @@ components:
           type: number
         monthlyBudgetUsd:
           type: number
+        kalshiApiKeySet:
+          type: boolean
+        kalshiBaseUrl:
+          type: ["string", "null"]
+        budgetStatus:
+          type: object
+          properties:
+            dailySpend:
+              type: number
+            monthlySpend:
+              type: number
+            dailyExceeded:
+              type: boolean
+            monthlyExceeded:
+              type: boolean
+            budgetPaused:
+              type: boolean
+          required: [dailySpend, monthlySpend, dailyExceeded, monthlyExceeded, budgetPaused]
       required:
         - id
         - maxPositionPct

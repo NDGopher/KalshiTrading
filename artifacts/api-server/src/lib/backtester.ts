@@ -18,6 +18,73 @@ interface BacktestConfig {
   useAiAnalysis: boolean;
 }
 
+interface BacktestRiskParams {
+  maxPositionPct: number;
+  kellyFraction: number;
+  maxConsecutiveLosses: number;
+  maxDrawdownPct: number;
+  maxSimultaneousPositions: number;
+}
+
+interface SimRiskResult {
+  approved: boolean;
+  positionSize: number;
+  kellyFraction: number;
+  riskScore: number;
+  rejectReason?: string;
+}
+
+function assessBacktestRisk(
+  analysis: AnalysisResult,
+  params: BacktestRiskParams,
+  bankroll: number,
+  tradeOutcomes: boolean[],
+  openPositions: number,
+  peakBankroll: number,
+  initialBankroll: number,
+): SimRiskResult {
+  let consecutiveLosses = 0;
+  for (let i = tradeOutcomes.length - 1; i >= 0; i--) {
+    if (!tradeOutcomes[i]) consecutiveLosses++;
+    else break;
+  }
+
+  if (consecutiveLosses >= params.maxConsecutiveLosses) {
+    return { approved: false, positionSize: 0, kellyFraction: 0, riskScore: 1,
+      rejectReason: `Streak halt: ${consecutiveLosses} consecutive losses` };
+  }
+
+  const drawdown = peakBankroll > 0 ? ((peakBankroll - bankroll) / peakBankroll) * 100 : 0;
+  if (drawdown >= params.maxDrawdownPct) {
+    return { approved: false, positionSize: 0, kellyFraction: 0, riskScore: 1,
+      rejectReason: `Drawdown halt: ${drawdown.toFixed(1)}%` };
+  }
+
+  if (openPositions >= params.maxSimultaneousPositions) {
+    return { approved: false, positionSize: 0, kellyFraction: 0, riskScore: 0.9,
+      rejectReason: `Position cap: ${openPositions} open` };
+  }
+
+  const rawP = analysis.modelProbability;
+  const p = analysis.side === "yes" ? rawP : 1 - rawP;
+  const marketPrice = analysis.side === "yes" ? analysis.candidate.yesPrice : analysis.candidate.noPrice;
+  const b = (1 / marketPrice) - 1;
+  const q = 1 - p;
+  const fullKelly = b > 0 ? (b * p - q) / b : 0;
+  const quarterKelly = Math.max(0, fullKelly * params.kellyFraction);
+
+  const maxPosDollars = bankroll * (params.maxPositionPct / 100);
+  const kellyPosDollars = bankroll * quarterKelly;
+  const posDollars = Math.min(kellyPosDollars, maxPosDollars);
+  const costPerContract = Math.max(0.01, marketPrice);
+  const positionSize = Math.max(1, Math.floor(posDollars / costPerContract));
+
+  const riskScore = Math.min(1, (consecutiveLosses / params.maxConsecutiveLosses) * 0.4 +
+    (drawdown / params.maxDrawdownPct) * 0.4 + (1 - analysis.confidence) * 0.2);
+
+  return { approved: quarterKelly > 0, positionSize, kellyFraction: quarterKelly, riskScore };
+}
+
 function marketToCandidate(market: KalshiMarket): ScanCandidate | null {
   const yesPrice = market.last_price / 100;
   if (yesPrice <= 0.01 || yesPrice >= 0.99) return null;
@@ -151,15 +218,26 @@ export async function runBacktest(config: BacktestConfig): Promise<number> {
 
       if (!auditResult.approved) continue;
 
-      const maxPosDollars = bankroll * (config.maxPositionPct / 100);
+      const riskResult = assessBacktestRisk(
+        analysis,
+        {
+          maxPositionPct: config.maxPositionPct,
+          kellyFraction: config.kellyFraction,
+          maxConsecutiveLosses: 3,
+          maxDrawdownPct: 20,
+          maxSimultaneousPositions: 8,
+        },
+        bankroll,
+        outcomes,
+        0,
+        peakBankroll,
+        config.initialBankroll,
+      );
+
+      if (!riskResult.approved) continue;
+
       const marketPrice = analysis.side === "yes" ? candidate.yesPrice : candidate.noPrice;
-      const b = (1 / marketPrice) - 1;
-      const p = analysis.side === "yes" ? analysis.modelProbability : 1 - analysis.modelProbability;
-      const q = 1 - p;
-      const fullKelly = b > 0 ? (b * p - q) / b : 0;
-      const kellyPos = Math.max(0, fullKelly * config.kellyFraction) * bankroll;
-      const posDollars = Math.min(kellyPos, maxPosDollars);
-      const quantity = Math.max(1, Math.floor(posDollars / Math.max(0.01, marketPrice)));
+      const quantity = riskResult.positionSize;
 
       const won =
         (analysis.side === "yes" && market.result === "yes") ||

@@ -152,6 +152,7 @@ export default function Backtest() {
                   onChange={(e) => setStrategy(e.target.value)}
                   className="flex h-10 w-full rounded-md border border-white/10 bg-black/50 px-3 py-2 text-sm text-white"
                 >
+                  <option value="All">All Strategies</option>
                   {(strategiesData?.strategies || ["Pure Value"]).map((s) => (
                     <option key={s} value={s}>{s}</option>
                   ))}

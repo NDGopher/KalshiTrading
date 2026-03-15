@@ -5,6 +5,7 @@
  * Kalshi Sports AI Trading System API
  * OpenAPI spec version: 0.1.0
  */
+import type { TradingSettingsBudgetStatus } from "./tradingSettingsBudgetStatus";
 
 export interface TradingSettings {
   id: number;
@@ -24,4 +25,8 @@ export interface TradingSettings {
   paperBalance: number;
   dailyBudgetUsd: number;
   monthlyBudgetUsd: number;
+  kalshiApiKeySet?: boolean;
+  /** @nullable */
+  kalshiBaseUrl?: string | null;
+  budgetStatus?: TradingSettingsBudgetStatus;
 }
