@@ -85,11 +85,9 @@ export default function Settings() {
       const body: Record<string, string | null> = {};
       if (kalshiApiKey) body.kalshiApiKey = kalshiApiKey;
       if (kalshiBaseUrl !== (settings?.kalshiBaseUrl || "")) body.kalshiBaseUrl = kalshiBaseUrl || null;
-      const { getApiToken } = await import("../lib/auth");
-      const token = await getApiToken();
       await fetch(`${API_BASE}/settings`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
       queryClient.invalidateQueries({ queryKey: ['/api/settings'] });
@@ -106,12 +104,7 @@ export default function Settings() {
     setTestingConnection(true);
     setConnectionStatus(null);
     try {
-      const { getApiToken } = await import("../lib/auth");
-      const token = await getApiToken();
-      const res = await fetch(`${API_BASE}/settings/test-connection`, {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${token}` },
-      });
+      const res = await fetch(`${API_BASE}/settings/test-connection`, { method: "POST" });
       const data = await res.json();
       if (data.success) {
         setConnectionStatus({ success: true, message: `Connected. Balance: $${(data.balance / 100).toFixed(2)}` });

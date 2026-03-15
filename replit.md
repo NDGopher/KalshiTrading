@@ -92,8 +92,9 @@ artifacts-monorepo/
 
 ## Auth
 
-- API_SECRET: auto-generated random secret on startup if not set in env. Always enforced — all POST/PUT/DELETE require `Authorization: Bearer <token>`.
-- Dashboard auto-fetches the token from `GET /api/auth/token` and injects it into all mutations via the `customFetch` layer.
+- Same-origin validation: mutations from the dashboard (same origin) are allowed automatically via Origin/Referer header checking.
+- API_SECRET env var: optional, for programmatic access from external scripts. When set, `Authorization: Bearer <API_SECRET>` header grants access to mutations.
+- CORS locked to REPLIT_DEV_DOMAIN origin in dev; prevents cross-origin mutation requests from untrusted domains.
 - Kalshi credentials: stored in DB settings (write-only, never returned in reads). Falls back to KALSHI_API_KEY env var.
 
 ## Background Operation

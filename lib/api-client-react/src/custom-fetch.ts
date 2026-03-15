@@ -271,34 +271,6 @@ async function parseSuccessBody(
   }
 }
 
-let _authToken: string | null = null;
-let _authTokenPromise: Promise<string> | null = null;
-
-async function getAuthToken(): Promise<string> {
-  if (_authToken) return _authToken;
-  if (_authTokenPromise) return _authTokenPromise;
-
-  _authTokenPromise = (async () => {
-    try {
-      let baseUrl = "/";
-      if (typeof document !== "undefined") {
-        const baseTag = document.querySelector("base");
-        if (baseTag?.href) {
-          baseUrl = new URL(baseTag.href).pathname;
-        }
-      }
-      const res = await fetch(`${baseUrl}api/auth/token`);
-      const data = await res.json();
-      _authToken = data.token;
-      return _authToken!;
-    } catch {
-      return "";
-    }
-  })();
-
-  return _authTokenPromise;
-}
-
 export async function customFetch<T = unknown>(
   input: RequestInfo | URL,
   options: CustomFetchOptions = {},
@@ -312,14 +284,6 @@ export async function customFetch<T = unknown>(
   }
 
   const headers = mergeHeaders(isRequest(input) ? input.headers : undefined, headersInit);
-
-  const isMutation = method !== "GET" && method !== "HEAD" && method !== "OPTIONS";
-  if (isMutation && !headers.has("authorization")) {
-    const token = await getAuthToken();
-    if (token) {
-      headers.set("authorization", `Bearer ${token}`);
-    }
-  }
 
   if (
     typeof init.body === "string" &&

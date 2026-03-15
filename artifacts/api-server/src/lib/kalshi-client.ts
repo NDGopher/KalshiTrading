@@ -151,6 +151,7 @@ export async function getMarkets(params: {
   if (params.event_ticker) searchParams.set("event_ticker", params.event_ticker);
   if (params.series_ticker) searchParams.set("series_ticker", params.series_ticker);
   if (params.status) searchParams.set("status", params.status);
+  if (params.category) searchParams.set("category", params.category);
   const qs = searchParams.toString();
   return kalshiFetch(`/markets${qs ? `?${qs}` : ""}`);
 }
@@ -250,8 +251,30 @@ export async function getSeries(params: {
   return kalshiFetch(`/series${qs ? `?${qs}` : ""}`);
 }
 
+const SPORTS_SERIES_TICKERS = [
+  "KXNFL", "KXNBA", "KXMLB", "KXNHL", "KXSOC", "KXNCAA",
+  "KXSPORT", "KXMVE",
+];
+
 export async function getSportsMarkets(sportKeywords: string[]): Promise<KalshiMarket[]> {
   const allMarkets: KalshiMarket[] = [];
+
+  for (const seriesTicker of SPORTS_SERIES_TICKERS) {
+    let cursor: string | undefined;
+    let pages = 0;
+    while (pages < 3) {
+      try {
+        const result = await getMarkets({ limit: 100, cursor, status: "open", series_ticker: seriesTicker });
+        allMarkets.push(...result.markets);
+        cursor = result.cursor;
+        pages++;
+        if (!cursor || result.markets.length < 100) break;
+      } catch {
+        break;
+      }
+    }
+  }
+
   let cursor: string | undefined;
   let pages = 0;
   const maxPages = 5;
@@ -259,6 +282,7 @@ export async function getSportsMarkets(sportKeywords: string[]): Promise<KalshiM
   while (pages < maxPages) {
     const result = await getMarkets({ limit: 100, cursor, status: "open" });
     const filtered = result.markets.filter((m) => {
+      if (allMarkets.some((e) => e.ticker === m.ticker)) return false;
       const title = (m.title || m.yes_sub_title || m.ticker).toLowerCase();
       const ticker = m.ticker.toLowerCase();
       return sportKeywords.some((kw) => {
