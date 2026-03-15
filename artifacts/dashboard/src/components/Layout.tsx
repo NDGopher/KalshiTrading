@@ -9,10 +9,15 @@ import {
   TrendingUp,
   Zap,
   FlaskConical,
-  FileText
+  FileText,
+  BrainCircuit,
+  DollarSign
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useGetDashboardOverview, getGetDashboardOverviewQueryKey } from "@workspace/api-client-react";
+import { useQuery } from "@tanstack/react-query";
+
+const API_BASE = `${import.meta.env.BASE_URL}api`;
 
 interface LayoutProps {
   children: ReactNode;
@@ -22,10 +27,21 @@ export function Layout({ children }: LayoutProps) {
   const [location] = useLocation();
   const { data: overview } = useGetDashboardOverview({ query: { queryKey: getGetDashboardOverviewQueryKey(), refetchInterval: 10000 } });
 
+  const { data: costs } = useQuery({
+    queryKey: ["/api/costs/sidebar"],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/costs`);
+      return res.json();
+    },
+    refetchInterval: 30000,
+  });
+
   const navItems = [
     { href: "/", label: "Dashboard", icon: LayoutDashboard },
+    { href: "/brain", label: "Decision Brain", icon: BrainCircuit },
     { href: "/opportunities", label: "Opportunities", icon: Activity },
     { href: "/trades", label: "Trade History", icon: History },
+    { href: "/paper", label: "Paper Trading", icon: FileText },
     { href: "/agents", label: "Agent Status", icon: Cpu },
     { href: "/backtest", label: "Backtest", icon: FlaskConical },
     { href: "/settings", label: "Settings", icon: Settings },
@@ -65,37 +81,57 @@ export function Layout({ children }: LayoutProps) {
           })}
         </div>
 
-        <div className="p-4 border-t border-white/5 bg-black/20">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-muted-foreground">Pipeline</span>
-            <div className="flex items-center gap-2">
-              {overview?.pipelineActive ? (
-                <>
-                  <span className="relative flex h-2.5 w-2.5">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-success shadow-[0_0_10px_rgba(var(--color-success),0.5)]"></span>
-                  </span>
-                  <span className="text-xs font-bold text-success uppercase tracking-wider">Active</span>
-                </>
-              ) : (
-                <>
-                  <span className="h-2.5 w-2.5 rounded-full bg-muted-foreground"></span>
-                  <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Halted</span>
-                </>
-              )}
+        <div className="border-t border-white/5 bg-black/20">
+          <div className="p-4">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-muted-foreground">Pipeline</span>
+              <div className="flex items-center gap-2">
+                {overview?.pipelineActive ? (
+                  <>
+                    <span className="relative flex h-2.5 w-2.5">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-success shadow-[0_0_10px_rgba(var(--color-success),0.5)]"></span>
+                    </span>
+                    <span className="text-xs font-bold text-success uppercase tracking-wider">Active</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="h-2.5 w-2.5 rounded-full bg-muted-foreground"></span>
+                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Halted</span>
+                  </>
+                )}
+              </div>
             </div>
+            {overview?.paperTradingMode && (
+              <div className="mt-1.5 flex items-center gap-1.5">
+                <FileText className="w-3 h-3 text-yellow-400" />
+                <span className="text-xs font-bold text-yellow-400 uppercase tracking-wider">Paper Mode</span>
+              </div>
+            )}
+            {overview?.lastRunAt && (
+               <div className="mt-2 text-xs text-muted-foreground/70 flex items-center gap-1">
+                 <Zap className="w-3 h-3" />
+                 Last run: {new Date(overview.lastRunAt).toLocaleTimeString()}
+               </div>
+            )}
           </div>
-          {overview?.paperTradingMode && (
-            <div className="mt-1.5 flex items-center gap-1.5">
-              <FileText className="w-3 h-3 text-yellow-400" />
-              <span className="text-xs font-bold text-yellow-400 uppercase tracking-wider">Paper Mode</span>
+          {costs && (
+            <div className="px-4 pb-4 pt-0">
+              <div className="p-3 rounded-lg bg-black/30 border border-white/5">
+                <div className="flex items-center gap-1.5 mb-2">
+                  <DollarSign className="w-3 h-3 text-primary" />
+                  <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">API Costs</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-[10px] text-muted-foreground">Today</span>
+                  <span className="text-xs font-mono text-white">${costs.daily?.costUsd?.toFixed(4) || "0.00"}</span>
+                </div>
+                <div className="flex justify-between items-center mt-1">
+                  <span className="text-[10px] text-muted-foreground">Month</span>
+                  <span className="text-xs font-mono text-white">${costs.monthly?.costUsd?.toFixed(4) || "0.00"}</span>
+                </div>
+              </div>
             </div>
-          )}
-          {overview?.lastRunAt && (
-             <div className="mt-2 text-xs text-muted-foreground/70 flex items-center gap-1">
-               <Zap className="w-3 h-3" />
-               Last run: {new Date(overview.lastRunAt).toLocaleTimeString()}
-             </div>
           )}
         </div>
       </aside>
@@ -107,9 +143,20 @@ export function Layout({ children }: LayoutProps) {
           </h1>
           <div className="flex items-center gap-4">
             <div className="flex flex-col items-end">
-              <span className="text-xs text-muted-foreground">
-                {overview?.paperTradingMode ? "Paper Balance" : "Portfolio Balance"}
-              </span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-muted-foreground">
+                  {overview?.paperTradingMode ? "Paper Balance" : "Portfolio Balance"}
+                </span>
+                {!overview?.paperTradingMode && overview?.pipelineActive && (
+                  <span className="relative flex items-center gap-1 px-1.5 py-0.5 rounded bg-success/10 border border-success/20">
+                    <span className="relative flex h-1.5 w-1.5">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-success"></span>
+                    </span>
+                    <span className="text-[10px] font-bold text-success uppercase tracking-wider">Live</span>
+                  </span>
+                )}
+              </div>
               <span className="font-mono font-bold text-white">
                 {overview ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(overview.balance) : '...'}
               </span>

@@ -43,7 +43,7 @@ artifacts-monorepo/
 │   │       └── routes/                 # Express route handlers
 │   └── dashboard/            # React + Vite frontend (port from PORT env)
 │       └── src/
-│           ├── pages/        # Dashboard, Opportunities, Trades, Agents, Backtest, Settings
+│           ├── pages/        # Dashboard, Brain, Opportunities, Trades, Paper, Agents, Backtest, Settings
 │           └── components/   # Layout, UI components (shadcn-style)
 ├── lib/
 │   ├── api-spec/             # OpenAPI 3.1 spec + Orval codegen config
@@ -122,6 +122,21 @@ Each strategy implements `selectCandidates()` and `shouldTrade()`. The pipeline 
 4. **Risk Manager**: Sizes positions using Quarter Kelly criterion, enforces max 8 simultaneous positions, 5% max position, 20% drawdown halt, 3-loss streak circuit breaker, correlation caps
 5. **Executor**: Places limit orders on Kalshi (live mode) or logs to paper_trades table (paper mode). 3 retries; exhausted retries → "failed" status
 6. **Reconciler**: Checks open trades against Kalshi API for settlement. In paper mode, reconciles paper trades against current market prices. Computes CLV (closing line value) on settlement.
+
+## Dashboard Pages
+
+- **Dashboard** (`/`): Overview with balance, P&L, win rate, open positions
+- **Decision Brain** (`/brain`): Live pipeline visualization showing 6-agent flow, real-time execution log, pipeline stats, API cost tracker
+- **Opportunities** (`/opportunities`): AI-detected market opportunities with edge analysis
+- **Trade History** (`/trades`): Full trade log with CLV analytics panel, edge breakdown panel, CLV column in trade table
+- **Paper Trading** (`/paper`): Dedicated paper trading dashboard with balance, stats, reconcile/reset actions, trade log with filters
+- **Agent Status** (`/agents`): Individual agent cards, pipeline controls, system logs
+- **Backtest** (`/backtest`): Strategy backtesting with per-strategy aggregates, dip catch analytics
+- **Settings** (`/settings`): API credentials, risk parameters, trading mode toggle, budget caps
+
+### Layout Features
+- Sidebar: Navigation, pipeline status indicator, paper mode badge, API costs widget (today/month)
+- Header: Page title, portfolio balance with "Live" badge (green animated dot when pipeline active in live mode)
 
 ## Paper Trading Mode
 

@@ -5,8 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency, formatPercent } from "@/lib/utils";
 import { format } from "date-fns";
-import { History, Target, TrendingUp, TrendingDown, BrainCircuit } from "lucide-react";
-import { useState } from "react";
+import { History, Target, BrainCircuit, BarChart3 } from "lucide-react";
+import { useState, useMemo } from "react";
 import { ListTradesStatus } from "@workspace/api-client-react";
 
 export default function Trades() {
@@ -22,6 +22,29 @@ export default function Trades() {
 
   const isPositive = (val?: number | null) => (val || 0) >= 0;
 
+  const clvStats = useMemo(() => {
+    const trades = tradesData?.trades || [];
+    const closedWithClv = trades.filter((t: any) => t.clv != null && t.status !== "open");
+    if (closedWithClv.length === 0) return null;
+    const avgClv = closedWithClv.reduce((sum: number, t: any) => sum + (t.clv || 0), 0) / closedWithClv.length;
+    const positiveClv = closedWithClv.filter((t: any) => (t.clv || 0) > 0).length;
+    const clvHitRate = positiveClv / closedWithClv.length;
+    return { avgClv, clvHitRate, count: closedWithClv.length };
+  }, [tradesData]);
+
+  const edgeStats = useMemo(() => {
+    const trades = tradesData?.trades || [];
+    const closedTrades = trades.filter((t: any) => t.status === "won" || t.status === "lost");
+    if (closedTrades.length === 0) return null;
+    const highEdge = closedTrades.filter((t: any) => t.edge >= 10);
+    const highEdgeWins = highEdge.filter((t: any) => t.status === "won").length;
+    const highEdgeWinRate = highEdge.length > 0 ? highEdgeWins / highEdge.length : 0;
+    const lowEdge = closedTrades.filter((t: any) => t.edge < 10);
+    const lowEdgeWins = lowEdge.filter((t: any) => t.status === "won").length;
+    const lowEdgeWinRate = lowEdge.length > 0 ? lowEdgeWins / lowEdge.length : 0;
+    return { highEdgeCount: highEdge.length, highEdgeWinRate, lowEdgeCount: lowEdge.length, lowEdgeWinRate };
+  }, [tradesData]);
+
   return (
     <Layout>
       <div className="max-w-7xl mx-auto space-y-8">
@@ -31,47 +54,116 @@ export default function Trades() {
           <p className="text-muted-foreground mt-1">Full audit log of AI-executed trades and their reasoning.</p>
         </div>
 
-        {/* Stats Summary */}
-        {stats && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <Card className="bg-black/40 border-white/5 shadow-none">
-              <CardContent className="p-4 flex flex-col justify-center h-full">
-                <span className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Win Rate</span>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-2xl font-bold text-white font-mono">{formatPercent(stats.winRate)}</span>
-                  <span className="text-xs text-muted-foreground">({stats.wins}W - {stats.losses}L)</span>
-                </div>
-              </CardContent>
-            </Card>
-            <Card className="bg-black/40 border-white/5 shadow-none">
-              <CardContent className="p-4 flex flex-col justify-center h-full">
-                <span className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Total ROI</span>
-                <span className={`text-2xl font-bold font-mono ${isPositive(stats.roi) ? 'text-success' : 'text-destructive'}`}>
-                  {isPositive(stats.roi) ? '+' : ''}{formatPercent(stats.roi)}
-                </span>
-              </CardContent>
-            </Card>
-            <Card className="bg-black/40 border-white/5 shadow-none">
-              <CardContent className="p-4 flex flex-col justify-center h-full">
-                <span className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Avg Edge Taken</span>
-                <span className="text-2xl font-bold text-primary font-mono">{formatPercent(stats.avgEdge)}</span>
-              </CardContent>
-            </Card>
-            <Card className="bg-black/40 border-white/5 shadow-none">
-              <CardContent className="p-4 flex flex-col justify-center h-full">
-                <span className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Current Streak</span>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-2xl font-bold text-white font-mono">{Math.abs(stats.currentStreak)}</span>
-                  <span className={`text-xs font-bold ${stats.currentStreak > 0 ? 'text-success' : 'text-destructive'}`}>
-                    {stats.currentStreak > 0 ? 'WINS' : 'LOSSES'}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {stats && (
+            <>
+              <Card className="bg-black/40 border-white/5 shadow-none">
+                <CardContent className="p-4 flex flex-col justify-center h-full">
+                  <span className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Win Rate</span>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-2xl font-bold text-white font-mono">{formatPercent(stats.winRate)}</span>
+                    <span className="text-xs text-muted-foreground">({stats.wins}W - {stats.losses}L)</span>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="bg-black/40 border-white/5 shadow-none">
+                <CardContent className="p-4 flex flex-col justify-center h-full">
+                  <span className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Total ROI</span>
+                  <span className={`text-2xl font-bold font-mono ${isPositive(stats.roi) ? 'text-success' : 'text-destructive'}`}>
+                    {isPositive(stats.roi) ? '+' : ''}{formatPercent(stats.roi)}
                   </span>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+              <Card className="bg-black/40 border-white/5 shadow-none">
+                <CardContent className="p-4 flex flex-col justify-center h-full">
+                  <span className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Avg Edge Taken</span>
+                  <span className="text-2xl font-bold text-primary font-mono">{formatPercent(stats.avgEdge)}</span>
+                </CardContent>
+              </Card>
+              <Card className="bg-black/40 border-white/5 shadow-none">
+                <CardContent className="p-4 flex flex-col justify-center h-full">
+                  <span className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Current Streak</span>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-2xl font-bold text-white font-mono">{Math.abs(stats.currentStreak)}</span>
+                    <span className={`text-xs font-bold ${stats.currentStreak > 0 ? 'text-success' : 'text-destructive'}`}>
+                      {stats.currentStreak > 0 ? 'WINS' : 'LOSSES'}
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+            </>
+          )}
+        </div>
+
+        {(clvStats || edgeStats) && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {clvStats && (
+              <Card className="glass-panel border-white/10">
+                <CardHeader className="border-b border-white/5 bg-black/20 py-3">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <BarChart3 className="w-4 h-4 text-primary" />
+                    CLV Analytics
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-4">
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="text-center">
+                      <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Avg CLV</div>
+                      <div className={`text-xl font-mono font-bold ${clvStats.avgClv >= 0 ? "text-success" : "text-destructive"}`}>
+                        {(clvStats.avgClv * 100).toFixed(2)}c
+                      </div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">CLV Hit Rate</div>
+                      <div className="text-xl font-mono font-bold text-white">
+                        {(clvStats.clvHitRate * 100).toFixed(1)}%
+                      </div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Trades w/ CLV</div>
+                      <div className="text-xl font-mono font-bold text-white">{clvStats.count}</div>
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground/60 mt-3 text-center">
+                    Positive CLV means the closing line moved in your favor after entry — a sign of sharp edge detection.
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+            {edgeStats && (
+              <Card className="glass-panel border-white/10">
+                <CardHeader className="border-b border-white/5 bg-black/20 py-3">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Target className="w-4 h-4 text-accent" />
+                    Edge Breakdown
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="p-3 rounded-lg bg-black/30 border border-white/5">
+                      <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">High Edge (10%+)</div>
+                      <div className={`text-xl font-mono font-bold ${edgeStats.highEdgeWinRate >= 0.5 ? "text-success" : "text-destructive"}`}>
+                        {(edgeStats.highEdgeWinRate * 100).toFixed(1)}%
+                      </div>
+                      <div className="text-[10px] text-muted-foreground">{edgeStats.highEdgeCount} trades</div>
+                    </div>
+                    <div className="p-3 rounded-lg bg-black/30 border border-white/5">
+                      <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Low Edge (&lt;10%)</div>
+                      <div className={`text-xl font-mono font-bold ${edgeStats.lowEdgeWinRate >= 0.5 ? "text-success" : "text-destructive"}`}>
+                        {(edgeStats.lowEdgeWinRate * 100).toFixed(1)}%
+                      </div>
+                      <div className="text-[10px] text-muted-foreground">{edgeStats.lowEdgeCount} trades</div>
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground/60 mt-3 text-center">
+                    Win rate comparison by edge size. Higher edge should correlate with better outcomes.
+                  </p>
+                </CardContent>
+              </Card>
+            )}
           </div>
         )}
 
-        {/* Filters & Table */}
         <Card className="glass-panel border-white/10">
           <CardHeader className="border-b border-white/5 bg-black/20 flex flex-row items-center justify-between py-4">
             <CardTitle className="text-lg flex items-center gap-2">
@@ -108,13 +200,14 @@ export default function Trades() {
                       <th className="px-6 py-4 font-semibold">Market</th>
                       <th className="px-6 py-4 font-semibold">Side / Size</th>
                       <th className="px-6 py-4 font-semibold text-right">Entry / Exit</th>
+                      <th className="px-6 py-4 font-semibold text-right">CLV</th>
                       <th className="px-6 py-4 font-semibold text-right">P&L</th>
                       <th className="px-6 py-4 font-semibold text-center">Status</th>
                       <th className="px-6 py-4 font-semibold text-center">AI Logic</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/5">
-                    {tradesData.trades.map((trade) => (
+                    {tradesData.trades.map((trade: any) => (
                       <tr key={trade.id} className="hover:bg-white/[0.02] transition-colors group">
                         <td className="px-6 py-4 whitespace-nowrap text-muted-foreground text-xs">
                           {format(new Date(trade.createdAt), "MMM d, HH:mm")}
@@ -134,6 +227,9 @@ export default function Trades() {
                         <td className="px-6 py-4 font-mono text-right">
                           <div className="text-white">{formatCurrency(trade.entryPrice)}</div>
                           <div className="text-xs text-muted-foreground">{trade.exitPrice ? formatCurrency(trade.exitPrice) : '—'}</div>
+                        </td>
+                        <td className={`px-6 py-4 font-mono text-right text-xs ${trade.clv != null ? (trade.clv >= 0 ? 'text-success' : 'text-destructive') : 'text-muted-foreground/40'}`}>
+                          {trade.clv != null ? `${(trade.clv * 100).toFixed(2)}c` : '—'}
                         </td>
                         <td className={`px-6 py-4 font-mono font-bold text-right ${trade.pnl ? (isPositive(trade.pnl) ? 'text-success' : 'text-destructive') : 'text-muted-foreground'}`}>
                           {trade.pnl ? `${isPositive(trade.pnl) ? '+' : ''}${formatCurrency(trade.pnl)}` : '—'}
