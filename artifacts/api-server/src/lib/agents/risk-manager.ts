@@ -64,18 +64,36 @@ export async function assessRisk(
   }
 
   const { analysis } = audit;
-  const p = analysis.modelProbability;
+  const rawP = analysis.modelProbability;
+  const p = analysis.side === "yes" ? rawP : 1 - rawP;
   const marketPrice = analysis.side === "yes" ? analysis.candidate.yesPrice : analysis.candidate.noPrice;
   const b = (1 / marketPrice) - 1;
   const q = 1 - p;
-  const fullKelly = (b * p - q) / b;
+  const fullKelly = b > 0 ? (b * p - q) / b : 0;
   const quarterKelly = Math.max(0, fullKelly * settings.kellyFraction);
+
+  const openTrades = allTrades.filter((t) => t.status === "open");
+  const openTickerCategories = new Set(openTrades.map((t) => t.kalshiTicker.split("-").slice(0, 2).join("-")));
+  const candidateCategory = analysis.candidate.market.ticker.split("-").slice(0, 2).join("-");
+  const correlatedPositions = openTickerCategories.has(candidateCategory) ? openTrades.filter((t) => t.kalshiTicker.split("-").slice(0, 2).join("-") === candidateCategory).length : 0;
+  const maxCorrelatedPositions = 3;
+
+  if (correlatedPositions >= maxCorrelatedPositions) {
+    return {
+      audit,
+      approved: false,
+      positionSize: 0,
+      kellyFraction: 0,
+      riskScore: 0.8,
+      rejectReason: `Correlation cap: ${correlatedPositions} positions in same event category "${candidateCategory}" (max ${maxCorrelatedPositions})`,
+    };
+  }
 
   const maxPosition = bankroll * (settings.maxPositionPct / 100);
   const kellyPosition = bankroll * quarterKelly;
   const positionDollars = Math.min(kellyPosition, maxPosition);
 
-  const pricePerContract = analysis.side === "yes" ? analysis.candidate.yesPrice : analysis.candidate.noPrice;
+  const pricePerContract = marketPrice;
   const positionSize = Math.max(1, Math.floor(positionDollars / Math.max(0.01, pricePerContract)));
 
   const riskScore = Math.min(1, (consecutiveLosses / settings.maxConsecutiveLosses) * 0.4 + (drawdown / settings.maxDrawdownPct) * 0.4 + (1 - audit.adjustedConfidence) * 0.2);

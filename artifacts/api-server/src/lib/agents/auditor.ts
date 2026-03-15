@@ -39,8 +39,20 @@ export function auditTrade(
     flags.push(`Low model confidence (${(analysis.confidence * 100).toFixed(0)}%)`);
   }
 
-  if (analysis.reasoning.toLowerCase().includes("failed") || analysis.reasoning.toLowerCase().includes("default")) {
-    flags.push("Analysis may be unreliable");
+  const reasoningLower = analysis.reasoning.toLowerCase();
+  const hallucinationPatterns = [
+    "failed", "default", "unable to", "cannot determine",
+    "no data available", "i don't have", "i cannot access",
+    "as an ai", "i'm not sure", "breaking news",
+    "unverified report", "sources say",
+  ];
+  const hallucinationHits = hallucinationPatterns.filter((p) => reasoningLower.includes(p));
+  if (hallucinationHits.length > 0) {
+    flags.push(`Analysis reliability concern: matched ${hallucinationHits.length} warning pattern(s): ${hallucinationHits.join(", ")}`);
+  }
+
+  if (analysis.reasoning.length < 50) {
+    flags.push("Reasoning too short — possible analysis failure");
   }
 
   const penaltyPerFlag = settings.confidencePenaltyPct / 100;

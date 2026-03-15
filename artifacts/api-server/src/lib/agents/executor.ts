@@ -31,6 +31,25 @@ export async function executeTrade(decision: RiskDecision): Promise<ExecutionRes
   const { analysis } = audit;
   const { candidate } = analysis;
 
+  const [pendingTrade] = await db
+    .insert(tradesTable)
+    .values({
+      kalshiTicker: candidate.market.ticker,
+      title: candidate.market.title || candidate.market.ticker,
+      side: analysis.side,
+      entryPrice: analysis.side === "yes" ? candidate.yesPrice : candidate.noPrice,
+      quantity: decision.positionSize,
+      status: "pending",
+      modelProbability: analysis.modelProbability,
+      edge: analysis.edge,
+      confidence: audit.adjustedConfidence,
+      analystReasoning: analysis.reasoning,
+      auditorFlags: audit.flags,
+      riskScore: decision.riskScore,
+      kellyFraction: decision.kellyFraction,
+    })
+    .returning();
+
   let lastError: string = "";
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
@@ -41,9 +60,9 @@ export async function executeTrade(decision: RiskDecision): Promise<ExecutionRes
 
       const orderParams: Record<string, string | number> = {
         ticker: candidate.market.ticker,
-        action: "buy" as const,
+        action: "buy",
         side: analysis.side,
-        type: "limit" as const,
+        type: "limit",
         count: decision.positionSize,
       };
 
@@ -52,25 +71,6 @@ export async function executeTrade(decision: RiskDecision): Promise<ExecutionRes
       } else {
         orderParams.no_price = priceInCents;
       }
-
-      const [pendingTrade] = await db
-        .insert(tradesTable)
-        .values({
-          kalshiTicker: candidate.market.ticker,
-          title: candidate.market.title || candidate.market.ticker,
-          side: analysis.side,
-          entryPrice: analysis.side === "yes" ? candidate.yesPrice : candidate.noPrice,
-          quantity: decision.positionSize,
-          status: "pending",
-          modelProbability: analysis.modelProbability,
-          edge: analysis.edge,
-          confidence: audit.adjustedConfidence,
-          analystReasoning: analysis.reasoning,
-          auditorFlags: audit.flags,
-          riskScore: decision.riskScore,
-          kellyFraction: decision.kellyFraction,
-        })
-        .returning();
 
       const result = await createOrder(orderParams);
 
@@ -95,29 +95,15 @@ export async function executeTrade(decision: RiskDecision): Promise<ExecutionRes
     }
   }
 
-  const [trade] = await db
-    .insert(tradesTable)
-    .values({
-      kalshiTicker: candidate.market.ticker,
-      title: candidate.market.title || candidate.market.ticker,
-      side: analysis.side,
-      entryPrice: analysis.side === "yes" ? candidate.yesPrice : candidate.noPrice,
-      quantity: decision.positionSize,
-      status: "pending",
-      modelProbability: analysis.modelProbability,
-      edge: analysis.edge,
-      confidence: audit.adjustedConfidence,
-      analystReasoning: analysis.reasoning,
-      auditorFlags: audit.flags,
-      riskScore: decision.riskScore,
-      kellyFraction: decision.kellyFraction,
-    })
-    .returning();
+  await db
+    .update(tradesTable)
+    .set({ status: "pending" })
+    .where(eq(tradesTable.id, pendingTrade.id));
 
   return {
     decision,
     executed: false,
-    tradeId: trade.id,
+    tradeId: pendingTrade.id,
     error: `Failed after ${MAX_RETRIES} attempts: ${lastError}`,
   };
 }
