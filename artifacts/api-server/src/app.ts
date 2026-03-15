@@ -27,9 +27,8 @@ function authMiddleware(req: Request, res: Response, next: NextFunction): void {
     return;
   }
 
-  const origin = req.headers.origin || req.headers.referer || "";
-  const devDomain = process.env.REPLIT_DEV_DOMAIN || "";
-  if (devDomain && origin.includes(devDomain)) {
+  const isReadOnly = req.method === "GET" || req.method === "HEAD" || req.method === "OPTIONS";
+  if (isReadOnly) {
     next();
     return;
   }

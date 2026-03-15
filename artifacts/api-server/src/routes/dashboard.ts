@@ -59,7 +59,7 @@ router.get("/portfolio/balance", async (_req, res): Promise<void> => {
         availableBalance: balanceData.portfolio_value || balanceData.balance,
       })
     );
-  } catch (err: any) {
+  } catch {
     res.json(
       GetPortfolioBalanceResponse.parse({
         balance: 0,
@@ -101,7 +101,7 @@ router.get("/portfolio/positions", async (_req, res): Promise<void> => {
     );
 
     res.json(GetPositionsResponse.parse(positions));
-  } catch (err: any) {
+  } catch {
     res.json(GetPositionsResponse.parse([]));
   }
 });

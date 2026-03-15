@@ -38,6 +38,7 @@ const agentStatuses: Record<string, {
   Auditor: { status: "idle", lastRunAt: null, lastResult: null, errorMessage: null },
   "Risk Manager": { status: "idle", lastRunAt: null, lastResult: null, errorMessage: null },
   Executor: { status: "idle", lastRunAt: null, lastResult: null, errorMessage: null },
+  Reconciler: { status: "idle", lastRunAt: null, lastResult: null, errorMessage: null },
 };
 
 export function getAgentStatuses() {
@@ -211,12 +212,15 @@ export async function runTradingCycle(): Promise<CycleResult> {
     agentResults.push({ agentName: "Executor", status: "success", duration: execDuration, details: `${executed}/${riskApproved.length} executed` });
 
     let reconStart = Date.now();
+    updateAgentStatus("Reconciler", "running");
     try {
       const reconResult = await reconcileOpenTrades();
       const reconDuration = (Date.now() - reconStart) / 1000;
+      updateAgentStatus("Reconciler", "idle", `${reconResult.settled} settled, ${reconResult.errors} errors`);
       agentResults.push({ agentName: "Reconciler", status: "success", duration: reconDuration, details: `${reconResult.settled} settled, ${reconResult.errors} errors` });
     } catch (reconErr: unknown) {
       const reconMsg = reconErr instanceof Error ? reconErr.message : "Unknown error";
+      updateAgentStatus("Reconciler", "error", undefined, reconMsg);
       agentResults.push({ agentName: "Reconciler", status: "error", duration: (Date.now() - reconStart) / 1000, details: reconMsg });
     }
 

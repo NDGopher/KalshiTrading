@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatDistanceToNow, format } from "date-fns";
 import { useQueryClient } from "@tanstack/react-query";
-import { Cpu, Play, Power, AlertTriangle, CheckCircle2, Search, BrainCircuit, ShieldCheck, Scale, Zap } from "lucide-react";
+import { Cpu, Play, Power, AlertTriangle, CheckCircle2, Search, BrainCircuit, ShieldCheck, Scale, Zap, RefreshCw } from "lucide-react";
 
 export default function Agents() {
   const queryClient = useQueryClient();
@@ -37,6 +37,7 @@ export default function Agents() {
     'Auditor': ShieldCheck,
     'Risk Manager': Scale,
     'Executor': Zap,
+    'Reconciler': RefreshCw,
   };
 
   const isPipelineActive = overview?.pipelineActive ?? false;
