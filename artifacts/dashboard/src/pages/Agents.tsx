@@ -57,7 +57,7 @@ export default function Agents() {
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
           <div>
             <h2 className="text-3xl font-bold font-display text-white tracking-tight">Agent Network</h2>
-            <p className="text-muted-foreground mt-1">Monitor the 5-agent orchestration pipeline running 24/7.</p>
+            <p className="text-muted-foreground mt-1">Monitor the 6-agent orchestration pipeline running 24/7.</p>
           </div>
           <div className="flex gap-3">
             <Button 

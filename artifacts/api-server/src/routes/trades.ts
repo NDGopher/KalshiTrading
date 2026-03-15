@@ -98,8 +98,13 @@ router.get("/trades/stats", async (_req, res): Promise<void> => {
   if (lastStatus === "won") currentStreak = streak;
   else if (lastStatus === "lost") currentStreak = -streak;
 
-  const initialBankroll = 100;
-  const roi = initialBankroll > 0 ? (totalPnl / initialBankroll) * 100 : 0;
+  const totalRisked = trades.reduce((sum, t) => {
+    if (t.status === "won" || t.status === "lost") {
+      return sum + (t.quantity * t.entryPrice);
+    }
+    return sum;
+  }, 0);
+  const roi = totalRisked > 0 ? (totalPnl / totalRisked) * 100 : 0;
 
   res.json(
     GetTradeStatsResponse.parse({
