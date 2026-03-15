@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { getMarkets, type KalshiMarket } from "./kalshi-client.js";
 import { analyzeMarket, type AnalysisResult } from "./agents/analyst.js";
 import { auditTrade } from "./agents/auditor.js";
-import { getStrategy, strategies, type Strategy } from "./strategies/index.js";
+import { getStrategy, strategies, type Strategy, type StrategyMetadata } from "./strategies/index.js";
 import type { ScanCandidate } from "./agents/scanner.js";
 
 interface BacktestConfig {
@@ -140,6 +140,7 @@ export async function runBacktest(config: BacktestConfig): Promise<number> {
 
       const stratResult = strategy.shouldTrade(analysis);
       if (!stratResult.trade) continue;
+      const stratMeta = stratResult.metadata;
 
       const auditResult = auditTrade(analysis, {
         minLiquidity: config.minLiquidity,
@@ -168,10 +169,10 @@ export async function runBacktest(config: BacktestConfig): Promise<number> {
         ? quantity * (1 - marketPrice)
         : -quantity * marketPrice;
 
-      const closingPrice = won ? 1.0 : 0.0;
+      const closingLinePrice = market.last_price / 100;
       const impliedEntry = analysis.side === "yes" ? marketPrice : 1 - marketPrice;
-      const impliedClosing = analysis.side === "yes" ? closingPrice : 1 - closingPrice;
-      const clv = impliedClosing - impliedEntry;
+      const impliedClosing = analysis.side === "yes" ? closingLinePrice : 1 - closingLinePrice;
+      const clv = impliedEntry - impliedClosing;
 
       bankroll += pnl;
       pnls.push(pnl);
@@ -192,7 +193,7 @@ export async function runBacktest(config: BacktestConfig): Promise<number> {
         strategyName: config.strategyName,
         side: analysis.side,
         entryPrice: marketPrice,
-        exitPrice: closingPrice,
+        exitPrice: closingLinePrice,
         quantity,
         pnl,
         outcome: won ? "won" : "lost",
@@ -202,6 +203,8 @@ export async function runBacktest(config: BacktestConfig): Promise<number> {
         confidence: analysis.confidence,
         reasoning: analysis.reasoning,
         marketResult: market.result,
+        dipCatch: stratMeta?.dipCatch ?? null,
+        distanceFromPeak: stratMeta?.distanceFromPeak ?? null,
       });
     }
 

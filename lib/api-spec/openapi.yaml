@@ -329,6 +329,47 @@ paths:
                 required:
                   - runs
 
+  /backtest/trades:
+    get:
+      operationId: listBacktestTrades
+      tags: [backtest]
+      summary: Paginated list of backtest trades
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: runId
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Paginated backtest trades
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  trades:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/BacktestTrade"
+                  page:
+                    type: integer
+                  limit:
+                    type: integer
+                required:
+                  - trades
+                  - page
+                  - limit
+
   /backtest/trades/{runId}:
     get:
       operationId: getBacktestTrades
@@ -982,8 +1023,16 @@ components:
           type: number
         confidence:
           type: number
+        clv:
+          type: ["number", "null"]
+        reasoning:
+          type: ["string", "null"]
         marketResult:
           type: ["string", "null"]
+        dipCatch:
+          type: ["boolean", "null"]
+        distanceFromPeak:
+          type: ["number", "null"]
         createdAt:
           type: string
       required:
@@ -1017,7 +1066,11 @@ components:
               type: integer
             outputTokens:
               type: integer
-          required: [costUsd, calls, inputTokens, outputTokens]
+            budgetUsd:
+              type: number
+            exceeded:
+              type: boolean
+          required: [costUsd, calls, inputTokens, outputTokens, budgetUsd, exceeded]
         monthly:
           type: object
           properties:
@@ -1029,7 +1082,13 @@ components:
               type: integer
             outputTokens:
               type: integer
-          required: [costUsd, calls, inputTokens, outputTokens]
+            budgetUsd:
+              type: number
+            exceeded:
+              type: boolean
+            projectedUsd:
+              type: number
+          required: [costUsd, calls, inputTokens, outputTokens, budgetUsd, exceeded, projectedUsd]
         allTime:
           type: object
           properties:
@@ -1038,6 +1097,24 @@ components:
             calls:
               type: integer
           required: [costUsd, calls]
+        byAgent:
+          type: array
+          items:
+            type: object
+            properties:
+              agentName:
+                type: string
+              costUsd:
+                type: number
+              calls:
+                type: integer
+              inputTokens:
+                type: integer
+              outputTokens:
+                type: integer
+            required: [agentName, costUsd, calls, inputTokens, outputTokens]
+        budgetPaused:
+          type: boolean
         recentCalls:
           type: array
           items:
@@ -1046,6 +1123,8 @@ components:
         - daily
         - monthly
         - allTime
+        - byAgent
+        - budgetPaused
         - recentCalls
 
     PaperTrade:

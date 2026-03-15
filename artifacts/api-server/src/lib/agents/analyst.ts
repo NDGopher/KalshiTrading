@@ -13,7 +13,7 @@ export interface AnalysisResult {
 }
 
 const HAIKU_INPUT_COST_PER_M = 0.25;
-const HAIKU_OUTPUT_COST_PER_M = 1.25;
+const HAIKU_OUTPUT_COST_PER_M = 0.80;
 
 export { checkBudget };
 

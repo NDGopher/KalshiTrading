@@ -11,4 +11,6 @@ export type ApiCostSummaryDaily = {
   calls: number;
   inputTokens: number;
   outputTokens: number;
+  budgetUsd: number;
+  exceeded: boolean;
 };

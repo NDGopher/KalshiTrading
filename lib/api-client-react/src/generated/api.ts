@@ -30,6 +30,8 @@ import type {
   GetPaperTradesParams,
   HealthStatus,
   ListAgentRunsParams,
+  ListBacktestTrades200,
+  ListBacktestTradesParams,
   ListTradesParams,
   MarketOpportunity,
   PaperTradeStats,
@@ -1421,6 +1423,103 @@ export function useGetBacktestResults<
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetBacktestResultsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Paginated list of backtest trades
+ */
+export const getListBacktestTradesUrl = (params?: ListBacktestTradesParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/backtest/trades?${stringifiedParams}`
+    : `/api/backtest/trades`;
+};
+
+export const listBacktestTrades = async (
+  params?: ListBacktestTradesParams,
+  options?: RequestInit,
+): Promise<ListBacktestTrades200> => {
+  return customFetch<ListBacktestTrades200>(getListBacktestTradesUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListBacktestTradesQueryKey = (
+  params?: ListBacktestTradesParams,
+) => {
+  return [`/api/backtest/trades`, ...(params ? [params] : [])] as const;
+};
+
+export const getListBacktestTradesQueryOptions = <
+  TData = Awaited<ReturnType<typeof listBacktestTrades>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListBacktestTradesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listBacktestTrades>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListBacktestTradesQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listBacktestTrades>>
+  > = ({ signal }) => listBacktestTrades(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listBacktestTrades>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListBacktestTradesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listBacktestTrades>>
+>;
+export type ListBacktestTradesQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Paginated list of backtest trades
+ */
+
+export function useListBacktestTrades<
+  TData = Awaited<ReturnType<typeof listBacktestTrades>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListBacktestTradesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listBacktestTrades>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListBacktestTradesQueryOptions(params, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

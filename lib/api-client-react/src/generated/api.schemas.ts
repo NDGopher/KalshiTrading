@@ -291,7 +291,15 @@ export interface BacktestTrade {
   edge: number;
   confidence: number;
   /** @nullable */
+  clv?: number | null;
+  /** @nullable */
+  reasoning?: string | null;
+  /** @nullable */
   marketResult?: string | null;
+  /** @nullable */
+  dipCatch?: boolean | null;
+  /** @nullable */
+  distanceFromPeak?: number | null;
   createdAt: string;
 }
 
@@ -300,6 +308,8 @@ export type ApiCostSummaryDaily = {
   calls: number;
   inputTokens: number;
   outputTokens: number;
+  budgetUsd: number;
+  exceeded: boolean;
 };
 
 export type ApiCostSummaryMonthly = {
@@ -307,11 +317,22 @@ export type ApiCostSummaryMonthly = {
   calls: number;
   inputTokens: number;
   outputTokens: number;
+  budgetUsd: number;
+  exceeded: boolean;
+  projectedUsd: number;
 };
 
 export type ApiCostSummaryAllTime = {
   costUsd: number;
   calls: number;
+};
+
+export type ApiCostSummaryByAgentItem = {
+  agentName: string;
+  costUsd: number;
+  calls: number;
+  inputTokens: number;
+  outputTokens: number;
 };
 
 export type ApiCostSummaryRecentCallsItem = { [key: string]: unknown };
@@ -320,6 +341,8 @@ export interface ApiCostSummary {
   daily: ApiCostSummaryDaily;
   monthly: ApiCostSummaryMonthly;
   allTime: ApiCostSummaryAllTime;
+  byAgent: ApiCostSummaryByAgentItem[];
+  budgetPaused: boolean;
   recentCalls: ApiCostSummaryRecentCallsItem[];
 }
 
@@ -392,6 +415,18 @@ export type RunBacktest200 = {
 
 export type GetBacktestResults200 = {
   runs: BacktestRun[];
+};
+
+export type ListBacktestTradesParams = {
+  page?: number;
+  limit?: number;
+  runId?: number;
+};
+
+export type ListBacktestTrades200 = {
+  trades: BacktestTrade[];
+  page: number;
+  limit: number;
 };
 
 export type GetBacktestTrades200 = {

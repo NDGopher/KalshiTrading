@@ -22,6 +22,14 @@ export interface BacktestTrade {
   edge: number;
   confidence: number;
   /** @nullable */
+  clv?: number | null;
+  /** @nullable */
+  reasoning?: string | null;
+  /** @nullable */
   marketResult?: string | null;
+  /** @nullable */
+  dipCatch?: boolean | null;
+  /** @nullable */
+  distanceFromPeak?: number | null;
   createdAt: string;
 }

@@ -135,7 +135,7 @@ Each strategy implements `selectCandidates()` and `shouldTrade()`. The pipeline 
 ## API Cost Tracking
 
 - Every Anthropic API call logs input/output tokens and cost to `api_costs` table
-- Haiku pricing: $0.25/M input, $1.25/M output
+- Haiku pricing: $0.25/M input, $0.80/M output
 - Budget caps: daily ($5 default) and monthly ($50 default) configurable in Settings
 - When budget exceeded, pipeline is paused at cycle start (no scanning/trading)
 - Per-agent cost breakdown and projected monthly spend in costs API

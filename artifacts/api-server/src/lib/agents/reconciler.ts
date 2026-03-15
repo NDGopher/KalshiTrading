@@ -11,7 +11,7 @@ export interface ReconciliationResult {
 function computeClv(trade: typeof tradesTable.$inferSelect, closingPrice: number): number {
   const impliedEntryProb = trade.side === "yes" ? trade.entryPrice : 1 - trade.entryPrice;
   const impliedClosingProb = trade.side === "yes" ? closingPrice : 1 - closingPrice;
-  return impliedClosingProb - impliedEntryProb;
+  return impliedEntryProb - impliedClosingProb;
 }
 
 export async function reconcileOpenTrades(): Promise<ReconciliationResult> {
@@ -53,7 +53,8 @@ export async function reconcileOpenTrades(): Promise<ReconciliationResult> {
 
         const payout = won ? trade.quantity * (1 - trade.entryPrice) : -trade.quantity * trade.entryPrice;
 
-        const closingClv = computeClv(trade, won ? 1.0 : 0.0);
+        const closingLinePrice = lastPrice > 0 ? lastPrice : (won ? 1.0 : 0.0);
+        const closingClv = computeClv(trade, closingLinePrice);
 
         await db
           .update(tradesTable)

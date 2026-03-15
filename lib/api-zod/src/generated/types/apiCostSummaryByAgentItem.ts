@@ -6,12 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type ApiCostSummaryMonthly = {
+export type ApiCostSummaryByAgentItem = {
+  agentName: string;
   costUsd: number;
   calls: number;
   inputTokens: number;
   outputTokens: number;
-  budgetUsd: number;
-  exceeded: boolean;
-  projectedUsd: number;
 };

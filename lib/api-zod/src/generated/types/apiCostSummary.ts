@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { ApiCostSummaryAllTime } from "./apiCostSummaryAllTime";
+import type { ApiCostSummaryByAgentItem } from "./apiCostSummaryByAgentItem";
 import type { ApiCostSummaryDaily } from "./apiCostSummaryDaily";
 import type { ApiCostSummaryMonthly } from "./apiCostSummaryMonthly";
 import type { ApiCostSummaryRecentCallsItem } from "./apiCostSummaryRecentCallsItem";
@@ -14,5 +15,7 @@ export interface ApiCostSummary {
   daily: ApiCostSummaryDaily;
   monthly: ApiCostSummaryMonthly;
   allTime: ApiCostSummaryAllTime;
+  byAgent: ApiCostSummaryByAgentItem[];
+  budgetPaused: boolean;
   recentCalls: ApiCostSummaryRecentCallsItem[];
 }

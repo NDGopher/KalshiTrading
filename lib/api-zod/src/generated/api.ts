@@ -347,6 +347,47 @@ export const GetBacktestResultsResponse = zod.object({
 });
 
 /**
+ * @summary Paginated list of backtest trades
+ */
+export const listBacktestTradesQueryPageDefault = 1;
+export const listBacktestTradesQueryLimitDefault = 50;
+
+export const ListBacktestTradesQueryParams = zod.object({
+  page: zod.coerce.number().default(listBacktestTradesQueryPageDefault),
+  limit: zod.coerce.number().default(listBacktestTradesQueryLimitDefault),
+  runId: zod.coerce.number().optional(),
+});
+
+export const ListBacktestTradesResponse = zod.object({
+  trades: zod.array(
+    zod.object({
+      id: zod.number(),
+      backtestRunId: zod.number(),
+      kalshiTicker: zod.string(),
+      title: zod.string(),
+      strategyName: zod.string(),
+      side: zod.string(),
+      entryPrice: zod.number(),
+      exitPrice: zod.number(),
+      quantity: zod.number(),
+      pnl: zod.number(),
+      outcome: zod.string(),
+      modelProbability: zod.number(),
+      edge: zod.number(),
+      confidence: zod.number(),
+      clv: zod.number().nullish(),
+      reasoning: zod.string().nullish(),
+      marketResult: zod.string().nullish(),
+      dipCatch: zod.boolean().nullish(),
+      distanceFromPeak: zod.number().nullish(),
+      createdAt: zod.string(),
+    }),
+  ),
+  page: zod.number(),
+  limit: zod.number(),
+});
+
+/**
  * @summary Get trades for a backtest run
  */
 export const GetBacktestTradesParams = zod.object({
@@ -370,7 +411,11 @@ export const GetBacktestTradesResponse = zod.object({
       modelProbability: zod.number(),
       edge: zod.number(),
       confidence: zod.number(),
+      clv: zod.number().nullish(),
+      reasoning: zod.string().nullish(),
       marketResult: zod.string().nullish(),
+      dipCatch: zod.boolean().nullish(),
+      distanceFromPeak: zod.number().nullish(),
       createdAt: zod.string(),
     }),
   ),
@@ -385,17 +430,32 @@ export const GetApiCostsResponse = zod.object({
     calls: zod.number(),
     inputTokens: zod.number(),
     outputTokens: zod.number(),
+    budgetUsd: zod.number(),
+    exceeded: zod.boolean(),
   }),
   monthly: zod.object({
     costUsd: zod.number(),
     calls: zod.number(),
     inputTokens: zod.number(),
     outputTokens: zod.number(),
+    budgetUsd: zod.number(),
+    exceeded: zod.boolean(),
+    projectedUsd: zod.number(),
   }),
   allTime: zod.object({
     costUsd: zod.number(),
     calls: zod.number(),
   }),
+  byAgent: zod.array(
+    zod.object({
+      agentName: zod.string(),
+      costUsd: zod.number(),
+      calls: zod.number(),
+      inputTokens: zod.number(),
+      outputTokens: zod.number(),
+    }),
+  ),
+  budgetPaused: zod.boolean(),
   recentCalls: zod.array(zod.object({}).passthrough()),
 });
 

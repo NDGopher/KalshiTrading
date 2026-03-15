@@ -1,4 +1,4 @@
-import { pgTable, serial, text, real, integer, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, real, integer, timestamp, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -20,6 +20,8 @@ export const backtestTradesTable = pgTable("backtest_trades", {
   confidence: real("confidence").notNull(),
   reasoning: text("reasoning"),
   marketResult: text("market_result"),
+  dipCatch: boolean("dip_catch"),
+  distanceFromPeak: real("distance_from_peak"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
