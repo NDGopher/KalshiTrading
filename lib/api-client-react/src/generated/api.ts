@@ -26,9 +26,12 @@ import type {
   GetBacktestResults200,
   GetBacktestStrategies200,
   GetBacktestTrades200,
+  GetIngestionStats200,
   GetPaperTrades200,
   GetPaperTradesParams,
   HealthStatus,
+  IngestHistoricalMarkets200,
+  IngestHistoricalMarketsBody,
   ListAgentRunsParams,
   ListBacktestTrades200,
   ListBacktestTradesParams,
@@ -1608,6 +1611,171 @@ export function useGetBacktestTrades<
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetBacktestTradesQueryOptions(runId, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Ingest settled markets into historical database for backtesting
+ */
+export const getIngestHistoricalMarketsUrl = () => {
+  return `/api/backtest/ingest`;
+};
+
+export const ingestHistoricalMarkets = async (
+  ingestHistoricalMarketsBody: IngestHistoricalMarketsBody,
+  options?: RequestInit,
+): Promise<IngestHistoricalMarkets200> => {
+  return customFetch<IngestHistoricalMarkets200>(
+    getIngestHistoricalMarketsUrl(),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(ingestHistoricalMarketsBody),
+    },
+  );
+};
+
+export const getIngestHistoricalMarketsMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof ingestHistoricalMarkets>>,
+    TError,
+    { data: BodyType<IngestHistoricalMarketsBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof ingestHistoricalMarkets>>,
+  TError,
+  { data: BodyType<IngestHistoricalMarketsBody> },
+  TContext
+> => {
+  const mutationKey = ["ingestHistoricalMarkets"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof ingestHistoricalMarkets>>,
+    { data: BodyType<IngestHistoricalMarketsBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return ingestHistoricalMarkets(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type IngestHistoricalMarketsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof ingestHistoricalMarkets>>
+>;
+export type IngestHistoricalMarketsMutationBody =
+  BodyType<IngestHistoricalMarketsBody>;
+export type IngestHistoricalMarketsMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Ingest settled markets into historical database for backtesting
+ */
+export const useIngestHistoricalMarkets = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof ingestHistoricalMarkets>>,
+    TError,
+    { data: BodyType<IngestHistoricalMarketsBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof ingestHistoricalMarkets>>,
+  TError,
+  { data: BodyType<IngestHistoricalMarketsBody> },
+  TContext
+> => {
+  return useMutation(getIngestHistoricalMarketsMutationOptions(options));
+};
+
+/**
+ * @summary Get historical market ingestion statistics
+ */
+export const getGetIngestionStatsUrl = () => {
+  return `/api/backtest/ingestion-stats`;
+};
+
+export const getIngestionStats = async (
+  options?: RequestInit,
+): Promise<GetIngestionStats200> => {
+  return customFetch<GetIngestionStats200>(getGetIngestionStatsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetIngestionStatsQueryKey = () => {
+  return [`/api/backtest/ingestion-stats`] as const;
+};
+
+export const getGetIngestionStatsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getIngestionStats>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getIngestionStats>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetIngestionStatsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getIngestionStats>>
+  > = ({ signal }) => getIngestionStats({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getIngestionStats>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetIngestionStatsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getIngestionStats>>
+>;
+export type GetIngestionStatsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get historical market ingestion statistics
+ */
+
+export function useGetIngestionStats<
+  TData = Awaited<ReturnType<typeof getIngestionStats>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getIngestionStats>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetIngestionStatsQueryOptions(options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

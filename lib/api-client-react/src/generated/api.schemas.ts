@@ -445,6 +445,28 @@ export type GetBacktestTrades200 = {
   trades: BacktestTrade[];
 };
 
+export type IngestHistoricalMarketsBody = {
+  startDate: string;
+  endDate: string;
+};
+
+export type IngestHistoricalMarkets200 = {
+  message: string;
+  ingested: number;
+  skipped: number;
+};
+
+export type GetIngestionStats200DateRange = {
+  earliest?: string | null;
+  latest?: string | null;
+};
+
+export type GetIngestionStats200 = {
+  totalMarkets: number;
+  settledMarkets: number;
+  dateRange: GetIngestionStats200DateRange;
+};
+
 export type GetPaperTradesParams = {
   limit?: number;
 };

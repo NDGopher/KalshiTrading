@@ -396,6 +396,77 @@ paths:
                 required:
                   - trades
 
+  /backtest/ingest:
+    post:
+      operationId: ingestHistoricalMarkets
+      tags: [backtest]
+      summary: Ingest settled markets into historical database for backtesting
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                startDate:
+                  type: string
+                  format: date
+                endDate:
+                  type: string
+                  format: date
+              required:
+                - startDate
+                - endDate
+      responses:
+        "200":
+          description: Ingestion result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  ingested:
+                    type: integer
+                  skipped:
+                    type: integer
+                required:
+                  - message
+                  - ingested
+                  - skipped
+
+  /backtest/ingestion-stats:
+    get:
+      operationId: getIngestionStats
+      tags: [backtest]
+      summary: Get historical market ingestion statistics
+      responses:
+        "200":
+          description: Ingestion statistics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalMarkets:
+                    type: integer
+                  settledMarkets:
+                    type: integer
+                  dateRange:
+                    type: object
+                    properties:
+                      earliest:
+                        type: string
+                        nullable: true
+                      latest:
+                        type: string
+                        nullable: true
+                required:
+                  - totalMarkets
+                  - settledMarkets
+                  - dateRange
+
   /costs:
     get:
       operationId: getApiCosts

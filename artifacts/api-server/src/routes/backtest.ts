@@ -3,6 +3,7 @@ import { db, backtestRunsTable, backtestTradesTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
 import { runBacktest } from "../lib/backtester.js";
 import { getStrategyNames } from "../lib/strategies/index.js";
+import { ingestSettledMarkets, getIngestionStats } from "../lib/historical-ingestion.js";
 
 const router = Router();
 
@@ -124,6 +125,31 @@ router.get("/backtest/trades/:runId", async (req, res) => {
       .where(eq(backtestTradesTable.backtestRunId, runId))
       .orderBy(desc(backtestTradesTable.createdAt));
     res.json({ trades });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    res.status(500).json({ error: msg });
+  }
+});
+
+router.post("/backtest/ingest", async (req, res) => {
+  try {
+    const { startDate, endDate } = req.body;
+    if (!startDate || !endDate) {
+      res.status(400).json({ error: "startDate and endDate are required" });
+      return;
+    }
+    const result = await ingestSettledMarkets(startDate, endDate);
+    res.json({ message: "Ingestion complete", ...result });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    res.status(500).json({ error: msg });
+  }
+});
+
+router.get("/backtest/ingestion-stats", async (_req, res) => {
+  try {
+    const stats = await getIngestionStats();
+    res.json(stats);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Unknown error";
     res.status(500).json({ error: msg });

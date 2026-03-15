@@ -444,6 +444,32 @@ export const GetBacktestTradesResponse = zod.object({
 });
 
 /**
+ * @summary Ingest settled markets into historical database for backtesting
+ */
+export const IngestHistoricalMarketsBody = zod.object({
+  startDate: zod.date(),
+  endDate: zod.date(),
+});
+
+export const IngestHistoricalMarketsResponse = zod.object({
+  message: zod.string(),
+  ingested: zod.number(),
+  skipped: zod.number(),
+});
+
+/**
+ * @summary Get historical market ingestion statistics
+ */
+export const GetIngestionStatsResponse = zod.object({
+  totalMarkets: zod.number(),
+  settledMarkets: zod.number(),
+  dateRange: zod.object({
+    earliest: zod.string().nullish(),
+    latest: zod.string().nullish(),
+  }),
+});
+
+/**
  * @summary Get API cost breakdown
  */
 export const GetApiCostsResponse = zod.object({

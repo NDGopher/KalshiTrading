@@ -1,5 +1,5 @@
-import { db, backtestRunsTable, backtestTradesTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { db, backtestRunsTable, backtestTradesTable, historicalMarketsTable } from "@workspace/db";
+import { eq, and, gte, lte, sql } from "drizzle-orm";
 import { getMarkets, type KalshiMarket } from "./kalshi-client.js";
 import { analyzeMarket, type AnalysisResult } from "./agents/analyst.js";
 import { auditTrade } from "./agents/auditor.js";
@@ -19,7 +19,7 @@ interface BacktestConfig {
   useAiAnalysis: boolean;
 }
 
-function marketToCandidate(market: KalshiMarket): ScanCandidate | null {
+function marketToCandidate(market: KalshiMarket, simulatedTimeBeforeClose?: number): ScanCandidate | null {
   const yesPrice = market.last_price / 100;
   if (yesPrice <= 0.01 || yesPrice >= 0.99) return null;
 
@@ -27,10 +27,20 @@ function marketToCandidate(market: KalshiMarket): ScanCandidate | null {
   const spread = Math.abs(market.yes_ask - market.yes_bid) / 100;
   const volume24h = market.volume_24h || 0;
   const liquidity = market.liquidity || 0;
-  const expiresAt = new Date(market.expected_expiration_time || market.expiration_time || market.close_time);
-  const hoursToExpiry = Math.max(0, (expiresAt.getTime() - Date.now()) / (1000 * 60 * 60));
+
+  const hoursToExpiry = simulatedTimeBeforeClose ??
+    Math.max(0.5, (new Date(market.expected_expiration_time || market.expiration_time || market.close_time).getTime() - Date.now()) / (1000 * 60 * 60));
 
   return { market, yesPrice, noPrice, spread, volume24h, liquidity, hoursToExpiry };
+}
+
+function simulateHoursBeforeClose(market: KalshiMarket): number {
+  const openTime = new Date(market.open_time || market.close_time).getTime();
+  const closeTime = new Date(market.close_time).getTime();
+  const duration = closeTime - openTime;
+  if (duration <= 0) return 4;
+  const entryFraction = 0.3 + Math.random() * 0.5;
+  return Math.max(0.5, (duration * (1 - entryFraction)) / (1000 * 60 * 60));
 }
 
 function simulateAnalysis(candidate: ScanCandidate, market: KalshiMarket): AnalysisResult {
@@ -57,7 +67,23 @@ function simulateAnalysis(candidate: ScanCandidate, market: KalshiMarket): Analy
   };
 }
 
-export async function fetchSettledMarkets(startDate: string, endDate: string): Promise<KalshiMarket[]> {
+async function fetchFromHistoricalDb(startDate: string, endDate: string): Promise<KalshiMarket[]> {
+  const rows = await db.select()
+    .from(historicalMarketsTable)
+    .where(
+      and(
+        eq(historicalMarketsTable.status, "settled"),
+        gte(historicalMarketsTable.closeTime, new Date(startDate)),
+        lte(historicalMarketsTable.closeTime, new Date(endDate))
+      )
+    );
+
+  return rows
+    .filter((r) => r.result && r.rawData)
+    .map((r) => r.rawData as unknown as KalshiMarket);
+}
+
+async function fetchFromApi(startDate: string, endDate: string): Promise<KalshiMarket[]> {
   const allMarkets: KalshiMarket[] = [];
   let cursor: string | undefined;
   let pages = 0;
@@ -85,6 +111,17 @@ export async function fetchSettledMarkets(startDate: string, endDate: string): P
   }
 
   return allMarkets;
+}
+
+export async function fetchSettledMarkets(startDate: string, endDate: string): Promise<KalshiMarket[]> {
+  const dbMarkets = await fetchFromHistoricalDb(startDate, endDate);
+  if (dbMarkets.length > 0) {
+    console.log(`Loaded ${dbMarkets.length} settled markets from historical DB`);
+    return dbMarkets;
+  }
+
+  console.log("No historical data in DB, fetching from Kalshi API...");
+  return fetchFromApi(startDate, endDate);
 }
 
 export async function runBacktest(config: BacktestConfig): Promise<number> {
@@ -126,7 +163,8 @@ export async function runBacktest(config: BacktestConfig): Promise<number> {
     for (const market of settledMarkets) {
       if (!market.result) continue;
 
-      const candidate = marketToCandidate(market);
+      const simHours = simulateHoursBeforeClose(market);
+      const candidate = marketToCandidate(market, simHours);
       if (!candidate) continue;
 
       const stratCandidates = strategy.selectCandidates([candidate]);

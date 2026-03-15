@@ -99,6 +99,7 @@ export interface KalshiMarket {
   market_type: string;
   yes_sub_title?: string;
   no_sub_title?: string;
+  open_time?: string;
   last_price_dollars?: string;
   liquidity_dollars?: string;
 }

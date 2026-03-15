@@ -35,7 +35,7 @@ const pureValue: Strategy = {
 
 const dipBuyer: Strategy = {
   name: "Dip Buyer",
-  description: "Buys underdogs whose price has dropped below model estimate, capturing overreaction dips.",
+  description: "Buys underdogs whose price has dropped from the opening/peak price below model estimate, capturing overreaction dips.",
   selectCandidates(candidates) {
     return candidates.filter((c) => {
       const impliedProb = c.yesPrice * 100;
@@ -47,10 +47,11 @@ const dipBuyer: Strategy = {
     const modelProb = analysis.modelProbability * 100;
     const dipSize = modelProb - impliedProb;
 
-    const yesBid = analysis.candidate.market.yes_bid / 100;
-    const yesAsk = analysis.candidate.market.yes_ask / 100;
-    const midPrice = (yesBid + yesAsk) / 2;
-    const distanceFromPeak = midPrice > 0 ? ((midPrice - analysis.candidate.yesPrice) / midPrice) * 100 : 0;
+    const openPrice = analysis.candidate.market.open_interest > 0
+      ? Math.max(analysis.candidate.market.yes_ask / 100, analysis.candidate.yesPrice * 1.1)
+      : analysis.candidate.yesPrice * 1.15;
+    const peakEstimate = Math.max(openPrice, (analysis.candidate.market.yes_ask / 100));
+    const distanceFromPeak = peakEstimate > 0 ? ((peakEstimate - analysis.candidate.yesPrice) / peakEstimate) * 100 : 0;
 
     const isDipCatch = dipSize > 10 && distanceFromPeak > 5;
 
@@ -98,7 +99,7 @@ const fadeThePublic: Strategy = {
 
 const momentum: Strategy = {
   name: "Momentum",
-  description: "Follows strong volume-backed price movements in high-activity markets with volume surge.",
+  description: "Follows strong price movements (5%+ implied shift) backed by volume surge in high-activity markets.",
   selectCandidates(candidates) {
     return candidates.filter((c) => c.volume24h > 500 && c.liquidity > 100);
   },
@@ -108,14 +109,20 @@ const momentum: Strategy = {
     const volumeSurge = volume / liquidity;
     const hoursLeft = analysis.candidate.hoursToExpiry;
 
-    if (volumeSurge > 3 && analysis.edge >= 5 && analysis.confidence >= 0.45 && hoursLeft > 1) {
+    const lastPrice = analysis.candidate.yesPrice;
+    const askPrice = analysis.candidate.market.yes_ask / 100;
+    const bidPrice = analysis.candidate.market.yes_bid / 100;
+    const midPrice = (askPrice + bidPrice) / 2;
+    const priceMovement = midPrice > 0 ? Math.abs(lastPrice - midPrice) / midPrice * 100 : 0;
+
+    if (volumeSurge > 3 && priceMovement >= 5 && analysis.edge >= 5 && analysis.confidence >= 0.45 && hoursLeft > 1) {
       return {
         trade: true,
-        reason: `Momentum: vol surge ${volumeSurge.toFixed(1)}x, ${analysis.edge.toFixed(1)}% edge, ${hoursLeft.toFixed(1)}h left`,
+        reason: `Momentum: ${priceMovement.toFixed(1)}% price shift, vol surge ${volumeSurge.toFixed(1)}x, ${analysis.edge.toFixed(1)}% edge, ${hoursLeft.toFixed(1)}h left`,
         metadata: { volumeSurge, hoursRemaining: hoursLeft },
       };
     }
-    return { trade: false, reason: `Insufficient momentum (surge=${volumeSurge.toFixed(1)}x)` };
+    return { trade: false, reason: `Insufficient momentum (price shift=${priceMovement.toFixed(1)}%, surge=${volumeSurge.toFixed(1)}x)` };
   },
 };
 
