@@ -43,26 +43,31 @@ const dipBuyer: Strategy = {
     });
   },
   shouldTrade(analysis) {
-    const impliedProb = analysis.candidate.yesPrice * 100;
+    const currentYesPrice = analysis.candidate.yesPrice;
+    const impliedProb = currentYesPrice * 100;
     const modelProb = analysis.modelProbability * 100;
     const dipSize = modelProb - impliedProb;
 
-    const openPrice = analysis.candidate.market.open_interest > 0
-      ? Math.max(analysis.candidate.market.yes_ask / 100, analysis.candidate.yesPrice * 1.1)
-      : analysis.candidate.yesPrice * 1.15;
-    const peakEstimate = Math.max(openPrice, (analysis.candidate.market.yes_ask / 100));
-    const distanceFromPeak = peakEstimate > 0 ? ((peakEstimate - analysis.candidate.yesPrice) / peakEstimate) * 100 : 0;
+    const market = analysis.candidate.market;
+    const rawOpenPrice = (market as unknown as Record<string, number>).open_price;
+    const openPrice = rawOpenPrice != null && rawOpenPrice > 0
+      ? rawOpenPrice / 100
+      : (market.yes_ask > 0 ? market.yes_ask / 100 : currentYesPrice * 1.15);
+    const peakEstimate = Math.max(openPrice, market.yes_ask / 100, currentYesPrice);
+    const distanceFromPeak = peakEstimate > 0
+      ? ((peakEstimate - currentYesPrice) / peakEstimate) * 100
+      : 0;
 
-    const isDipCatch = dipSize > 10 && distanceFromPeak > 5;
+    const isDipCatch = distanceFromPeak > 8 && dipSize > 8;
 
-    if (dipSize > 10 && analysis.confidence >= 0.35) {
+    if (dipSize > 8 && distanceFromPeak > 5 && analysis.confidence >= 0.35) {
       return {
         trade: true,
-        reason: `Dip buyer: model ${modelProb.toFixed(0)}% vs market ${impliedProb.toFixed(0)}%, underpriced by ${dipSize.toFixed(0)}pp, dist-from-peak ${distanceFromPeak.toFixed(1)}%`,
+        reason: `Dip buyer: model ${modelProb.toFixed(0)}% vs market ${impliedProb.toFixed(0)}%, dip ${dipSize.toFixed(0)}pp from peak (${distanceFromPeak.toFixed(1)}% off)`,
         metadata: { dipCatch: isDipCatch, distanceFromPeak },
       };
     }
-    return { trade: false, reason: `No significant dip detected` };
+    return { trade: false, reason: `No significant dip detected (dip=${dipSize.toFixed(1)}pp, peak-dist=${distanceFromPeak.toFixed(1)}%)` };
   },
 };
 
@@ -109,20 +114,23 @@ const momentum: Strategy = {
     const volumeSurge = volume / liquidity;
     const hoursLeft = analysis.candidate.hoursToExpiry;
 
-    const lastPrice = analysis.candidate.yesPrice;
-    const askPrice = analysis.candidate.market.yes_ask / 100;
-    const bidPrice = analysis.candidate.market.yes_bid / 100;
-    const midPrice = (askPrice + bidPrice) / 2;
-    const priceMovement = midPrice > 0 ? Math.abs(lastPrice - midPrice) / midPrice * 100 : 0;
+    const currentPrice = analysis.candidate.yesPrice;
+    const market = analysis.candidate.market;
+    const rawOpenPrice = (market as unknown as Record<string, number>).open_price;
+    const referencePrice = rawOpenPrice != null && rawOpenPrice > 0
+      ? rawOpenPrice / 100
+      : (market.yes_bid > 0 && market.yes_ask > 0 ? (market.yes_ask / 100 + market.yes_bid / 100) / 2 : currentPrice);
+    const priceMovement = referencePrice > 0 ? Math.abs(currentPrice - referencePrice) / referencePrice * 100 : 0;
+    const trendDirection = currentPrice > referencePrice ? "up" : "down";
 
     if (volumeSurge > 3 && priceMovement >= 5 && analysis.edge >= 5 && analysis.confidence >= 0.45 && hoursLeft > 1) {
       return {
         trade: true,
-        reason: `Momentum: ${priceMovement.toFixed(1)}% price shift, vol surge ${volumeSurge.toFixed(1)}x, ${analysis.edge.toFixed(1)}% edge, ${hoursLeft.toFixed(1)}h left`,
+        reason: `Momentum (${trendDirection}): ${priceMovement.toFixed(1)}% price shift from ref ${(referencePrice * 100).toFixed(0)}c, vol surge ${volumeSurge.toFixed(1)}x, ${analysis.edge.toFixed(1)}% edge`,
         metadata: { volumeSurge, hoursRemaining: hoursLeft },
       };
     }
-    return { trade: false, reason: `Insufficient momentum (price shift=${priceMovement.toFixed(1)}%, surge=${volumeSurge.toFixed(1)}x)` };
+    return { trade: false, reason: `Insufficient momentum (shift=${priceMovement.toFixed(1)}%, surge=${volumeSurge.toFixed(1)}x)` };
   },
 };
 

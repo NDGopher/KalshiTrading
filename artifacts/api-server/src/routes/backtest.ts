@@ -22,7 +22,7 @@ router.post("/backtest/run", async (req, res) => {
       kellyFraction = 0.25,
       minEdge = 5,
       minLiquidity = 100,
-      useAiAnalysis = false,
+      useAiAnalysis = true,
     } = req.body;
 
     if (!startDate || !endDate) {

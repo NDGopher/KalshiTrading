@@ -290,10 +290,14 @@ export async function runBacktest(config: BacktestConfig): Promise<number> {
       if (stratCandidates.length === 0) continue;
 
       let analysis: AnalysisResult;
-      if (config.useAiAnalysis) {
-        analysis = await analyzeMarket(candidate);
-      } else {
+      if (!config.useAiAnalysis) {
         analysis = simulateAnalysis(candidate, market);
+      } else {
+        try {
+          analysis = await analyzeMarket(candidate);
+        } catch {
+          analysis = simulateAnalysis(candidate, market);
+        }
       }
 
       const stratResult = strategy.shouldTrade(analysis);
