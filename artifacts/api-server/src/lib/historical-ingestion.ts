@@ -1,4 +1,4 @@
-import { db, historicalMarketsTable } from "@workspace/db";
+import { db, historicalMarketsTable, marketSnapshotsTable } from "@workspace/db";
 import { getMarkets, type KalshiMarket, SPORTS_SERIES_TICKERS } from "./kalshi-client.js";
 import { eq, and, gte, lte, sql } from "drizzle-orm";
 
@@ -116,6 +116,32 @@ export async function ingestSettledMarkets(startDate: string, endDate: string): 
       snapshotAt: new Date(),
       rawData: market as unknown as Record<string, unknown>,
     });
+
+    const openTime = new Date(market.open_time || market.close_time).getTime();
+    const closeTime = new Date(market.close_time).getTime();
+    const duration = closeTime - openTime;
+    if (duration > 0) {
+      const entryFractions = [0.3, 0.5, 0.7, 0.9];
+      for (const frac of entryFractions) {
+        const snapshotTime = openTime + duration * frac;
+        const hoursToExpiry = (closeTime - snapshotTime) / (1000 * 60 * 60);
+        const yesPriceAtFrac = openPrice != null
+          ? openPrice + (market.last_price / 100 - openPrice) * frac
+          : market.last_price / 100;
+        await db.insert(marketSnapshotsTable).values({
+          kalshiTicker: market.ticker,
+          yesPrice: yesPriceAtFrac,
+          noPrice: 1 - yesPriceAtFrac,
+          yesAsk: market.yes_ask > 0 ? market.yes_ask / 100 : null,
+          yesBid: market.yes_bid > 0 ? market.yes_bid / 100 : null,
+          volume: market.volume_24h || 0,
+          snapshotAt: new Date(snapshotTime),
+          hoursToExpiry,
+          isEventStart: frac >= 0.9 ? 1 : 0,
+        });
+      }
+    }
+
     ingested++;
   }
 

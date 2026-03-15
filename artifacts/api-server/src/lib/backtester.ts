@@ -1,5 +1,5 @@
-import { db, backtestRunsTable, backtestTradesTable, historicalMarketsTable } from "@workspace/db";
-import { eq, and, gte, lte, sql } from "drizzle-orm";
+import { db, backtestRunsTable, backtestTradesTable, historicalMarketsTable, marketSnapshotsTable } from "@workspace/db";
+import { eq, and, gte, lte, sql, desc } from "drizzle-orm";
 import { getMarkets, type KalshiMarket, SPORTS_SERIES_TICKERS } from "./kalshi-client.js";
 import { analyzeMarket, type AnalysisResult } from "./agents/analyst.js";
 import { auditTrade } from "./agents/auditor.js";
@@ -82,6 +82,42 @@ function simulateAnalysis(candidate: ScanCandidate, market: KalshiMarket): Analy
     side,
     reasoning: `Deterministic backtest analysis: vol=${candidate.volume24h}, spread=${candidate.spread.toFixed(3)}, model=${(modelProb * 100).toFixed(1)}%`,
   };
+}
+
+async function getSnapshotForEntry(ticker: string, hoursBeforeClose: number, closeTime: Date): Promise<{ yesPrice: number; noPrice: number; hoursToExpiry: number } | null> {
+  const entryTime = new Date(closeTime.getTime() - hoursBeforeClose * 60 * 60 * 1000);
+  const snapshots = await db.select()
+    .from(marketSnapshotsTable)
+    .where(
+      and(
+        eq(marketSnapshotsTable.kalshiTicker, ticker),
+        lte(marketSnapshotsTable.snapshotAt, entryTime)
+      )
+    )
+    .orderBy(desc(marketSnapshotsTable.snapshotAt))
+    .limit(1);
+
+  if (snapshots.length === 0) return null;
+  const snap = snapshots[0];
+  return {
+    yesPrice: snap.yesPrice,
+    noPrice: snap.noPrice,
+    hoursToExpiry: snap.hoursToExpiry ?? hoursBeforeClose,
+  };
+}
+
+async function getEventStartSnapshot(ticker: string): Promise<number | null> {
+  const snapshots = await db.select()
+    .from(marketSnapshotsTable)
+    .where(
+      and(
+        eq(marketSnapshotsTable.kalshiTicker, ticker),
+        eq(marketSnapshotsTable.isEventStart, 1)
+      )
+    )
+    .limit(1);
+  if (snapshots.length === 0) return null;
+  return snapshots[0].yesPrice;
 }
 
 async function fetchFromHistoricalDb(startDate: string, endDate: string): Promise<KalshiMarket[]> {
@@ -231,7 +267,23 @@ export async function runBacktest(config: BacktestConfig): Promise<number> {
       if (!market.result) continue;
 
       const simHours = simulateHoursBeforeClose(market);
-      const candidate = marketToCandidate(market, simHours);
+      const closeTime = new Date(market.close_time);
+      const snapshot = await getSnapshotForEntry(market.ticker, simHours, closeTime);
+
+      let candidate: ScanCandidate | null;
+      if (snapshot) {
+        candidate = {
+          market,
+          yesPrice: snapshot.yesPrice,
+          noPrice: snapshot.noPrice,
+          spread: Math.abs(market.yes_ask - market.yes_bid) / 100,
+          volume24h: market.volume_24h || 0,
+          liquidity: market.liquidity || 0,
+          hoursToExpiry: snapshot.hoursToExpiry,
+        };
+      } else {
+        candidate = marketToCandidate(market, simHours);
+      }
       if (!candidate) continue;
 
       const stratCandidates = strategy.selectCandidates([candidate]);
@@ -298,10 +350,14 @@ export async function runBacktest(config: BacktestConfig): Promise<number> {
         ? quantity * (1 - marketPrice)
         : -quantity * marketPrice;
 
-      const closingLinePrice = market.last_price / 100;
-      const impliedEntry = analysis.side === "yes" ? marketPrice : 1 - marketPrice;
-      const impliedClosing = analysis.side === "yes" ? closingLinePrice : 1 - closingLinePrice;
-      const clv = impliedEntry - impliedClosing;
+      const eventStartPrice = await getEventStartSnapshot(market.ticker);
+      const closingLinePrice = eventStartPrice ?? market.last_price / 100;
+      let clv: number;
+      if (analysis.side === "yes") {
+        clv = closingLinePrice - marketPrice;
+      } else {
+        clv = (1 - closingLinePrice) - (1 - marketPrice);
+      }
 
       bankroll += pnl;
       pnls.push(pnl);

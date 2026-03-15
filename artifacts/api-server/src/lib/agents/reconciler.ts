@@ -8,10 +8,14 @@ export interface ReconciliationResult {
   errors: number;
 }
 
-function computeClv(trade: typeof tradesTable.$inferSelect, closingPrice: number): number {
-  const impliedEntryProb = trade.side === "yes" ? trade.entryPrice : 1 - trade.entryPrice;
-  const impliedClosingProb = trade.side === "yes" ? closingPrice : 1 - closingPrice;
-  return impliedEntryProb - impliedClosingProb;
+function computeClv(trade: typeof tradesTable.$inferSelect, closingYesPrice: number): number {
+  if (trade.side === "yes") {
+    return closingYesPrice - trade.entryPrice;
+  } else {
+    const entryNoPrice = 1 - trade.entryPrice;
+    const closingNoPrice = 1 - closingYesPrice;
+    return closingNoPrice - entryNoPrice;
+  }
 }
 
 export async function reconcileOpenTrades(): Promise<ReconciliationResult> {
