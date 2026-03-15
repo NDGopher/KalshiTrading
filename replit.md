@@ -99,13 +99,15 @@ artifacts-monorepo/
 
 ## Background Operation
 
-- The API server workflow IS the background process. When `pipelineActive` is true in settings, `rehydratePipeline()` restarts the scheduler on server boot.
-- Pipeline runs via `setInterval` inside the Node process. First cycle runs immediately on start, then repeats at the configured interval.
+- The API server workflow IS the background process. Pipeline defaults to active (`pipelineActive: true`).
+- On server boot, `rehydratePipeline()` checks DB settings and restarts the scheduler automatically.
+- Pipeline runs via `setInterval` inside the Node process. First cycle runs immediately on start, then repeats at the configured interval (default: 60 min).
 - All agent runs (including early-exit and error paths) are persisted to the `agent_runs` table for full observability.
+- No manual intervention needed: pipeline starts scanning on deploy if credentials are configured.
 
 ## Key Configuration
 
-- **Kalshi API**: Configurable via dashboard Settings page or KALSHI_API_KEY env var. Base URL configurable (default: trading-api.kalshi.com)
+- **Kalshi API**: KALSHI_API_KEY env secret (preferred) or dashboard Settings. Base URL configurable (default: api.elections.kalshi.com)
 - **AI**: Anthropic via Replit AI Integrations (no separate key needed)
 - **Scan Interval**: Default 60 minutes (configurable in Settings)
 - **Sport Filters**: NFL, NBA, MLB, Soccer (configurable in Settings)

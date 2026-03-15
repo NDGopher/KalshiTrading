@@ -14,7 +14,7 @@ export const tradingSettingsTable = pgTable("trading_settings", {
   confidencePenaltyPct: real("confidence_penalty_pct").notNull().default(8),
   sportFilters: jsonb("sport_filters").$type<string[]>().default(["NFL", "NBA", "MLB", "Soccer"]),
   scanIntervalMinutes: integer("scan_interval_minutes").notNull().default(60),
-  pipelineActive: boolean("pipeline_active").notNull().default(false),
+  pipelineActive: boolean("pipeline_active").notNull().default(true),
   kalshiApiKey: text("kalshi_api_key"),
   kalshiBaseUrl: text("kalshi_base_url"),
 });

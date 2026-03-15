@@ -1,18 +1,21 @@
 import { db, tradingSettingsTable } from "@workspace/db";
 
-const DEFAULT_BASE_URL = "https://trading-api.kalshi.com/trade-api/v2";
+const DEFAULT_BASE_URL = "https://api.elections.kalshi.com/trade-api/v2";
 
 let sessionToken: string | null = null;
 let tokenExpiresAt: number = 0;
 
 async function loadCredentials(): Promise<{ apiKey: string; baseUrl: string }> {
+  const apiKeyFromEnv = process.env.KALSHI_API_KEY;
+  const baseUrlFromEnv = process.env.KALSHI_BASE_URL;
+
   const [settings] = await db.select().from(tradingSettingsTable).limit(1);
 
-  const apiKey = settings?.kalshiApiKey || process.env.KALSHI_API_KEY;
-  const baseUrl = settings?.kalshiBaseUrl || process.env.KALSHI_BASE_URL || DEFAULT_BASE_URL;
+  const apiKey = apiKeyFromEnv || settings?.kalshiApiKey;
+  const baseUrl = baseUrlFromEnv || settings?.kalshiBaseUrl || DEFAULT_BASE_URL;
 
   if (!apiKey) {
-    throw new Error("Kalshi API key not configured. Set it in Dashboard Settings or via KALSHI_API_KEY environment variable.");
+    throw new Error("Kalshi API key not configured. Set KALSHI_API_KEY environment secret (preferred) or enter via Dashboard Settings.");
   }
 
   return { apiKey, baseUrl };
