@@ -28,7 +28,7 @@ export const GetDashboardOverviewResponse = zod.object({
   openPositions: zod.number(),
   pipelineActive: zod.boolean(),
   lastRunAt: zod.string().nullish(),
-  paperTradingMode: zod.boolean().optional(),
+  paperTradingMode: zod.boolean(),
 });
 
 /**

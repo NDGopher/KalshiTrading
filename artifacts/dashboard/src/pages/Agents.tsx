@@ -1,4 +1,4 @@
-import { useGetAgentStatus, useGetDashboardOverview, useListAgentRuns, useToggleAgentPipeline, useRunTradingCycle } from "@workspace/api-client-react";
+import { useGetAgentStatus, useGetDashboardOverview, useListAgentRuns, useToggleAgentPipeline, useRunTradingCycle, getGetAgentStatusQueryKey, getGetDashboardOverviewQueryKey, getListAgentRunsQueryKey } from "@workspace/api-client-react";
 import { Layout } from "@/components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -10,9 +10,9 @@ import { Cpu, Play, Power, AlertTriangle, CheckCircle2, Search, BrainCircuit, Sh
 export default function Agents() {
   const queryClient = useQueryClient();
   
-  const { data: agents } = useGetAgentStatus({ query: { refetchInterval: 5000 } });
-  const { data: runs } = useListAgentRuns({ limit: 10 }, { query: { refetchInterval: 5000 } });
-  const { data: overview } = useGetDashboardOverview({ query: { refetchInterval: 5000 } });
+  const { data: agents } = useGetAgentStatus({ query: { queryKey: getGetAgentStatusQueryKey(), refetchInterval: 5000 } });
+  const { data: runs } = useListAgentRuns({ limit: 10 }, { query: { queryKey: getListAgentRunsQueryKey({ limit: 10 }), refetchInterval: 5000 } });
+  const { data: overview } = useGetDashboardOverview({ query: { queryKey: getGetDashboardOverviewQueryKey(), refetchInterval: 5000 } });
   
   const toggleMutation = useToggleAgentPipeline({
     mutation: {

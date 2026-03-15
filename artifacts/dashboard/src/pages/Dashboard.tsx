@@ -1,4 +1,4 @@
-import { useGetDashboardOverview, useGetPositions } from "@workspace/api-client-react";
+import { useGetDashboardOverview, useGetPositions, getGetDashboardOverviewQueryKey, getGetPositionsQueryKey } from "@workspace/api-client-react";
 import { Layout } from "@/components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -8,11 +8,11 @@ import { motion } from "framer-motion";
 
 export default function Dashboard() {
   const { data: overview, isLoading: overviewLoading } = useGetDashboardOverview({
-    query: { refetchInterval: 10000 }
+    query: { queryKey: getGetDashboardOverviewQueryKey(), refetchInterval: 10000 }
   });
   
   const { data: positions, isLoading: positionsLoading } = useGetPositions({
-    query: { refetchInterval: 10000 }
+    query: { queryKey: getGetPositionsQueryKey(), refetchInterval: 10000 }
   });
 
   const isPositive = (val?: number | null) => (val || 0) >= 0;

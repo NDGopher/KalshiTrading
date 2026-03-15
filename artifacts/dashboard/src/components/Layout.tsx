@@ -12,7 +12,7 @@ import {
   FileText
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useGetDashboardOverview } from "@workspace/api-client-react";
+import { useGetDashboardOverview, getGetDashboardOverviewQueryKey } from "@workspace/api-client-react";
 
 interface LayoutProps {
   children: ReactNode;
@@ -20,7 +20,7 @@ interface LayoutProps {
 
 export function Layout({ children }: LayoutProps) {
   const [location] = useLocation();
-  const { data: overview } = useGetDashboardOverview({ query: { refetchInterval: 10000 } });
+  const { data: overview } = useGetDashboardOverview({ query: { queryKey: getGetDashboardOverviewQueryKey(), refetchInterval: 10000 } });
 
   const navItems = [
     { href: "/", label: "Dashboard", icon: LayoutDashboard },

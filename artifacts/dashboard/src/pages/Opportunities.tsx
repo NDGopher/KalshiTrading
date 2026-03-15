@@ -1,4 +1,4 @@
-import { useGetMarketOpportunities, useTriggerMarketScan } from "@workspace/api-client-react";
+import { useGetMarketOpportunities, useTriggerMarketScan, getGetMarketOpportunitiesQueryKey } from "@workspace/api-client-react";
 import { Layout } from "@/components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -12,7 +12,7 @@ import { useState } from "react";
 export default function Opportunities() {
   const queryClient = useQueryClient();
   const { data: opportunities, isLoading } = useGetMarketOpportunities({
-    query: { refetchInterval: 15000 }
+    query: { queryKey: getGetMarketOpportunitiesQueryKey(), refetchInterval: 15000 }
   });
   
   const scanMutation = useTriggerMarketScan({

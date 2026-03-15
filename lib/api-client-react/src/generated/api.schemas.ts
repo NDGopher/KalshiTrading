@@ -19,7 +19,7 @@ export interface DashboardOverview {
   pipelineActive: boolean;
   /** @nullable */
   lastRunAt?: string | null;
-  paperTradingMode?: boolean;
+  paperTradingMode: boolean;
 }
 
 export interface ScanResult {

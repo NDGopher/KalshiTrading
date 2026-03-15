@@ -1,4 +1,4 @@
-import { useListTrades, useGetTradeStats } from "@workspace/api-client-react";
+import { useListTrades, useGetTradeStats, getListTradesQueryKey } from "@workspace/api-client-react";
 import type { TradeListResponse } from "@workspace/api-client-react";
 import { Layout } from "@/components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,10 +11,11 @@ import { ListTradesStatus } from "@workspace/api-client-react";
 
 export default function Trades() {
   const [filter, setFilter] = useState<ListTradesStatus | 'all'>('all');
+  const tradeParams = { limit: 50, status: filter === 'all' ? undefined : filter as ListTradesStatus };
   
   const { data: tradesData, isLoading: tradesLoading } = useListTrades(
-    { limit: 50, status: filter === 'all' ? undefined : filter as ListTradesStatus },
-    { query: { placeholderData: (prev: TradeListResponse | undefined) => prev } }
+    tradeParams,
+    { query: { queryKey: getListTradesQueryKey(tradeParams), placeholderData: (prev: TradeListResponse | undefined) => prev } }
   );
   
   const { data: stats } = useGetTradeStats();

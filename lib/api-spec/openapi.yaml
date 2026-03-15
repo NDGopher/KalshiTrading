@@ -523,6 +523,7 @@ components:
         - totalTrades
         - openPositions
         - pipelineActive
+        - paperTradingMode
 
     ScanResult:
       type: object
