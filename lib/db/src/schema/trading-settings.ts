@@ -15,6 +15,8 @@ export const tradingSettingsTable = pgTable("trading_settings", {
   sportFilters: jsonb("sport_filters").$type<string[]>().default(["NFL", "NBA", "MLB", "Soccer"]),
   scanIntervalMinutes: integer("scan_interval_minutes").notNull().default(60),
   pipelineActive: boolean("pipeline_active").notNull().default(false),
+  kalshiApiKey: text("kalshi_api_key"),
+  kalshiBaseUrl: text("kalshi_base_url"),
 });
 
 export const insertTradingSettingsSchema = createInsertSchema(tradingSettingsTable).omit({ id: true });

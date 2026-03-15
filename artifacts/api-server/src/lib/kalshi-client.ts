@@ -1,22 +1,34 @@
-const KALSHI_BASE_URL = process.env.KALSHI_BASE_URL || "https://trading-api.kalshi.com/trade-api/v2";
+import { db, tradingSettingsTable } from "@workspace/db";
+
+const DEFAULT_BASE_URL = "https://trading-api.kalshi.com/trade-api/v2";
 
 let sessionToken: string | null = null;
 let tokenExpiresAt: number = 0;
 
-async function ensureAuth(): Promise<string> {
-  const apiKey = process.env.KALSHI_API_KEY;
+async function loadCredentials(): Promise<{ apiKey: string; baseUrl: string }> {
+  const [settings] = await db.select().from(tradingSettingsTable).limit(1);
+
+  const apiKey = settings?.kalshiApiKey || process.env.KALSHI_API_KEY;
+  const baseUrl = settings?.kalshiBaseUrl || process.env.KALSHI_BASE_URL || DEFAULT_BASE_URL;
+
   if (!apiKey) {
-    throw new Error("KALSHI_API_KEY environment variable is not set. Provide a Kalshi API key or login token.");
+    throw new Error("Kalshi API key not configured. Set it in Dashboard Settings or via KALSHI_API_KEY environment variable.");
   }
+
+  return { apiKey, baseUrl };
+}
+
+async function ensureAuth(): Promise<{ token: string; baseUrl: string }> {
+  const { apiKey, baseUrl } = await loadCredentials();
 
   const email = process.env.KALSHI_EMAIL;
   const password = process.env.KALSHI_PASSWORD;
 
   if (email && password) {
     if (sessionToken && Date.now() < tokenExpiresAt) {
-      return sessionToken;
+      return { token: sessionToken, baseUrl };
     }
-    const loginRes = await fetch(`${KALSHI_BASE_URL}/login`, {
+    const loginRes = await fetch(`${baseUrl}/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password }),
@@ -27,24 +39,27 @@ async function ensureAuth(): Promise<string> {
     const loginData = (await loginRes.json()) as { token: string };
     sessionToken = loginData.token;
     tokenExpiresAt = Date.now() + 55 * 60 * 1000;
-    return sessionToken;
+    return { token: sessionToken, baseUrl };
   }
 
-  return apiKey;
+  return { token: apiKey, baseUrl };
 }
 
-async function getHeaders(): Promise<Record<string, string>> {
-  const token = await ensureAuth();
+async function getHeaders(): Promise<{ headers: Record<string, string>; baseUrl: string }> {
+  const { token, baseUrl } = await ensureAuth();
   return {
-    "Authorization": `Bearer ${token}`,
-    "Content-Type": "application/json",
-    "Accept": "application/json",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json",
+      "Accept": "application/json",
+    },
+    baseUrl,
   };
 }
 
 async function kalshiFetch<T = unknown>(path: string, options: RequestInit = {}): Promise<T> {
-  const url = `${KALSHI_BASE_URL}${path}`;
-  const headers = await getHeaders();
+  const { headers, baseUrl } = await getHeaders();
+  const url = `${baseUrl}${path}`;
   const res = await fetch(url, {
     ...options,
     headers: { ...headers, ...(options.headers as Record<string, string> || {}) },

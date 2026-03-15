@@ -2,7 +2,7 @@
 
 ## Overview
 
-Multi-agent automated sports trading system for Kalshi prediction markets. Features a 5-agent pipeline (Scanner → Analyst → Auditor → Risk Manager → Executor) with Claude AI analysis, running on a configurable schedule. Includes a React dashboard for monitoring P&L, trades, market opportunities, agent status, and risk settings.
+Multi-agent automated sports trading system for Kalshi prediction markets. Features a 6-agent pipeline (Scanner → Analyst → Auditor → Risk Manager → Executor → Reconciler) with Claude AI analysis, running on a configurable schedule. Includes a React dashboard for monitoring P&L, trades, market opportunities, agent status, and risk/credential settings.
 
 **Target Sports**: NFL, NBA, MLB, Soccer (all major sports)
 
@@ -29,14 +29,14 @@ artifacts-monorepo/
 │   │   └── src/
 │   │       ├── lib/
 │   │       │   ├── kalshi-client.ts    # Kalshi REST API v2 client
-│   │       │   └── agents/             # 5-agent pipeline
+│   │       │   └── agents/             # 6-agent pipeline
 │   │       │       ├── scanner.ts      # Market scanner (finds sports markets)
 │   │       │       ├── analyst.ts      # Claude AI analyst (evaluates edge)
-│   │       │       ├── auditor.ts      # Constraint validator
+│   │       │       ├── auditor.ts      # Constraint validator (hard-blocks flagged trades)
 │   │       │       ├── risk-manager.ts # Position sizing (Quarter Kelly)
-│   │       │       ├── executor.ts     # Order execution on Kalshi
+│   │       │       ├── executor.ts     # Order execution on Kalshi (3 retries, "failed" terminal)
 │   │       │       ├── reconciler.ts   # Trade settlement reconciliation
-│   │       │       └── pipeline.ts     # Orchestrator + scheduler
+│   │       │       └── pipeline.ts     # Orchestrator + scheduler + scanAndDiscover
 │   │       └── routes/                 # Express route handlers
 │   └── dashboard/            # React + Vite frontend (port from PORT env)
 │       └── src/
@@ -56,9 +56,9 @@ artifacts-monorepo/
 
 ## Database Schema
 
-- **trades**: Trade history with market ticker, side, price, quantity, P&L, agent reasoning
-- **agent_runs**: Log of each agent execution (scanner, analyst, auditor, risk_manager, executor)
-- **trading_settings**: Risk parameters (Kelly fraction, max drawdown, position limits, sport filters)
+- **trades**: Trade history with market ticker, side, price, quantity, P&L, agent reasoning. Status: open | won | lost | pending | cancelled | failed
+- **agent_runs**: Log of each agent execution (scanner, analyst, auditor, risk_manager, executor, reconciler)
+- **trading_settings**: Risk parameters, sport filters, Kalshi API credentials (kalshi_api_key, kalshi_base_url)
 - **market_opportunities**: Detected opportunities with edge analysis from AI
 
 ## API Endpoints (all under /api)
@@ -67,12 +67,14 @@ artifacts-monorepo/
 - `GET /api/positions` — Current open positions with unrealized P&L
 - `GET /api/trades` — Trade history with optional status filter
 - `GET /api/markets/opportunities` — AI-detected market opportunities
-- `GET /api/agents/status` — Status of all 5 agents
+- `POST /api/markets/scan` — Scan-only (Scanner→Analyst→Auditor, no execution)
+- `GET /api/agents/status` — Status of all 6 agents
 - `GET /api/agents/logs` — Recent agent run logs
-- `POST /api/agents/run-cycle` — Trigger a single pipeline cycle
+- `POST /api/agents/run-cycle` — Trigger a single full pipeline cycle
 - `POST /api/agents/halt` — Emergency halt the pipeline
-- `GET /api/settings` — Current risk/trading settings
-- `PUT /api/settings` — Update risk/trading settings
+- `GET /api/settings` — Current risk/trading settings (kalshiApiKeySet boolean, never exposes key)
+- `PUT /api/settings` — Update risk/trading settings and Kalshi credentials
+- `POST /api/settings/test-connection` — Test Kalshi API connection
 - `POST /api/pipeline/start` — Start the automated scheduler
 - `POST /api/pipeline/stop` — Stop the automated scheduler
 
@@ -80,19 +82,25 @@ artifacts-monorepo/
 
 1. **Scanner**: Fetches active sports markets from Kalshi API, filters by sport/liquidity/time
 2. **Analyst**: Uses Claude AI to evaluate each market, estimate true probability, calculate edge
-3. **Auditor**: Validates against constraints (min edge, min liquidity, min time to expiry)
+3. **Auditor**: Hard-blocks any flagged trades (zero-flag pass only). Flags: low liquidity, close expiry, wide spread, insufficient edge, low confidence, hallucination pattern, short reasoning
 4. **Risk Manager**: Sizes positions using Quarter Kelly criterion, checks drawdown limits
-5. **Executor**: Places limit orders on Kalshi via their REST API
-6. **Reconciler**: Checks open trades against Kalshi API for settlement, updates won/lost status and P&L
+5. **Executor**: Places limit orders on Kalshi via their REST API. 3 retries; exhausted retries → "failed" status
+6. **Reconciler**: Checks open trades with kalshiOrderId against Kalshi API for settlement. Cancelled orders → "cancelled" status
 
 **Risk Controls**: 3-loss streak circuit breaker, 15% max drawdown halt, 10% max position size
 
+## Auth
+
+- API_SECRET: auto-generated if not set (secure by default). Mutations require Bearer token; GET/HEAD/OPTIONS are open.
+- Kalshi credentials: stored in DB settings (write-only, never returned in reads). Falls back to KALSHI_API_KEY env var.
+
 ## Key Configuration
 
-- **Kalshi API**: `KALSHI_API_KEY` secret, base URL `https://api.elections.kalshi.com/trade-api/v2`
+- **Kalshi API**: Configurable via dashboard Settings page or KALSHI_API_KEY env var. Base URL configurable (default: trading-api.kalshi.com)
 - **AI**: Anthropic via Replit AI Integrations (no separate key needed)
 - **Scan Interval**: Default 60 minutes (configurable in Settings)
 - **Sport Filters**: NFL, NBA, MLB, Soccer (configurable in Settings)
+- **Confidence Penalty**: Default 8% (configurable in Settings)
 
 ## Development Commands
 
@@ -109,3 +117,16 @@ Every package extends `tsconfig.base.json` which sets `composite: true`. The roo
 - **Always typecheck from the root** — `pnpm run typecheck`
 - **`emitDeclarationOnly`** — only `.d.ts` files emitted during typecheck; JS bundling by esbuild/vite
 - **Project references** — when package A depends on package B, A's `tsconfig.json` must list B in its `references` array
+- **After editing generated schemas**: rebuild api-client-react declarations before dashboard typecheck
+
+## Trade Status Values
+
+`open | won | lost | pending | cancelled | failed` — all 6 must be in OpenAPI spec, `lib/api-zod/src/generated/api.ts` (two places), `lib/api-client-react/src/generated/api.schemas.ts` (TradeStatus and ListTradesStatus)
+
+## Important Notes
+
+- scanAndDiscover() runs Scanner→Analyst→Auditor only (no Risk/Executor/Reconciler). Used by /markets/scan.
+- runTradingCycle() runs full 6-agent pipeline. Used by /agents/run-cycle and the automated scheduler.
+- Edge values are already in percent units (e.g. 15 means 15%). Do not multiply by 100 when displaying.
+- Win rate calculation excludes cancelled, pending, and failed trades.
+- Pipeline active state is read from overview.pipelineActive API field, not inferred from agent statuses.

@@ -185,6 +185,8 @@ export interface TradingSettings {
   sportFilters: string[];
   scanIntervalMinutes: number;
   pipelineActive: boolean;
+  kalshiApiKeySet: boolean;
+  kalshiBaseUrl: string | null;
 }
 
 export interface UpdateSettingsBody {
@@ -199,6 +201,8 @@ export interface UpdateSettingsBody {
   sportFilters?: string[];
   scanIntervalMinutes?: number;
   pipelineActive?: boolean;
+  kalshiApiKey?: string;
+  kalshiBaseUrl?: string | null;
 }
 
 export interface PortfolioBalance {

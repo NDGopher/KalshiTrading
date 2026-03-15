@@ -206,6 +206,8 @@ export const GetSettingsResponse = zod.object({
   sportFilters: zod.array(zod.string()),
   scanIntervalMinutes: zod.number(),
   pipelineActive: zod.boolean(),
+  kalshiApiKeySet: zod.boolean(),
+  kalshiBaseUrl: zod.string().nullable(),
 });
 
 /**
@@ -224,6 +226,8 @@ export const UpdateSettingsBody = zod.object({
   sportFilters: zod.array(zod.string()).optional(),
   scanIntervalMinutes: zod.number().optional(),
   pipelineActive: zod.boolean().optional(),
+  kalshiApiKey: zod.string().optional(),
+  kalshiBaseUrl: zod.string().nullable().optional(),
 });
 
 export const UpdateSettingsResponse = zod.object({
@@ -239,6 +243,8 @@ export const UpdateSettingsResponse = zod.object({
   sportFilters: zod.array(zod.string()),
   scanIntervalMinutes: zod.number(),
   pipelineActive: zod.boolean(),
+  kalshiApiKeySet: zod.boolean(),
+  kalshiBaseUrl: zod.string().nullable(),
 });
 
 /**

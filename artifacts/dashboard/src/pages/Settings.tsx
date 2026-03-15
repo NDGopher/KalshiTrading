@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { useEffect } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 
@@ -24,10 +24,18 @@ const settingsSchema = z.object({
 
 type SettingsFormValues = z.infer<typeof settingsSchema>;
 
+const API_BASE = `${import.meta.env.BASE_URL}api`;
+
 export default function Settings() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { data: settings, isLoading } = useGetSettings();
+
+  const [kalshiApiKey, setKalshiApiKey] = useState("");
+  const [kalshiBaseUrl, setKalshiBaseUrl] = useState("");
+  const [credSaving, setCredSaving] = useState(false);
+  const [testingConnection, setTestingConnection] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<{ success: boolean; message: string } | null>(null);
   
   const updateMutation = useUpdateSettings({
     mutation: {
@@ -59,6 +67,7 @@ export default function Settings() {
         confidencePenaltyPct: settings.confidencePenaltyPct,
         sportFilters: (settings.sportFilters || []).join(", "),
       });
+      setKalshiBaseUrl(settings.kalshiBaseUrl || "");
     }
   }, [settings, reset]);
 
@@ -70,18 +79,118 @@ export default function Settings() {
     updateMutation.mutate({ data: payload });
   };
 
+  const saveCredentials = useCallback(async () => {
+    setCredSaving(true);
+    try {
+      const body: Record<string, string | null> = {};
+      if (kalshiApiKey) body.kalshiApiKey = kalshiApiKey;
+      if (kalshiBaseUrl !== (settings?.kalshiBaseUrl || "")) body.kalshiBaseUrl = kalshiBaseUrl || null;
+      await fetch(`${API_BASE}/settings`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      queryClient.invalidateQueries({ queryKey: ['/api/settings'] });
+      setKalshiApiKey("");
+      toast({ title: "Credentials Saved", description: "Kalshi API credentials updated." });
+    } catch {
+      toast({ title: "Error", description: "Failed to save credentials.", variant: "destructive" });
+    } finally {
+      setCredSaving(false);
+    }
+  }, [kalshiApiKey, kalshiBaseUrl, settings, queryClient, toast]);
+
+  const testConnection = useCallback(async () => {
+    setTestingConnection(true);
+    setConnectionStatus(null);
+    try {
+      const res = await fetch(`${API_BASE}/settings/test-connection`, { method: "POST" });
+      const data = await res.json();
+      if (data.success) {
+        setConnectionStatus({ success: true, message: `Connected. Balance: $${(data.balance / 100).toFixed(2)}` });
+      } else {
+        setConnectionStatus({ success: false, message: data.error || "Connection failed" });
+      }
+    } catch {
+      setConnectionStatus({ success: false, message: "Network error" });
+    } finally {
+      setTestingConnection(false);
+    }
+  }, []);
+
   return (
     <Layout>
       <div className="max-w-4xl mx-auto space-y-8">
         
         <div>
-          <h2 className="text-3xl font-bold font-display text-white tracking-tight">Risk Parameters</h2>
-          <p className="text-muted-foreground mt-1">Configure trading boundaries and agent constraints.</p>
+          <h2 className="text-3xl font-bold font-display text-white tracking-tight">Configuration</h2>
+          <p className="text-muted-foreground mt-1">Manage API credentials, risk parameters, and agent constraints.</p>
         </div>
 
         {isLoading ? (
           <div className="text-center p-12 text-muted-foreground">Loading settings...</div>
         ) : (
+          <div className="space-y-6">
+            <Card className="glass-panel border-white/10">
+              <CardHeader className="border-b border-white/5 bg-black/20">
+                <CardTitle>Kalshi API Credentials</CardTitle>
+                <CardDescription>
+                  {settings?.kalshiApiKeySet
+                    ? "API key is configured."
+                    : "No API key set. Configure one to enable trading."}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="p-6 space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-white">API Key</label>
+                    <input
+                      type="password"
+                      value={kalshiApiKey}
+                      onChange={(e) => setKalshiApiKey(e.target.value)}
+                      placeholder={settings?.kalshiApiKeySet ? "••••••••••••" : "Enter Kalshi API key"}
+                      className="flex h-10 w-full rounded-md border border-white/10 bg-black/50 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary/50"
+                    />
+                    <p className="text-xs text-muted-foreground">Write-only. Never displayed after saving.</p>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-white">Base URL (optional)</label>
+                    <input
+                      type="text"
+                      value={kalshiBaseUrl}
+                      onChange={(e) => setKalshiBaseUrl(e.target.value)}
+                      placeholder="https://trading-api.kalshi.com/trade-api/v2"
+                      className="flex h-10 w-full rounded-md border border-white/10 bg-black/50 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary/50"
+                    />
+                    <p className="text-xs text-muted-foreground">Override for demo/sandbox environments.</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Button
+                    type="button"
+                    onClick={saveCredentials}
+                    disabled={credSaving || (!kalshiApiKey && kalshiBaseUrl === (settings?.kalshiBaseUrl || ""))}
+                    className="bg-primary text-black hover:bg-primary/90 font-semibold"
+                  >
+                    {credSaving ? "Saving..." : "Save Credentials"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={testConnection}
+                    disabled={testingConnection}
+                  >
+                    {testingConnection ? "Testing..." : "Test Connection"}
+                  </Button>
+                  {connectionStatus && (
+                    <span className={`text-sm ${connectionStatus.success ? "text-green-400" : "text-red-400"}`}>
+                      {connectionStatus.message}
+                    </span>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
             
             <Card className="glass-panel border-white/10">
@@ -223,6 +332,7 @@ export default function Settings() {
               </Button>
             </div>
           </form>
+          </div>
         )}
       </div>
     </Layout>

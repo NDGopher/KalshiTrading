@@ -6,6 +6,7 @@ import {
   UpdateSettingsBody,
   UpdateSettingsResponse,
 } from "@workspace/api-zod";
+import { getBalance } from "../lib/kalshi-client.js";
 
 const router: IRouter = Router();
 
@@ -32,24 +33,28 @@ async function ensureSettings() {
   return created;
 }
 
+function settingsToResponse(settings: typeof tradingSettingsTable.$inferSelect) {
+  return {
+    id: settings.id,
+    maxPositionPct: settings.maxPositionPct,
+    kellyFraction: settings.kellyFraction,
+    maxConsecutiveLosses: settings.maxConsecutiveLosses,
+    maxDrawdownPct: settings.maxDrawdownPct,
+    minEdge: settings.minEdge,
+    minLiquidity: settings.minLiquidity,
+    minTimeToExpiry: settings.minTimeToExpiry,
+    confidencePenaltyPct: settings.confidencePenaltyPct,
+    sportFilters: settings.sportFilters as string[],
+    scanIntervalMinutes: settings.scanIntervalMinutes,
+    pipelineActive: settings.pipelineActive,
+    kalshiApiKeySet: !!(settings.kalshiApiKey || process.env.KALSHI_API_KEY),
+    kalshiBaseUrl: settings.kalshiBaseUrl || null,
+  };
+}
+
 router.get("/settings", async (_req, res): Promise<void> => {
   const settings = await ensureSettings();
-  res.json(
-    GetSettingsResponse.parse({
-      id: settings.id,
-      maxPositionPct: settings.maxPositionPct,
-      kellyFraction: settings.kellyFraction,
-      maxConsecutiveLosses: settings.maxConsecutiveLosses,
-      maxDrawdownPct: settings.maxDrawdownPct,
-      minEdge: settings.minEdge,
-      minLiquidity: settings.minLiquidity,
-      minTimeToExpiry: settings.minTimeToExpiry,
-      confidencePenaltyPct: settings.confidencePenaltyPct,
-      sportFilters: settings.sportFilters as string[],
-      scanIntervalMinutes: settings.scanIntervalMinutes,
-      pipelineActive: settings.pipelineActive,
-    })
-  );
+  res.json(GetSettingsResponse.parse(settingsToResponse(settings)));
 });
 
 router.put("/settings", async (req, res): Promise<void> => {
@@ -73,6 +78,8 @@ router.put("/settings", async (req, res): Promise<void> => {
   if (parsed.data.sportFilters !== undefined) updateData.sportFilters = parsed.data.sportFilters;
   if (parsed.data.scanIntervalMinutes !== undefined) updateData.scanIntervalMinutes = parsed.data.scanIntervalMinutes;
   if (parsed.data.pipelineActive !== undefined) updateData.pipelineActive = parsed.data.pipelineActive;
+  if (parsed.data.kalshiApiKey !== undefined) updateData.kalshiApiKey = parsed.data.kalshiApiKey;
+  if (parsed.data.kalshiBaseUrl !== undefined) updateData.kalshiBaseUrl = parsed.data.kalshiBaseUrl;
 
   const [updated] = await db
     .update(tradingSettingsTable)
@@ -80,22 +87,17 @@ router.put("/settings", async (req, res): Promise<void> => {
     .where(eq(tradingSettingsTable.id, current.id))
     .returning();
 
-  res.json(
-    UpdateSettingsResponse.parse({
-      id: updated.id,
-      maxPositionPct: updated.maxPositionPct,
-      kellyFraction: updated.kellyFraction,
-      maxConsecutiveLosses: updated.maxConsecutiveLosses,
-      maxDrawdownPct: updated.maxDrawdownPct,
-      minEdge: updated.minEdge,
-      minLiquidity: updated.minLiquidity,
-      minTimeToExpiry: updated.minTimeToExpiry,
-      confidencePenaltyPct: updated.confidencePenaltyPct,
-      sportFilters: updated.sportFilters as string[],
-      scanIntervalMinutes: updated.scanIntervalMinutes,
-      pipelineActive: updated.pipelineActive,
-    })
-  );
+  res.json(UpdateSettingsResponse.parse(settingsToResponse(updated)));
+});
+
+router.post("/settings/test-connection", async (_req, res): Promise<void> => {
+  try {
+    const balance = await getBalance();
+    res.json({ success: true, balance: balance.balance });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    res.json({ success: false, error: message });
+  }
 });
 
 export default router;
