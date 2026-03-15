@@ -51,6 +51,7 @@ export * from "./reconcilePaperTrades200";
 export * from "./resetPaperTrades200";
 export * from "./runBacktest200";
 export * from "./scanResult";
+export * from "./testConnection200";
 export * from "./togglePipelineBody";
 export * from "./trade";
 export * from "./tradeListResponse";

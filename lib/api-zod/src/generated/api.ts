@@ -292,6 +292,15 @@ export const UpdateSettingsResponse = zod.object({
 });
 
 /**
+ * @summary Test Kalshi API connection
+ */
+export const TestConnectionResponse = zod.object({
+  connected: zod.boolean(),
+  balance: zod.number().optional(),
+  error: zod.string().optional(),
+});
+
+/**
  * Returns current Kalshi account balance
  * @summary Get Kalshi portfolio balance
  */

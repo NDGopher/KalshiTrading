@@ -232,6 +232,28 @@ paths:
               schema:
                 $ref: "#/components/schemas/TradingSettings"
 
+  /settings/test-connection:
+    post:
+      operationId: testConnection
+      tags: [settings]
+      summary: Test Kalshi API connection
+      responses:
+        "200":
+          description: Connection test result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  connected:
+                    type: boolean
+                  balance:
+                    type: number
+                  error:
+                    type: string
+                required:
+                  - connected
+
   /portfolio/balance:
     get:
       operationId: getPortfolioBalance

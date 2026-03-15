@@ -278,7 +278,7 @@ export default function Backtest() {
                     <CardContent className="p-4 text-center">
                       <div className="text-xs text-muted-foreground uppercase tracking-wider">Avg CLV</div>
                       <div className={`text-lg font-mono font-bold mt-1 ${(selectedRun.avgClv ?? 0) >= 0 ? "text-green-400" : "text-red-400"}`}>
-                        {selectedRun.avgClv != null ? (selectedRun.avgClv * 100).toFixed(2) + "%" : "N/A"}
+                        {selectedRun.avgClv != null ? (selectedRun.avgClv * 100).toFixed(2) + "c" : "N/A"}
                       </div>
                     </CardContent>
                   </Card>
@@ -341,7 +341,7 @@ export default function Backtest() {
                               {s.avgRoi != null ? `${s.avgRoi.toFixed(1)}%` : "—"}
                             </td>
                             <td className={`p-3 text-right font-mono ${(s.avgClv ?? 0) >= 0 ? "text-green-400" : "text-red-400"}`}>
-                              {s.avgClv != null ? s.avgClv.toFixed(1) : "—"}
+                              {s.avgClv != null ? `${(s.avgClv * 100).toFixed(1)}c` : "—"}
                             </td>
                             <td className="p-3 text-right font-mono text-white">{s.avgSharpe != null ? s.avgSharpe.toFixed(2) : "—"}</td>
                             <td className="p-3 text-right font-mono text-white">

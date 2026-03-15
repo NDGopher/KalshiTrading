@@ -426,6 +426,12 @@ export type ListAgentRunsParams = {
   limit?: number;
 };
 
+export type TestConnection200 = {
+  connected: boolean;
+  balance?: number;
+  error?: string;
+};
+
 export type GetBacktestStrategies200 = {
   strategies: string[];
 };
