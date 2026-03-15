@@ -73,7 +73,7 @@ export const listTradesQueryOffsetDefault = 0;
 export const ListTradesQueryParams = zod.object({
   limit: zod.coerce.number().default(listTradesQueryLimitDefault),
   offset: zod.coerce.number().default(listTradesQueryOffsetDefault),
-  status: zod.enum(["open", "won", "lost", "pending"]).optional(),
+  status: zod.enum(["open", "won", "lost", "pending", "cancelled"]).optional(),
 });
 
 export const ListTradesResponse = zod.object({
@@ -87,7 +87,7 @@ export const ListTradesResponse = zod.object({
       exitPrice: zod.number().nullish(),
       quantity: zod.number(),
       pnl: zod.number().nullish(),
-      status: zod.enum(["open", "won", "lost", "pending"]),
+      status: zod.enum(["open", "won", "lost", "pending", "cancelled"]),
       modelProbability: zod.number(),
       edge: zod.number(),
       confidence: zod.number(),

@@ -18,7 +18,7 @@ interface LayoutProps {
 
 export function Layout({ children }: LayoutProps) {
   const [location] = useLocation();
-  const { data: overview } = useGetDashboardOverview({ query: { refetchInterval: 10000 } as object });
+  const { data: overview } = useGetDashboardOverview({ query: { refetchInterval: 10000 } });
 
   const navItems = [
     { href: "/", label: "Dashboard", icon: LayoutDashboard },

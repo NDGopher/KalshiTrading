@@ -12,7 +12,7 @@ import { useState } from "react";
 export default function Opportunities() {
   const queryClient = useQueryClient();
   const { data: opportunities, isLoading } = useGetMarketOpportunities({
-    query: { refetchInterval: 15000 } as object
+    query: { refetchInterval: 15000 }
   });
   
   const scanMutation = useTriggerMarketScan({

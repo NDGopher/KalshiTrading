@@ -1,5 +1,5 @@
 import { db, tradesTable } from "@workspace/db";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { getOrder, getMarket } from "../kalshi-client.js";
 
 export interface ReconciliationResult {
@@ -12,25 +12,27 @@ export async function reconcileOpenTrades(): Promise<ReconciliationResult> {
   const openTrades = await db
     .select()
     .from(tradesTable)
-    .where(inArray(tradesTable.status, ["open", "pending"]));
+    .where(inArray(tradesTable.status, ["open"]));
 
   let reconciled = 0;
   let settled = 0;
   let errors = 0;
 
   for (const trade of openTrades) {
-    try {
-      if (trade.kalshiOrderId) {
-        const { order } = await getOrder(trade.kalshiOrderId);
+    if (!trade.kalshiOrderId) {
+      continue;
+    }
 
-        if (order.status === "canceled" || order.status === "cancelled") {
-          await db
-            .update(tradesTable)
-            .set({ status: "cancelled", pnl: 0, closedAt: new Date() })
-            .where(eq(tradesTable.id, trade.id));
-          reconciled++;
-          continue;
-        }
+    try {
+      const { order } = await getOrder(trade.kalshiOrderId);
+
+      if (order.status === "canceled" || order.status === "cancelled") {
+        await db
+          .update(tradesTable)
+          .set({ status: "cancelled", pnl: 0, closedAt: new Date() })
+          .where(eq(tradesTable.id, trade.id));
+        reconciled++;
+        continue;
       }
 
       const { market } = await getMarket(trade.kalshiTicker);

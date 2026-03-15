@@ -1,4 +1,4 @@
-import { useGetAgentStatus, useListAgentRuns, useToggleAgentPipeline, useRunTradingCycle } from "@workspace/api-client-react";
+import { useGetAgentStatus, useGetDashboardOverview, useListAgentRuns, useToggleAgentPipeline, useRunTradingCycle } from "@workspace/api-client-react";
 import { Layout } from "@/components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -10,8 +10,9 @@ import { Cpu, Play, Power, AlertTriangle, CheckCircle2, Search, BrainCircuit, Sh
 export default function Agents() {
   const queryClient = useQueryClient();
   
-  const { data: agents } = useGetAgentStatus({ query: { refetchInterval: 5000 } as object });
-  const { data: runs } = useListAgentRuns({ limit: 10 }, { query: { refetchInterval: 5000 } as object });
+  const { data: agents } = useGetAgentStatus({ query: { refetchInterval: 5000 } });
+  const { data: runs } = useListAgentRuns({ limit: 10 }, { query: { refetchInterval: 5000 } });
+  const { data: overview } = useGetDashboardOverview({ query: { refetchInterval: 5000 } });
   
   const toggleMutation = useToggleAgentPipeline({
     mutation: {
@@ -38,7 +39,7 @@ export default function Agents() {
     'Executor': Zap,
   };
 
-  const isPipelineActive = agents?.some(a => a.status !== 'disabled') ?? false;
+  const isPipelineActive = overview?.pipelineActive ?? false;
 
   const handleToggle = () => {
     toggleMutation.mutate({ data: { active: !isPipelineActive } });

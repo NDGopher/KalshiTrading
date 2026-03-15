@@ -1,4 +1,5 @@
 import { useListTrades, useGetTradeStats } from "@workspace/api-client-react";
+import type { TradeListResponse } from "@workspace/api-client-react";
 import { Layout } from "@/components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -13,7 +14,7 @@ export default function Trades() {
   
   const { data: tradesData, isLoading: tradesLoading } = useListTrades(
     { limit: 50, status: filter === 'all' ? undefined : filter as ListTradesStatus },
-    { query: { placeholderData: (prev: unknown) => prev } as object }
+    { query: { placeholderData: (prev: TradeListResponse | undefined) => prev } }
   );
   
   const { data: stats } = useGetTradeStats();
