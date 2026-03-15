@@ -1,15 +1,24 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Kalshi Sports AI Trading System API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: dashboard
+    description: Dashboard overview
+  - name: markets
+    description: Market scanning
+  - name: trades
+    description: Trade history
+  - name: agents
+    description: Agent pipeline control
+  - name: settings
+    description: Trading settings
 paths:
   /healthz:
     get:
@@ -24,6 +33,229 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /dashboard/overview:
+    get:
+      operationId: getDashboardOverview
+      tags: [dashboard]
+      summary: Get dashboard overview
+      description: Returns portfolio balance, P&L, win rate, and recent activity
+      responses:
+        "200":
+          description: Dashboard overview data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardOverview"
+
+  /markets/scan:
+    post:
+      operationId: triggerMarketScan
+      tags: [markets]
+      summary: Trigger a market scan
+      description: Manually triggers the scanner agent to scan Kalshi sports markets
+      responses:
+        "200":
+          description: Scan results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScanResult"
+
+  /markets/opportunities:
+    get:
+      operationId: getMarketOpportunities
+      tags: [markets]
+      summary: Get current market opportunities
+      description: Returns markets the scanner has identified with potential edge
+      responses:
+        "200":
+          description: List of opportunities
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MarketOpportunity"
+
+  /trades:
+    get:
+      operationId: listTrades
+      tags: [trades]
+      summary: List all trades
+      description: Returns trade history with optional filters
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [open, won, lost, pending]
+      responses:
+        "200":
+          description: List of trades
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TradeListResponse"
+
+  /trades/stats:
+    get:
+      operationId: getTradeStats
+      tags: [trades]
+      summary: Get trading statistics
+      description: Returns win rate, total P&L, ROI, and other stats
+      responses:
+        "200":
+          description: Trading statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TradeStats"
+
+  /agents/status:
+    get:
+      operationId: getAgentStatus
+      tags: [agents]
+      summary: Get agent pipeline status
+      description: Returns the status of all six agents in the pipeline
+      responses:
+        "200":
+          description: Agent status list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AgentStatus"
+
+  /agents/runs:
+    get:
+      operationId: listAgentRuns
+      tags: [agents]
+      summary: List recent agent runs
+      description: Returns recent agent pipeline execution logs
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: List of agent runs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AgentRun"
+
+  /agents/toggle:
+    post:
+      operationId: toggleAgentPipeline
+      tags: [agents]
+      summary: Start or stop the agent pipeline
+      description: Toggle the automated trading pipeline on or off
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TogglePipelineBody"
+      responses:
+        "200":
+          description: Pipeline status updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PipelineStatus"
+
+  /agents/run-cycle:
+    post:
+      operationId: runTradingCycle
+      tags: [agents]
+      summary: Run one trading cycle manually
+      description: Runs the full agent pipeline once (scan, analyze, audit, risk, execute)
+      responses:
+        "200":
+          description: Cycle results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CycleResult"
+
+  /settings:
+    get:
+      operationId: getSettings
+      tags: [settings]
+      summary: Get trading settings
+      description: Returns current risk management and trading configuration
+      responses:
+        "200":
+          description: Current settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TradingSettings"
+    put:
+      operationId: updateSettings
+      tags: [settings]
+      summary: Update trading settings
+      description: Update risk management and trading configuration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSettingsBody"
+      responses:
+        "200":
+          description: Updated settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TradingSettings"
+
+  /portfolio/balance:
+    get:
+      operationId: getPortfolioBalance
+      tags: [dashboard]
+      summary: Get Kalshi portfolio balance
+      description: Returns current Kalshi account balance
+      responses:
+        "200":
+          description: Portfolio balance
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortfolioBalance"
+
+  /portfolio/positions:
+    get:
+      operationId: getPositions
+      tags: [dashboard]
+      summary: Get open positions
+      description: Returns current open positions from Kalshi
+      responses:
+        "200":
+          description: List of positions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Position"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +266,405 @@ components:
       required:
         - status
 
+    DashboardOverview:
+      type: object
+      properties:
+        balance:
+          type: number
+        totalPnl:
+          type: number
+        todayPnl:
+          type: number
+        winRate:
+          type: number
+        totalTrades:
+          type: integer
+        openPositions:
+          type: integer
+        pipelineActive:
+          type: boolean
+        lastRunAt:
+          type: ["string", "null"]
+          format: date-time
+      required:
+        - balance
+        - totalPnl
+        - todayPnl
+        - winRate
+        - totalTrades
+        - openPositions
+        - pipelineActive
+
+    ScanResult:
+      type: object
+      properties:
+        marketsScanned:
+          type: integer
+        opportunitiesFound:
+          type: integer
+        scanDuration:
+          type: number
+        timestamp:
+          type: string
+          format: date-time
+      required:
+        - marketsScanned
+        - opportunitiesFound
+        - scanDuration
+        - timestamp
+
+    MarketOpportunity:
+      type: object
+      properties:
+        id:
+          type: integer
+        kalshiTicker:
+          type: string
+        title:
+          type: string
+        category:
+          type: string
+        currentYesPrice:
+          type: number
+        modelProbability:
+          type: number
+        edge:
+          type: number
+        confidence:
+          type: number
+        side:
+          type: string
+          enum: [yes, no]
+        volume24h:
+          type: number
+        expiresAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - kalshiTicker
+        - title
+        - category
+        - currentYesPrice
+        - modelProbability
+        - edge
+        - confidence
+        - side
+        - expiresAt
+        - createdAt
+
+    Trade:
+      type: object
+      properties:
+        id:
+          type: integer
+        kalshiTicker:
+          type: string
+        title:
+          type: string
+        side:
+          type: string
+          enum: [yes, no]
+        entryPrice:
+          type: number
+        exitPrice:
+          type: ["number", "null"]
+        quantity:
+          type: integer
+        pnl:
+          type: ["number", "null"]
+        status:
+          type: string
+          enum: [open, won, lost, pending]
+        modelProbability:
+          type: number
+        edge:
+          type: number
+        confidence:
+          type: number
+        analystReasoning:
+          type: ["string", "null"]
+        auditorFlags:
+          type: array
+          items:
+            type: string
+        riskScore:
+          type: number
+        kellyFraction:
+          type: number
+        createdAt:
+          type: string
+          format: date-time
+        closedAt:
+          type: ["string", "null"]
+          format: date-time
+      required:
+        - id
+        - kalshiTicker
+        - title
+        - side
+        - entryPrice
+        - quantity
+        - status
+        - modelProbability
+        - edge
+        - confidence
+        - riskScore
+        - kellyFraction
+        - createdAt
+
+    TradeListResponse:
+      type: object
+      properties:
+        trades:
+          type: array
+          items:
+            $ref: "#/components/schemas/Trade"
+        total:
+          type: integer
+      required:
+        - trades
+        - total
+
+    TradeStats:
+      type: object
+      properties:
+        totalTrades:
+          type: integer
+        wins:
+          type: integer
+        losses:
+          type: integer
+        winRate:
+          type: number
+        totalPnl:
+          type: number
+        todayPnl:
+          type: number
+        avgEdge:
+          type: number
+        avgConfidence:
+          type: number
+        currentStreak:
+          type: integer
+        bestStreak:
+          type: integer
+        worstStreak:
+          type: integer
+        roi:
+          type: number
+      required:
+        - totalTrades
+        - wins
+        - losses
+        - winRate
+        - totalPnl
+        - todayPnl
+        - avgEdge
+        - avgConfidence
+        - currentStreak
+        - bestStreak
+        - worstStreak
+        - roi
+
+    AgentStatus:
+      type: object
+      properties:
+        name:
+          type: string
+        status:
+          type: string
+          enum: [idle, running, error, disabled]
+        lastRunAt:
+          type: ["string", "null"]
+          format: date-time
+        lastResult:
+          type: ["string", "null"]
+        errorMessage:
+          type: ["string", "null"]
+      required:
+        - name
+        - status
+
+    AgentRun:
+      type: object
+      properties:
+        id:
+          type: integer
+        agentName:
+          type: string
+        status:
+          type: string
+          enum: [success, error, skipped]
+        duration:
+          type: number
+        details:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - agentName
+        - status
+        - duration
+        - createdAt
+
+    TogglePipelineBody:
+      type: object
+      properties:
+        active:
+          type: boolean
+      required:
+        - active
+
+    PipelineStatus:
+      type: object
+      properties:
+        active:
+          type: boolean
+        message:
+          type: string
+      required:
+        - active
+        - message
+
+    CycleResult:
+      type: object
+      properties:
+        marketsScanned:
+          type: integer
+        opportunitiesFound:
+          type: integer
+        tradesExecuted:
+          type: integer
+        tradesSkipped:
+          type: integer
+        totalDuration:
+          type: number
+        agentResults:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentRun"
+      required:
+        - marketsScanned
+        - opportunitiesFound
+        - tradesExecuted
+        - tradesSkipped
+        - totalDuration
+        - agentResults
+
+    TradingSettings:
+      type: object
+      properties:
+        id:
+          type: integer
+        maxPositionPct:
+          type: number
+        kellyFraction:
+          type: number
+        maxConsecutiveLosses:
+          type: integer
+        maxDrawdownPct:
+          type: number
+        minEdge:
+          type: number
+        minLiquidity:
+          type: number
+        minTimeToExpiry:
+          type: integer
+        confidencePenaltyPct:
+          type: number
+        sportFilters:
+          type: array
+          items:
+            type: string
+        scanIntervalMinutes:
+          type: integer
+        pipelineActive:
+          type: boolean
+      required:
+        - id
+        - maxPositionPct
+        - kellyFraction
+        - maxConsecutiveLosses
+        - maxDrawdownPct
+        - minEdge
+        - minLiquidity
+        - minTimeToExpiry
+        - confidencePenaltyPct
+        - sportFilters
+        - scanIntervalMinutes
+        - pipelineActive
+
+    UpdateSettingsBody:
+      type: object
+      properties:
+        maxPositionPct:
+          type: number
+        kellyFraction:
+          type: number
+        maxConsecutiveLosses:
+          type: integer
+        maxDrawdownPct:
+          type: number
+        minEdge:
+          type: number
+        minLiquidity:
+          type: number
+        minTimeToExpiry:
+          type: integer
+        confidencePenaltyPct:
+          type: number
+        sportFilters:
+          type: array
+          items:
+            type: string
+        scanIntervalMinutes:
+          type: integer
+        pipelineActive:
+          type: boolean
+
+    PortfolioBalance:
+      type: object
+      properties:
+        balance:
+          type: number
+        availableBalance:
+          type: number
+      required:
+        - balance
+        - availableBalance
+
+    Position:
+      type: object
+      properties:
+        ticker:
+          type: string
+        title:
+          type: string
+        side:
+          type: string
+          enum: [yes, no]
+        quantity:
+          type: integer
+        avgPrice:
+          type: number
+        currentPrice:
+          type: number
+        unrealizedPnl:
+          type: number
+        marketStatus:
+          type: string
+      required:
+        - ticker
+        - title
+        - side
+        - quantity
+        - avgPrice
+        - currentPrice
+        - unrealizedPnl
+        - marketStatus

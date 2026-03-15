@@ -1,8 +1,18 @@
 import { Router, type IRouter } from "express";
 import healthRouter from "./health";
+import dashboardRouter from "./dashboard";
+import marketsRouter from "./markets";
+import tradesRouter from "./trades";
+import agentsRouter from "./agents";
+import settingsRouter from "./settings";
 
 const router: IRouter = Router();
 
 router.use(healthRouter);
+router.use(dashboardRouter);
+router.use(marketsRouter);
+router.use(tradesRouter);
+router.use(agentsRouter);
+router.use(settingsRouter);
 
 export default router;

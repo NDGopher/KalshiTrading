@@ -1,0 +1,57 @@
+import { Router, type IRouter } from "express";
+import { db, marketOpportunitiesTable } from "@workspace/db";
+import { desc } from "drizzle-orm";
+import { scanMarkets } from "../lib/agents/scanner.js";
+import {
+  TriggerMarketScanResponse,
+  GetMarketOpportunitiesResponse,
+} from "@workspace/api-zod";
+
+const router: IRouter = Router();
+
+router.post("/markets/scan", async (_req, res): Promise<void> => {
+  const start = Date.now();
+  try {
+    const result = await scanMarkets();
+    const duration = (Date.now() - start) / 1000;
+
+    res.json(
+      TriggerMarketScanResponse.parse({
+        marketsScanned: result.totalScanned,
+        opportunitiesFound: result.candidates.length,
+        scanDuration: duration,
+        timestamp: new Date().toISOString(),
+      })
+    );
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get("/markets/opportunities", async (_req, res): Promise<void> => {
+  const opportunities = await db
+    .select()
+    .from(marketOpportunitiesTable)
+    .orderBy(desc(marketOpportunitiesTable.edge));
+
+  res.json(
+    GetMarketOpportunitiesResponse.parse(
+      opportunities.map((o) => ({
+        id: o.id,
+        kalshiTicker: o.kalshiTicker,
+        title: o.title,
+        category: o.category,
+        currentYesPrice: o.currentYesPrice,
+        modelProbability: o.modelProbability,
+        edge: o.edge,
+        confidence: o.confidence,
+        side: o.side,
+        volume24h: o.volume24h,
+        expiresAt: o.expiresAt.toISOString(),
+        createdAt: o.createdAt.toISOString(),
+      }))
+    )
+  );
+});
+
+export default router;

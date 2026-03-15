@@ -1,0 +1,18 @@
+packages:
+  "recharts": "For beautiful charts and data visualization in the trading dashboard"
+  "framer-motion": "For smooth agent status transitions and page animations"
+  "date-fns": "For formatting timestamps and expiry dates"
+  "clsx": "Utility for constructing className strings conditionally"
+  "tailwind-merge": "Utility for merging tailwind classes without style conflicts"
+  "@hookform/resolvers": "Zod validation for settings form"
+  "react-hook-form": "Performant form state management for settings"
+
+images:
+  - path: "artifacts/dashboard/public/images/auth-bg.png"
+    description: "Abstract dark fintech background with subtle glowing neon cyan and indigo geometric grid lines, representing algorithmic trading data flow, premium deep space aesthetic"
+    aspect_ratio: "16:9"
+
+notes:
+  - Using provided API hooks from @workspace/api-client-react
+  - Implemented dark mode professional styling exclusively
+  - Polling active on dashboard and agent status for real-time feel

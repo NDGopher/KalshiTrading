@@ -1,0 +1,117 @@
+import { ReactNode } from "react";
+import { Link, useLocation } from "wouter";
+import { 
+  LayoutDashboard, 
+  Activity, 
+  History, 
+  Cpu, 
+  Settings, 
+  TrendingUp,
+  Zap
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import { useGetDashboardOverview } from "@workspace/api-client-react";
+
+interface LayoutProps {
+  children: ReactNode;
+}
+
+export function Layout({ children }: LayoutProps) {
+  const [location] = useLocation();
+  const { data: overview } = useGetDashboardOverview({ query: { refetchInterval: 10000 } });
+
+  const navItems = [
+    { href: "/", label: "Dashboard", icon: LayoutDashboard },
+    { href: "/opportunities", label: "Opportunities", icon: Activity },
+    { href: "/trades", label: "Trade History", icon: History },
+    { href: "/agents", label: "Agent Status", icon: Cpu },
+    { href: "/settings", label: "Settings", icon: Settings },
+  ];
+
+  return (
+    <div className="min-h-screen bg-background text-foreground flex">
+      {/* Sidebar */}
+      <aside className="w-64 border-r border-white/5 bg-card/30 backdrop-blur-xl flex flex-col fixed inset-y-0 z-10">
+        <div className="h-16 flex items-center px-6 border-b border-white/5">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center shadow-lg shadow-primary/20">
+              <TrendingUp className="w-5 h-5 text-white" />
+            </div>
+            <span className="font-display font-bold text-lg text-white tracking-tight">Kalshi<span className="text-primary">AI</span></span>
+          </div>
+        </div>
+
+        <div className="flex-1 py-6 flex flex-col gap-1 px-3 overflow-y-auto">
+          <div className="px-3 mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Navigation</div>
+          {navItems.map((item) => {
+            const isActive = location === item.href;
+            return (
+              <Link 
+                key={item.href} 
+                href={item.href}
+                className={cn(
+                  "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 text-sm font-medium",
+                  isActive 
+                    ? "bg-primary/10 text-primary shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]" 
+                    : "text-muted-foreground hover:bg-white/5 hover:text-white"
+                )}
+              >
+                <item.icon className={cn("w-4 h-4", isActive ? "text-primary" : "text-muted-foreground")} />
+                {item.label}
+              </Link>
+            );
+          })}
+        </div>
+
+        {/* Pipeline Status Indicator */}
+        <div className="p-4 border-t border-white/5 bg-black/20">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-muted-foreground">Pipeline</span>
+            <div className="flex items-center gap-2">
+              {overview?.pipelineActive ? (
+                <>
+                  <span className="relative flex h-2.5 w-2.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-success shadow-[0_0_10px_rgba(var(--color-success),0.5)]"></span>
+                  </span>
+                  <span className="text-xs font-bold text-success uppercase tracking-wider">Active</span>
+                </>
+              ) : (
+                <>
+                  <span className="h-2.5 w-2.5 rounded-full bg-muted-foreground"></span>
+                  <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Halted</span>
+                </>
+              )}
+            </div>
+          </div>
+          {overview?.lastRunAt && (
+             <div className="mt-2 text-xs text-muted-foreground/70 flex items-center gap-1">
+               <Zap className="w-3 h-3" />
+               Last run: {new Date(overview.lastRunAt).toLocaleTimeString()}
+             </div>
+          )}
+        </div>
+      </aside>
+
+      {/* Main Content */}
+      <main className="flex-1 ml-64 flex flex-col min-h-screen">
+        <header className="h-16 border-b border-white/5 bg-background/80 backdrop-blur-md sticky top-0 z-10 flex items-center justify-between px-8">
+          <h1 className="font-display font-semibold text-lg text-white">
+            {navItems.find(i => i.href === location)?.label || "Dashboard"}
+          </h1>
+          <div className="flex items-center gap-4">
+            <div className="flex flex-col items-end">
+              <span className="text-xs text-muted-foreground">Portfolio Balance</span>
+              <span className="font-mono font-bold text-white">
+                {overview ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(overview.balance) : '...'}
+              </span>
+            </div>
+          </div>
+        </header>
+        <div className="p-8 flex-1 animate-in fade-in duration-500">
+          {children}
+        </div>
+      </main>
+    </div>
+  );
+}
