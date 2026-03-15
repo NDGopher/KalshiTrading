@@ -1,4 +1,4 @@
-import { useGetSettings, useUpdateSettings } from "@workspace/api-client-react";
+import { useUpdateSettings } from "@workspace/api-client-react";
 import { Layout } from "@/components/Layout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,35 @@ import { useEffect, useState, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { DollarSign, FileText, Shield } from "lucide-react";
+
+interface SettingsData {
+  id: number;
+  maxPositionPct: number;
+  kellyFraction: number;
+  maxConsecutiveLosses: number;
+  maxDrawdownPct: number;
+  maxSimultaneousPositions: number;
+  minEdge: number;
+  minLiquidity: number;
+  minTimeToExpiry: number;
+  confidencePenaltyPct: number;
+  sportFilters: string[];
+  scanIntervalMinutes: number;
+  pipelineActive: boolean;
+  paperTradingMode: boolean;
+  paperBalance: number;
+  dailyBudgetUsd: number;
+  monthlyBudgetUsd: number;
+  kalshiApiKeySet: boolean;
+  kalshiBaseUrl: string | null;
+  budgetStatus: {
+    dailySpend: number;
+    monthlySpend: number;
+    dailyExceeded: boolean;
+    monthlyExceeded: boolean;
+    budgetPaused: boolean;
+  };
+}
 
 const settingsSchema = z.object({
   maxPositionPct: z.coerce.number().min(1).max(50),
@@ -44,7 +73,13 @@ function useCosts() {
 export default function Settings() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { data: settings, isLoading } = useGetSettings();
+  const { data: settings, isLoading } = useQuery({
+    queryKey: ["/api/settings"],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/settings`);
+      return res.json() as Promise<SettingsData>;
+    },
+  });
   const { data: costs } = useCosts();
 
   const [kalshiApiKey, setKalshiApiKey] = useState("");
@@ -78,18 +113,18 @@ export default function Settings() {
         kellyFraction: settings.kellyFraction,
         maxDrawdownPct: settings.maxDrawdownPct,
         maxConsecutiveLosses: settings.maxConsecutiveLosses,
-        maxSimultaneousPositions: (settings as any).maxSimultaneousPositions || 8,
+        maxSimultaneousPositions: settings.maxSimultaneousPositions || 8,
         minEdge: settings.minEdge,
         minLiquidity: settings.minLiquidity,
         minTimeToExpiry: settings.minTimeToExpiry,
         scanIntervalMinutes: settings.scanIntervalMinutes,
         confidencePenaltyPct: settings.confidencePenaltyPct,
         sportFilters: (settings.sportFilters || []).join(", "),
-        dailyBudgetUsd: (settings as any).dailyBudgetUsd || 5,
-        monthlyBudgetUsd: (settings as any).monthlyBudgetUsd || 50,
+        dailyBudgetUsd: settings.dailyBudgetUsd || 5,
+        monthlyBudgetUsd: settings.monthlyBudgetUsd || 50,
       });
-      setKalshiBaseUrl((settings as any).kalshiBaseUrl || "");
-      setPaperMode((settings as any).paperTradingMode || false);
+      setKalshiBaseUrl(settings.kalshiBaseUrl || "");
+      setPaperMode(settings.paperTradingMode || false);
     }
   }, [settings, reset]);
 
@@ -135,7 +170,7 @@ export default function Settings() {
     try {
       const body: Record<string, string | null> = {};
       if (kalshiApiKey) body.kalshiApiKey = kalshiApiKey;
-      if (kalshiBaseUrl !== ((settings as any)?.kalshiBaseUrl || "")) body.kalshiBaseUrl = kalshiBaseUrl || null;
+      if (kalshiBaseUrl !== (settings?.kalshiBaseUrl || "")) body.kalshiBaseUrl = kalshiBaseUrl || null;
       await fetch(`${API_BASE}/settings`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -202,7 +237,7 @@ export default function Settings() {
                       </span>
                       {paperMode && (
                         <span className="text-sm text-muted-foreground">
-                          Balance: ${((settings as any)?.paperBalance || 5000).toFixed(2)}
+                          Balance: ${(settings?.paperBalance || 5000).toFixed(2)}
                         </span>
                       )}
                     </div>
@@ -230,7 +265,7 @@ export default function Settings() {
               <CardHeader className="border-b border-white/5 bg-black/20">
                 <CardTitle>Kalshi API Credentials</CardTitle>
                 <CardDescription>
-                  {(settings as any)?.kalshiApiKeySet
+                  {settings?.kalshiApiKeySet
                     ? "API key is configured."
                     : "No API key set. Configure one to enable trading."}
                 </CardDescription>
@@ -243,7 +278,7 @@ export default function Settings() {
                       type="password"
                       value={kalshiApiKey}
                       onChange={(e) => setKalshiApiKey(e.target.value)}
-                      placeholder={(settings as any)?.kalshiApiKeySet ? "••••••••••••" : "Enter Kalshi API key"}
+                      placeholder={settings?.kalshiApiKeySet ? "••••••••••••" : "Enter Kalshi API key"}
                       className="flex h-10 w-full rounded-md border border-white/10 bg-black/50 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary/50"
                     />
                     <p className="text-xs text-muted-foreground">Write-only. Never displayed after saving.</p>
@@ -264,7 +299,7 @@ export default function Settings() {
                   <Button
                     type="button"
                     onClick={saveCredentials}
-                    disabled={credSaving || (!kalshiApiKey && kalshiBaseUrl === ((settings as any)?.kalshiBaseUrl || ""))}
+                    disabled={credSaving || (!kalshiApiKey && kalshiBaseUrl === (settings?.kalshiBaseUrl || ""))}
                     className="bg-primary text-black hover:bg-primary/90 font-semibold"
                   >
                     {credSaving ? "Saving..." : "Save Credentials"}

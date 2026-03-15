@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { db, tradingSettingsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { db, tradingSettingsTable, apiCostsTable } from "@workspace/db";
+import { eq, gte, sql } from "drizzle-orm";
 import { getBalance } from "../lib/kalshi-client.js";
 
 const router: IRouter = Router();
@@ -16,7 +16,38 @@ async function ensureSettings() {
   return created;
 }
 
-function settingsToResponse(settings: typeof tradingSettingsTable.$inferSelect) {
+async function computeBudgetStatus(settings: typeof tradingSettingsTable.$inferSelect) {
+  const now = new Date();
+  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  const [dailyResult] = await db
+    .select({ total: sql<number>`coalesce(sum(${apiCostsTable.costUsd}), 0)` })
+    .from(apiCostsTable)
+    .where(gte(apiCostsTable.createdAt, startOfDay));
+  const dailySpend = Number(dailyResult?.total || 0);
+
+  const [monthlyResult] = await db
+    .select({ total: sql<number>`coalesce(sum(${apiCostsTable.costUsd}), 0)` })
+    .from(apiCostsTable)
+    .where(gte(apiCostsTable.createdAt, startOfMonth));
+  const monthlySpend = Number(monthlyResult?.total || 0);
+
+  const dailyExceeded = settings.dailyBudgetUsd > 0 && dailySpend >= settings.dailyBudgetUsd;
+  const monthlyExceeded = settings.monthlyBudgetUsd > 0 && monthlySpend >= settings.monthlyBudgetUsd;
+
+  return {
+    dailySpend,
+    monthlySpend,
+    dailyExceeded,
+    monthlyExceeded,
+    budgetPaused: dailyExceeded || monthlyExceeded,
+  };
+}
+
+async function settingsToResponse(settings: typeof tradingSettingsTable.$inferSelect) {
+  const budgetStatus = await computeBudgetStatus(settings);
+
   return {
     id: settings.id,
     maxPositionPct: settings.maxPositionPct,
@@ -37,12 +68,13 @@ function settingsToResponse(settings: typeof tradingSettingsTable.$inferSelect) 
     monthlyBudgetUsd: settings.monthlyBudgetUsd,
     kalshiApiKeySet: !!(settings.kalshiApiKey || process.env.KALSHI_API_KEY),
     kalshiBaseUrl: settings.kalshiBaseUrl || null,
+    budgetStatus,
   };
 }
 
 router.get("/settings", async (_req, res): Promise<void> => {
   const settings = await ensureSettings();
-  res.json(settingsToResponse(settings));
+  res.json(await settingsToResponse(settings));
 });
 
 function clampNum(val: unknown, min: number, max: number, fallback: number): number {
@@ -99,7 +131,7 @@ router.put("/settings", async (req, res): Promise<void> => {
     .where(eq(tradingSettingsTable.id, current.id))
     .returning();
 
-  res.json(settingsToResponse(updated));
+  res.json(await settingsToResponse(updated));
 });
 
 router.post("/settings/test-connection", async (_req, res): Promise<void> => {

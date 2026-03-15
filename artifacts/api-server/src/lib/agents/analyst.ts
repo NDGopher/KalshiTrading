@@ -15,6 +15,8 @@ export interface AnalysisResult {
 const HAIKU_INPUT_COST_PER_M = 0.80;
 const HAIKU_OUTPUT_COST_PER_M = 4.00;
 
+export { checkBudget };
+
 async function checkBudget(): Promise<{ allowed: boolean; reason?: string }> {
   const [settings] = await db.select().from(tradingSettingsTable).limit(1);
   if (!settings) return { allowed: true };

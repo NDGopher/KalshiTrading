@@ -116,9 +116,11 @@ export async function runBacktest(config: BacktestConfig): Promise<number> {
     let peakBankroll = bankroll;
     let maxDrawdown = 0;
     const pnls: number[] = [];
+    const outcomes: boolean[] = [];
     let wins = 0;
     let totalTrades = 0;
     let totalEdge = 0;
+    let totalClv = 0;
 
     for (const market of settledMarkets) {
       if (!market.result) continue;
@@ -166,9 +168,16 @@ export async function runBacktest(config: BacktestConfig): Promise<number> {
         ? quantity * (1 - marketPrice)
         : -quantity * marketPrice;
 
+      const closingPrice = won ? 1.0 : 0.0;
+      const impliedEntry = analysis.side === "yes" ? marketPrice : 1 - marketPrice;
+      const impliedClosing = analysis.side === "yes" ? closingPrice : 1 - closingPrice;
+      const clv = impliedClosing - impliedEntry;
+
       bankroll += pnl;
       pnls.push(pnl);
+      outcomes.push(won);
       totalEdge += analysis.edge;
+      totalClv += clv;
       totalTrades++;
       if (won) wins++;
 
@@ -183,13 +192,15 @@ export async function runBacktest(config: BacktestConfig): Promise<number> {
         strategyName: config.strategyName,
         side: analysis.side,
         entryPrice: marketPrice,
-        exitPrice: won ? 1.0 : 0.0,
+        exitPrice: closingPrice,
         quantity,
         pnl,
         outcome: won ? "won" : "lost",
+        clv,
         modelProbability: analysis.modelProbability,
         edge: analysis.edge,
         confidence: analysis.confidence,
+        reasoning: analysis.reasoning,
         marketResult: market.result,
       });
     }
@@ -197,6 +208,17 @@ export async function runBacktest(config: BacktestConfig): Promise<number> {
     const totalPnl = pnls.reduce((s, p) => s + p, 0);
     const winRate = totalTrades > 0 ? wins / totalTrades : 0;
     const avgEdge = totalTrades > 0 ? totalEdge / totalTrades : 0;
+    const avgClv = totalTrades > 0 ? totalClv / totalTrades : 0;
+    const roi = config.initialBankroll > 0 ? (totalPnl / config.initialBankroll) * 100 : 0;
+
+    let bestStreak = 0;
+    let worstStreak = 0;
+    let currentWin = 0;
+    let currentLoss = 0;
+    for (const w of outcomes) {
+      if (w) { currentWin++; currentLoss = 0; bestStreak = Math.max(bestStreak, currentWin); }
+      else { currentLoss++; currentWin = 0; worstStreak = Math.max(worstStreak, currentLoss); }
+    }
 
     let sharpeRatio: number | null = null;
     if (pnls.length > 1) {
@@ -212,9 +234,13 @@ export async function runBacktest(config: BacktestConfig): Promise<number> {
       tradesSimulated: totalTrades,
       totalPnl,
       winRate,
+      roi,
       sharpeRatio,
       maxDrawdown,
       avgEdge,
+      avgClv,
+      bestStreak,
+      worstStreak,
       completedAt: new Date(),
     }).where(eq(backtestRunsTable.id, run.id));
 

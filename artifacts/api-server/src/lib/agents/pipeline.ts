@@ -5,7 +5,7 @@ import { analyzeMarkets } from "./analyst.js";
 import { auditTrades } from "./auditor.js";
 import { assessRisk } from "./risk-manager.js";
 import { executeTrade, type ExecutionResult } from "./executor.js";
-import { reconcileOpenTrades } from "./reconciler.js";
+import { reconcileOpenTrades, reconcilePaperTrades } from "./reconciler.js";
 import { getBalance } from "../kalshi-client.js";
 import { evaluateStrategies } from "../strategies/index.js";
 
@@ -230,9 +230,20 @@ export async function runTradingCycle(): Promise<CycleResult> {
     updateAgentStatus("Executor", "idle", `Executed ${executed}/${riskApproved.length} trades${modeLabel}`);
     agentResults.push({ agentName: "Executor", status: "success", duration: execDuration, details: `${executed}/${riskApproved.length} executed${modeLabel}` });
 
-    if (!paperMode) {
-      let reconStart = Date.now();
-      updateAgentStatus("Reconciler", "running");
+    let reconStart = Date.now();
+    updateAgentStatus("Reconciler", "running");
+    if (paperMode) {
+      try {
+        const reconResult = await reconcilePaperTrades();
+        const reconDuration = (Date.now() - reconStart) / 1000;
+        updateAgentStatus("Reconciler", "idle", `${reconResult.settled} paper trades settled`);
+        agentResults.push({ agentName: "Reconciler", status: "success", duration: reconDuration, details: `${reconResult.settled} paper trades settled` });
+      } catch (reconErr: unknown) {
+        const reconMsg = reconErr instanceof Error ? reconErr.message : "Unknown error";
+        updateAgentStatus("Reconciler", "error", undefined, reconMsg);
+        agentResults.push({ agentName: "Reconciler", status: "error", duration: (Date.now() - reconStart) / 1000, details: reconMsg });
+      }
+    } else {
       try {
         const reconResult = await reconcileOpenTrades();
         const reconDuration = (Date.now() - reconStart) / 1000;
@@ -243,8 +254,6 @@ export async function runTradingCycle(): Promise<CycleResult> {
         updateAgentStatus("Reconciler", "error", undefined, reconMsg);
         agentResults.push({ agentName: "Reconciler", status: "error", duration: (Date.now() - reconStart) / 1000, details: reconMsg });
       }
-    } else {
-      agentResults.push({ agentName: "Reconciler", status: "skipped", duration: 0, details: "Skipped in paper trading mode" });
     }
 
     for (const run of agentResults) {

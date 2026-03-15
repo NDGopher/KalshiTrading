@@ -6,6 +6,45 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { FlaskConical, Play, TrendingUp, TrendingDown, BarChart3, Target } from "lucide-react";
 
+interface BacktestRun {
+  id: number;
+  strategyName: string;
+  status: string;
+  startDate: string;
+  endDate: string;
+  marketsEvaluated: number;
+  tradesSimulated: number;
+  totalPnl: number;
+  winRate: number;
+  roi: number | null;
+  sharpeRatio: number | null;
+  maxDrawdown: number | null;
+  avgEdge: number | null;
+  avgClv: number | null;
+  bestStreak: number | null;
+  worstStreak: number | null;
+  createdAt: string;
+}
+
+interface BacktestTrade {
+  id: number;
+  kalshiTicker: string;
+  title: string;
+  strategyName: string;
+  side: string;
+  entryPrice: number;
+  exitPrice: number;
+  quantity: number;
+  pnl: number;
+  outcome: string;
+  clv: number | null;
+  modelProbability: number;
+  edge: number;
+  confidence: number;
+  reasoning: string | null;
+  marketResult: string | null;
+}
+
 const API_BASE = `${import.meta.env.BASE_URL}api`;
 
 function useStrategies() {
@@ -23,7 +62,7 @@ function useBacktestResults() {
     queryKey: ["/api/backtest/results"],
     queryFn: async () => {
       const res = await fetch(`${API_BASE}/backtest/results`);
-      return res.json() as Promise<{ runs: any[] }>;
+      return res.json() as Promise<{ runs: BacktestRun[] }>;
     },
     refetchInterval: 5000,
   });
@@ -33,9 +72,9 @@ function useBacktestTrades(runId: number | null) {
   return useQuery({
     queryKey: ["/api/backtest/trades", runId],
     queryFn: async () => {
-      if (!runId) return { trades: [] };
+      if (!runId) return { trades: [] as BacktestTrade[] };
       const res = await fetch(`${API_BASE}/backtest/trades/${runId}`);
-      return res.json() as Promise<{ trades: any[] }>;
+      return res.json() as Promise<{ trades: BacktestTrade[] }>;
     },
     enabled: !!runId,
   });
@@ -87,7 +126,7 @@ export default function Backtest() {
 
   const runs = resultsData?.runs || [];
   const trades = tradesData?.trades || [];
-  const selectedRun = runs.find((r: any) => r.id === selectedRunId);
+  const selectedRun = runs.find((r) => r.id === selectedRunId);
 
   return (
     <Layout>
@@ -230,7 +269,7 @@ export default function Backtest() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-white/5">
-                        {trades.map((t: any) => (
+                        {trades.map((t) => (
                           <tr key={t.id} className="hover:bg-white/5 transition-colors">
                             <td className="p-3 max-w-[200px] truncate text-white">{t.title}</td>
                             <td className="p-3 text-center">
@@ -286,7 +325,7 @@ export default function Backtest() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/5">
-                    {runs.map((r: any) => (
+                    {runs.map((r) => (
                       <tr key={r.id} className={`hover:bg-white/5 transition-colors ${selectedRunId === r.id ? "bg-primary/5" : ""}`}>
                         <td className="p-3 font-mono text-white">#{r.id}</td>
                         <td className="p-3 text-white">{r.strategyName}</td>

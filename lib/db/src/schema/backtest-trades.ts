@@ -14,9 +14,11 @@ export const backtestTradesTable = pgTable("backtest_trades", {
   quantity: integer("quantity").notNull(),
   pnl: real("pnl").notNull(),
   outcome: text("outcome").notNull(),
+  clv: real("clv"),
   modelProbability: real("model_probability").notNull(),
   edge: real("edge").notNull(),
   confidence: real("confidence").notNull(),
+  reasoning: text("reasoning"),
   marketResult: text("market_result"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
