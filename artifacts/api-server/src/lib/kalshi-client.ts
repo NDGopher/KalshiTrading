@@ -185,10 +185,18 @@ export async function cancelOrder(orderId: string): Promise<{ order: KalshiOrder
   });
 }
 
+export interface KalshiSeries {
+  ticker: string;
+  frequency: string;
+  title: string;
+  category: string;
+  tags: string[];
+}
+
 export async function getSeries(params: {
   limit?: number;
   cursor?: string;
-} = {}): Promise<{ series: any[]; cursor?: string }> {
+} = {}): Promise<{ series: KalshiSeries[]; cursor?: string }> {
   const searchParams = new URLSearchParams();
   if (params.limit) searchParams.set("limit", String(params.limit));
   if (params.cursor) searchParams.set("cursor", params.cursor);
