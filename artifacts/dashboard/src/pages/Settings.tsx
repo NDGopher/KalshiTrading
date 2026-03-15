@@ -18,6 +18,8 @@ const settingsSchema = z.object({
   minLiquidity: z.coerce.number().min(10),
   minTimeToExpiry: z.coerce.number().min(1),
   scanIntervalMinutes: z.coerce.number().min(5).max(1440),
+  confidencePenaltyPct: z.coerce.number().min(0).max(50),
+  sportFilters: z.string(),
 });
 
 type SettingsFormValues = z.infer<typeof settingsSchema>;
@@ -54,12 +56,18 @@ export default function Settings() {
         minLiquidity: settings.minLiquidity,
         minTimeToExpiry: settings.minTimeToExpiry,
         scanIntervalMinutes: settings.scanIntervalMinutes,
+        confidencePenaltyPct: settings.confidencePenaltyPct,
+        sportFilters: (settings.sportFilters || []).join(", "),
       });
     }
   }, [settings, reset]);
 
   const onSubmit = (data: SettingsFormValues) => {
-    updateMutation.mutate({ data });
+    const payload = {
+      ...data,
+      sportFilters: data.sportFilters.split(",").map((s: string) => s.trim()).filter(Boolean),
+    };
+    updateMutation.mutate({ data: payload });
   };
 
   return (
@@ -163,6 +171,17 @@ export default function Settings() {
                 </div>
 
                 <div className="space-y-2">
+                  <label className="text-sm font-medium text-white">Confidence Penalty (%)</label>
+                  <input 
+                    type="number" step="any"
+                    {...register("confidencePenaltyPct")}
+                    className="flex h-10 w-full rounded-md border border-white/10 bg-black/50 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary/50"
+                  />
+                  {errors.confidencePenaltyPct && <p className="text-xs text-destructive">{errors.confidencePenaltyPct.message}</p>}
+                  <p className="text-xs text-muted-foreground">Penalty applied to analyst confidence scores.</p>
+                </div>
+
+                <div className="space-y-2">
                   <label className="text-sm font-medium text-white">Scan Interval (mins)</label>
                   <input 
                     type="number"
@@ -170,6 +189,25 @@ export default function Settings() {
                     className="flex h-10 w-full rounded-md border border-white/10 bg-black/50 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary/50"
                   />
                   <p className="text-xs text-muted-foreground">How often the Scanner agent runs.</p>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="glass-panel border-white/10">
+              <CardHeader className="border-b border-white/5 bg-black/20">
+                <CardTitle>Sport Filters</CardTitle>
+                <CardDescription>Which sports the scanner targets.</CardDescription>
+              </CardHeader>
+              <CardContent className="p-6">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-white">Active Sports</label>
+                  <input 
+                    type="text"
+                    {...register("sportFilters")}
+                    className="flex h-10 w-full rounded-md border border-white/10 bg-black/50 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary/50"
+                  />
+                  {errors.sportFilters && <p className="text-xs text-destructive">{errors.sportFilters.message}</p>}
+                  <p className="text-xs text-muted-foreground">Comma-separated list: NFL, NBA, MLB, Soccer</p>
                 </div>
               </CardContent>
             </Card>

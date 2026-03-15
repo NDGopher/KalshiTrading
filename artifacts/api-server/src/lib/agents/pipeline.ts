@@ -271,6 +271,67 @@ export function isPipelineActive(): boolean {
   return pipelineInterval !== null;
 }
 
+export interface ScanDiscoverResult {
+  marketsScanned: number;
+  opportunitiesFound: number;
+  scanDuration: number;
+}
+
+export async function scanAndDiscover(): Promise<ScanDiscoverResult> {
+  const start = Date.now();
+
+  const [settings] = await db.select().from(tradingSettingsTable).limit(1);
+  if (!settings) {
+    throw new Error("No trading settings found. Please save settings first.");
+  }
+
+  updateAgentStatus("Scanner", "running");
+  const scanResult = await scanMarkets(settings.sportFilters as string[]);
+  updateAgentStatus("Scanner", "idle", `Scanned ${scanResult.totalScanned} markets, found ${scanResult.candidates.length} candidates`);
+
+  if (scanResult.candidates.length === 0) {
+    return { marketsScanned: scanResult.totalScanned, opportunitiesFound: 0, scanDuration: (Date.now() - start) / 1000 };
+  }
+
+  const topCandidates = scanResult.candidates.slice(0, 10);
+
+  updateAgentStatus("Analyst", "running");
+  const analyses = await analyzeMarkets(topCandidates);
+  updateAgentStatus("Analyst", "idle", `Analyzed ${analyses.length} markets`);
+
+  updateAgentStatus("Auditor", "running");
+  const auditResults = auditTrades(analyses, {
+    minLiquidity: settings.minLiquidity,
+    minTimeToExpiry: settings.minTimeToExpiry,
+    confidencePenaltyPct: settings.confidencePenaltyPct,
+    minEdge: settings.minEdge,
+  });
+  updateAgentStatus("Auditor", "idle", `${auditResults.filter(a => a.approved).length}/${auditResults.length} approved`);
+
+  await db.delete(marketOpportunitiesTable);
+  for (const audit of auditResults) {
+    const { analysis } = audit;
+    await db.insert(marketOpportunitiesTable).values({
+      kalshiTicker: analysis.candidate.market.ticker,
+      title: analysis.candidate.market.title || analysis.candidate.market.ticker,
+      category: analysis.candidate.market.category || "Sports",
+      currentYesPrice: analysis.candidate.yesPrice,
+      modelProbability: analysis.modelProbability,
+      edge: analysis.edge,
+      confidence: audit.adjustedConfidence,
+      side: analysis.side,
+      volume24h: analysis.candidate.volume24h,
+      expiresAt: new Date(analysis.candidate.market.expected_expiration_time || analysis.candidate.market.expiration_time || analysis.candidate.market.close_time),
+    });
+  }
+
+  return {
+    marketsScanned: scanResult.totalScanned,
+    opportunitiesFound: auditResults.length,
+    scanDuration: (Date.now() - start) / 1000,
+  };
+}
+
 export async function rehydratePipeline(): Promise<void> {
   const [settings] = await db.select().from(tradingSettingsTable).limit(1);
   if (settings?.pipelineActive) {

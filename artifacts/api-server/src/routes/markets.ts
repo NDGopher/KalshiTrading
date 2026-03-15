@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db, marketOpportunitiesTable } from "@workspace/db";
 import { desc } from "drizzle-orm";
-import { runTradingCycle } from "../lib/agents/pipeline.js";
+import { scanAndDiscover } from "../lib/agents/pipeline.js";
 import {
   TriggerMarketScanResponse,
   GetMarketOpportunitiesResponse,
@@ -10,16 +10,14 @@ import {
 const router: IRouter = Router();
 
 router.post("/markets/scan", async (_req, res): Promise<void> => {
-  const start = Date.now();
   try {
-    const result = await runTradingCycle();
-    const duration = (Date.now() - start) / 1000;
+    const result = await scanAndDiscover();
 
     res.json(
       TriggerMarketScanResponse.parse({
         marketsScanned: result.marketsScanned,
         opportunitiesFound: result.opportunitiesFound,
-        scanDuration: duration,
+        scanDuration: result.scanDuration,
         timestamp: new Date().toISOString(),
       })
     );
