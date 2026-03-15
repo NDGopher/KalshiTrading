@@ -20,9 +20,9 @@ export default function Dashboard() {
   const stats = [
     {
       title: "Total Balance",
-      value: formatCurrency(overview?.balance),
+      value: overview?.balanceError ? "Unavailable" : formatCurrency(overview?.balance),
       icon: Wallet,
-      color: "text-blue-400"
+      color: overview?.balanceError ? "text-destructive" : "text-blue-400"
     },
     {
       title: "Today's P&L",

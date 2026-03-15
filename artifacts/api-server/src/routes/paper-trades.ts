@@ -80,10 +80,13 @@ router.post("/paper-trades/reconcile", async (_req, res) => {
             .where(eq(paperTradesTable.id, trade.id));
 
           const [settings] = await db.select().from(tradingSettingsTable).limit(1);
-          if (settings && won) {
+          if (settings) {
+            const balanceChange = won
+              ? trade.quantity * (1 - trade.entryPrice) + trade.quantity * trade.entryPrice
+              : 0;
             await db
               .update(tradingSettingsTable)
-              .set({ paperBalance: settings.paperBalance + trade.quantity * (1 - trade.entryPrice) + trade.quantity * trade.entryPrice })
+              .set({ paperBalance: settings.paperBalance + balanceChange })
               .where(eq(tradingSettingsTable.id, settings.id));
           }
 
