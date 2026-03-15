@@ -5,6 +5,7 @@ import { analyzeMarkets } from "./analyst.js";
 import { auditTrades } from "./auditor.js";
 import { assessRisk } from "./risk-manager.js";
 import { executeTrade, type ExecutionResult } from "./executor.js";
+import { reconcileOpenTrades } from "./reconciler.js";
 import { getBalance } from "../kalshi-client.js";
 
 interface AgentRunLog {
@@ -208,6 +209,16 @@ export async function runTradingCycle(): Promise<CycleResult> {
     const execDuration = (Date.now() - execStart) / 1000;
     updateAgentStatus("Executor", "idle", `Executed ${executed}/${riskApproved.length} trades`);
     agentResults.push({ agentName: "Executor", status: "success", duration: execDuration, details: `${executed}/${riskApproved.length} executed` });
+
+    let reconStart = Date.now();
+    try {
+      const reconResult = await reconcileOpenTrades();
+      const reconDuration = (Date.now() - reconStart) / 1000;
+      agentResults.push({ agentName: "Reconciler", status: "success", duration: reconDuration, details: `${reconResult.settled} settled, ${reconResult.errors} errors` });
+    } catch (reconErr: unknown) {
+      const reconMsg = reconErr instanceof Error ? reconErr.message : "Unknown error";
+      agentResults.push({ agentName: "Reconciler", status: "error", duration: (Date.now() - reconStart) / 1000, details: reconMsg });
+    }
 
     for (const run of agentResults) {
       await logAgentRun(run);

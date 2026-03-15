@@ -8,11 +8,11 @@ import { motion } from "framer-motion";
 
 export default function Dashboard() {
   const { data: overview, isLoading: overviewLoading } = useGetDashboardOverview({
-    query: { refetchInterval: 10000 }
+    query: { refetchInterval: 10000 } as object
   });
   
   const { data: positions, isLoading: positionsLoading } = useGetPositions({
-    query: { refetchInterval: 10000 }
+    query: { refetchInterval: 10000 } as object
   });
 
   const isPositive = (val?: number | null) => (val || 0) >= 0;

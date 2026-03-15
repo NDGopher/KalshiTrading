@@ -10,8 +10,8 @@ import { Cpu, Play, Power, AlertTriangle, CheckCircle2, Search, BrainCircuit, Sh
 export default function Agents() {
   const queryClient = useQueryClient();
   
-  const { data: agents } = useGetAgentStatus({ query: { refetchInterval: 5000 } });
-  const { data: runs } = useListAgentRuns({ limit: 10 }, { query: { refetchInterval: 5000 } });
+  const { data: agents } = useGetAgentStatus({ query: { refetchInterval: 5000 } as object });
+  const { data: runs } = useListAgentRuns({ limit: 10 }, { query: { refetchInterval: 5000 } as object });
   
   const toggleMutation = useToggleAgentPipeline({
     mutation: {
@@ -45,7 +45,7 @@ export default function Agents() {
   };
 
   const handleCycle = () => {
-    cycleMutation.mutate({});
+    cycleMutation.mutate();
   };
 
   return (

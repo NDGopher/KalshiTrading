@@ -13,7 +13,7 @@ export default function Trades() {
   
   const { data: tradesData, isLoading: tradesLoading } = useListTrades(
     { limit: 50, status: filter === 'all' ? undefined : filter as ListTradesStatus },
-    { query: { keepPreviousData: true } }
+    { query: { placeholderData: (prev: unknown) => prev } as object }
   );
   
   const { data: stats } = useGetTradeStats();
@@ -80,7 +80,7 @@ export default function Trades() {
               {['all', 'open', 'won', 'lost'].map((f) => (
                 <button
                   key={f}
-                  onClick={() => setFilter(f as any)}
+                  onClick={() => setFilter(f as ListTradesStatus | 'all')}
                   className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
                     filter === f ? 'bg-white/10 text-white' : 'text-muted-foreground hover:text-white'
                   }`}

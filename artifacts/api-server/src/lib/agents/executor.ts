@@ -58,10 +58,10 @@ export async function executeTrade(decision: RiskDecision): Promise<ExecutionRes
         (analysis.side === "yes" ? candidate.yesPrice : candidate.noPrice) * 100
       );
 
-      const orderParams: Record<string, string | number> = {
+      const orderParams: Parameters<typeof createOrder>[0] = {
         ticker: candidate.market.ticker,
         action: "buy",
-        side: analysis.side,
+        side: analysis.side as "yes" | "no",
         type: "limit",
         count: decision.positionSize,
       };

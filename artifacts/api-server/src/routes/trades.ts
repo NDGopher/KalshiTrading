@@ -57,9 +57,10 @@ router.get("/trades", async (req, res): Promise<void> => {
 router.get("/trades/stats", async (_req, res): Promise<void> => {
   const trades = await db.select().from(tradesTable);
 
-  const totalTrades = trades.length;
-  const wins = trades.filter((t) => t.status === "won").length;
-  const losses = trades.filter((t) => t.status === "lost").length;
+  const completedTrades = trades.filter((t) => t.status !== "cancelled" && t.status !== "pending");
+  const totalTrades = completedTrades.length;
+  const wins = completedTrades.filter((t) => t.status === "won").length;
+  const losses = completedTrades.filter((t) => t.status === "lost").length;
   const winRate = totalTrades > 0 ? (wins / totalTrades) * 100 : 0;
   const totalPnl = trades.reduce((sum, t) => sum + (t.pnl || 0), 0);
 

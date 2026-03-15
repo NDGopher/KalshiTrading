@@ -12,7 +12,7 @@ function getHeaders(): Record<string, string> {
   };
 }
 
-async function kalshiFetch(path: string, options: RequestInit = {}): Promise<any> {
+async function kalshiFetch<T = unknown>(path: string, options: RequestInit = {}): Promise<T> {
   const url = `${KALSHI_BASE_URL}${path}`;
   const res = await fetch(url, {
     ...options,
@@ -24,7 +24,7 @@ async function kalshiFetch(path: string, options: RequestInit = {}): Promise<any
     throw new Error(`Kalshi API error ${res.status}: ${text}`);
   }
 
-  return res.json();
+  return res.json() as Promise<T>;
 }
 
 export interface KalshiMarket {

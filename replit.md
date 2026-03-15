@@ -35,6 +35,7 @@ artifacts-monorepo/
 │   │       │       ├── auditor.ts      # Constraint validator
 │   │       │       ├── risk-manager.ts # Position sizing (Quarter Kelly)
 │   │       │       ├── executor.ts     # Order execution on Kalshi
+│   │       │       ├── reconciler.ts   # Trade settlement reconciliation
 │   │       │       └── pipeline.ts     # Orchestrator + scheduler
 │   │       └── routes/                 # Express route handlers
 │   └── dashboard/            # React + Vite frontend (port from PORT env)
@@ -82,6 +83,7 @@ artifacts-monorepo/
 3. **Auditor**: Validates against constraints (min edge, min liquidity, min time to expiry)
 4. **Risk Manager**: Sizes positions using Quarter Kelly criterion, checks drawdown limits
 5. **Executor**: Places limit orders on Kalshi via their REST API
+6. **Reconciler**: Checks open trades against Kalshi API for settlement, updates won/lost status and P&L
 
 **Risk Controls**: 3-loss streak circuit breaker, 15% max drawdown halt, 10% max position size
 
