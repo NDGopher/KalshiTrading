@@ -19,7 +19,7 @@ export async function assessRisk(
     maxConsecutiveLosses: number;
     maxDrawdownPct: number;
   },
-  bankroll: number
+  bankroll: number // in dollars (Kalshi balance / 100)
 ): Promise<RiskDecision> {
   const recentTrades = await db
     .select()
@@ -89,12 +89,12 @@ export async function assessRisk(
     };
   }
 
-  const maxPosition = bankroll * (settings.maxPositionPct / 100);
-  const kellyPosition = bankroll * quarterKelly;
-  const positionDollars = Math.min(kellyPosition, maxPosition);
+  const maxPositionDollars = bankroll * (settings.maxPositionPct / 100);
+  const kellyPositionDollars = bankroll * quarterKelly;
+  const positionDollars = Math.min(kellyPositionDollars, maxPositionDollars);
 
-  const pricePerContract = marketPrice;
-  const positionSize = Math.max(1, Math.floor(positionDollars / Math.max(0.01, pricePerContract)));
+  const costPerContract = Math.max(0.01, marketPrice);
+  const positionSize = Math.max(1, Math.floor(positionDollars / costPerContract));
 
   const riskScore = Math.min(1, (consecutiveLosses / settings.maxConsecutiveLosses) * 0.4 + (drawdown / settings.maxDrawdownPct) * 0.4 + (1 - audit.adjustedConfidence) * 0.2);
 

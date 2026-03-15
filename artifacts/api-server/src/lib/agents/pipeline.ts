@@ -181,9 +181,9 @@ export async function runTradingCycle(): Promise<CycleResult> {
     try {
       balanceData = await getBalance();
     } catch {
-      balanceData = { balance: 100 };
+      balanceData = { balance: 10000 };
     }
-    const bankroll = balanceData.balance;
+    const bankroll = balanceData.balance / 100;
 
     const riskDecisions = [];
     for (const audit of approved) {
