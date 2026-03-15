@@ -1,5 +1,6 @@
 import express, { type Express, type Request, type Response, type NextFunction } from "express";
 import cors from "cors";
+import crypto from "crypto";
 import router from "./routes";
 
 const app: Express = express();
@@ -18,18 +19,22 @@ app.use(
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-const API_SECRET = process.env.API_SECRET;
+const API_SECRET = process.env.API_SECRET || crypto.randomBytes(32).toString("hex");
+
+if (!process.env.API_SECRET) {
+  console.log(`[Auth] Auto-generated API_SECRET for this session. Set API_SECRET env var to persist across restarts.`);
+}
 
 function isSameOrigin(req: Request): boolean {
   const origin = req.headers.origin;
   const referer = req.headers.referer;
 
+  if (!origin && !referer) return false;
+
   if (DASHBOARD_ORIGIN) {
     if (origin === DASHBOARD_ORIGIN) return true;
     if (referer?.startsWith(DASHBOARD_ORIGIN)) return true;
   }
-
-  if (!origin && !referer) return true;
 
   const host = req.headers.host;
   if (origin) {
@@ -60,12 +65,10 @@ function authMiddleware(req: Request, res: Response, next: NextFunction): void {
     return;
   }
 
-  if (API_SECRET) {
-    const token = req.headers.authorization?.replace("Bearer ", "");
-    if (token === API_SECRET) {
-      next();
-      return;
-    }
+  const token = req.headers.authorization?.replace("Bearer ", "");
+  if (token === API_SECRET) {
+    next();
+    return;
   }
 
   if (isSameOrigin(req)) {
@@ -73,7 +76,7 @@ function authMiddleware(req: Request, res: Response, next: NextFunction): void {
     return;
   }
 
-  res.status(401).json({ error: "Unauthorized. Set API_SECRET env var for programmatic access." });
+  res.status(401).json({ error: "Unauthorized. Provide Authorization: Bearer <API_SECRET> header." });
 }
 
 app.use(authMiddleware);

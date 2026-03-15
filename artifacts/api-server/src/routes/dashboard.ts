@@ -29,7 +29,7 @@ router.get("/dashboard/overview", async (_req, res): Promise<void> => {
   let balance = 0;
   try {
     const balanceData = await getBalance();
-    balance = balanceData.balance;
+    balance = balanceData.balance / 100;
   } catch {
     balance = 0;
   }
@@ -55,8 +55,8 @@ router.get("/portfolio/balance", async (_req, res): Promise<void> => {
     const balanceData = await getBalance();
     res.json(
       GetPortfolioBalanceResponse.parse({
-        balance: balanceData.balance,
-        availableBalance: balanceData.portfolio_value || balanceData.balance,
+        balance: balanceData.balance / 100,
+        availableBalance: (balanceData.portfolio_value || balanceData.balance) / 100,
       })
     );
   } catch {

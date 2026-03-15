@@ -93,7 +93,7 @@ router.put("/settings", async (req, res): Promise<void> => {
 router.post("/settings/test-connection", async (_req, res): Promise<void> => {
   try {
     const balance = await getBalance();
-    res.json({ success: true, balance: balance.balance });
+    res.json({ success: true, balance: balance.balance / 100 });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
     res.json({ success: false, error: message });

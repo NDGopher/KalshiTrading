@@ -107,7 +107,7 @@ export default function Settings() {
       const res = await fetch(`${API_BASE}/settings/test-connection`, { method: "POST" });
       const data = await res.json();
       if (data.success) {
-        setConnectionStatus({ success: true, message: `Connected. Balance: $${(data.balance / 100).toFixed(2)}` });
+        setConnectionStatus({ success: true, message: `Connected. Balance: $${(data.balance).toFixed(2)}` });
       } else {
         setConnectionStatus({ success: false, message: data.error || "Connection failed" });
       }
