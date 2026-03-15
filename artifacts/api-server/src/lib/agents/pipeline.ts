@@ -6,6 +6,7 @@ import { auditTrades } from "./auditor.js";
 import { assessRisk } from "./risk-manager.js";
 import { executeTrade, type ExecutionResult } from "./executor.js";
 import { reconcileOpenTrades, reconcilePaperTrades } from "./reconciler.js";
+import { checkBudget } from "./analyst.js";
 import { getBalance } from "../kalshi-client.js";
 import { evaluateStrategies } from "../strategies/index.js";
 
@@ -103,6 +104,21 @@ export async function runTradingCycle(): Promise<CycleResult> {
     }
 
     const paperMode = settings.paperTradingMode;
+
+    const budgetCheck = await checkBudget();
+    if (!budgetCheck.allowed) {
+      const budgetResult: AgentRunLog = {
+        agentName: "Pipeline", status: "skipped", duration: 0,
+        details: `Budget exceeded: ${budgetCheck.reason}. Pipeline paused.`,
+      };
+      await logAgentRun(budgetResult);
+      pipelineRunning = false;
+      return {
+        marketsScanned: 0, opportunitiesFound: 0, tradesExecuted: 0,
+        tradesSkipped: 0, totalDuration: 0, agentResults: [budgetResult],
+        paperMode,
+      };
+    }
 
     let scanStart = Date.now();
     updateAgentStatus("Scanner", "running");

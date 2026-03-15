@@ -75,6 +75,30 @@ router.get("/backtest/results", async (_req, res) => {
   }
 });
 
+router.get("/backtest/trades", async (req, res) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string, 10) || 50));
+    const offset = (page - 1) * limit;
+    const runId = req.query.runId ? parseInt(req.query.runId as string, 10) : undefined;
+
+    let query = db.select().from(backtestTradesTable);
+    if (runId && !isNaN(runId)) {
+      query = query.where(eq(backtestTradesTable.backtestRunId, runId)) as typeof query;
+    }
+
+    const trades = await query
+      .orderBy(desc(backtestTradesTable.createdAt))
+      .limit(limit)
+      .offset(offset);
+
+    res.json({ trades, page, limit });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    res.status(500).json({ error: msg });
+  }
+});
+
 router.get("/backtest/trades/:runId", async (req, res) => {
   try {
     const runId = parseInt(req.params.runId, 10);

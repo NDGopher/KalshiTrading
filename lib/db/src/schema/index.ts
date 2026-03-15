@@ -7,3 +7,4 @@ export * from "./api-costs";
 export * from "./backtest-runs";
 export * from "./backtest-trades";
 export * from "./paper-trades";
+export * from "./historical-markets";

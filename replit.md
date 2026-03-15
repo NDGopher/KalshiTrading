@@ -68,6 +68,7 @@ artifacts-monorepo/
 - **backtest_runs**: Backtest run results (strategy, period, P&L, win rate, Sharpe ratio, max drawdown)
 - **backtest_trades**: Individual simulated trades within a backtest run
 - **paper_trades**: Simulated trades in paper trading mode ($5,000 initial balance)
+- **historical_markets**: Market price snapshots captured during each scanner cycle (ticker, open/last price, bid/ask, volume, status, result, raw data)
 
 ## API Endpoints (all under /api)
 
@@ -90,10 +91,11 @@ artifacts-monorepo/
 - `GET /api/backtest/strategies` — List available strategy names
 - `POST /api/backtest/run` — Run a backtest (strategy, date range, bankroll, AI toggle)
 - `GET /api/backtest/results` — List past backtest runs
+- `GET /api/backtest/trades` — Paginated backtest trades (query: page, limit, runId)
 - `GET /api/backtest/trades/:runId` — Trades from a specific backtest run
 
 ### API Costs
-- `GET /api/costs` — Daily, monthly, all-time cost breakdown + recent calls
+- `GET /api/costs` — Daily, monthly, all-time, per-agent cost breakdown + projected monthly + budget status + recent calls
 
 ### Paper Trading
 - `GET /api/paper-trades` — List paper trades
@@ -119,7 +121,7 @@ Each strategy implements `selectCandidates()` and `shouldTrade()`. The pipeline 
 3. **Auditor**: Hard-blocks any flagged trades (zero-flag pass only)
 4. **Risk Manager**: Sizes positions using Quarter Kelly criterion, enforces max 8 simultaneous positions, 5% max position, 20% drawdown halt, 3-loss streak circuit breaker, correlation caps
 5. **Executor**: Places limit orders on Kalshi (live mode) or logs to paper_trades table (paper mode). 3 retries; exhausted retries → "failed" status
-6. **Reconciler**: Checks open trades against Kalshi API for settlement (skipped in paper mode)
+6. **Reconciler**: Checks open trades against Kalshi API for settlement. In paper mode, reconciles paper trades against current market prices. Computes CLV (closing line value) on settlement.
 
 ## Paper Trading Mode
 
@@ -133,9 +135,10 @@ Each strategy implements `selectCandidates()` and `shouldTrade()`. The pipeline 
 ## API Cost Tracking
 
 - Every Anthropic API call logs input/output tokens and cost to `api_costs` table
-- Haiku pricing: $0.80/M input, $4.00/M output
+- Haiku pricing: $0.25/M input, $1.25/M output
 - Budget caps: daily ($5 default) and monthly ($50 default) configurable in Settings
-- When budget exceeded, analyst returns market-price defaults (no API call)
+- When budget exceeded, pipeline is paused at cycle start (no scanning/trading)
+- Per-agent cost breakdown and projected monthly spend in costs API
 - Live cost dashboard in Settings page (today, this month, all time)
 
 ## Auth

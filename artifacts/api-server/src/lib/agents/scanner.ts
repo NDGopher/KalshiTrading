@@ -1,5 +1,5 @@
 import { getSportsMarkets, type KalshiMarket } from "../kalshi-client.js";
-import { db, marketOpportunitiesTable } from "@workspace/db";
+import { db, marketOpportunitiesTable, historicalMarketsTable } from "@workspace/db";
 
 export interface ScanCandidate {
   market: KalshiMarket;
@@ -56,8 +56,33 @@ export async function scanMarkets(customKeywords?: string[]): Promise<{
 
   candidates.sort((a, b) => b.volume24h - a.volume24h);
 
+  const topCandidates = candidates.slice(0, 50);
+
+  try {
+    if (topCandidates.length > 0) {
+      const snapshots = topCandidates.map((c) => ({
+        kalshiTicker: c.market.ticker,
+        title: c.market.title || c.market.ticker,
+        category: c.market.category || null,
+        openPrice: null as number | null,
+        lastPrice: c.yesPrice,
+        yesAsk: c.market.yes_ask / 100,
+        yesBid: c.market.yes_bid / 100,
+        volume24h: c.volume24h,
+        liquidity: c.liquidity,
+        status: c.market.status || "open",
+        result: c.market.result || null,
+        closeTime: c.market.close_time ? new Date(c.market.close_time) : null,
+        expirationTime: c.market.expiration_time ? new Date(c.market.expiration_time) : null,
+        rawData: c.market as unknown as Record<string, unknown>,
+      }));
+      await db.insert(historicalMarketsTable).values(snapshots);
+    }
+  } catch (_e) {
+  }
+
   return {
-    candidates: candidates.slice(0, 50),
+    candidates: topCandidates,
     totalScanned: markets.length,
   };
 }
