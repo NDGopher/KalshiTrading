@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { db, tradesTable, tradingSettingsTable, marketOpportunitiesTable } from "@workspace/db";
-import { sql, eq, desc } from "drizzle-orm";
+import { db, tradesTable, positionsTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
 import { getBalance, getPositions, getMarket } from "../lib/kalshi-client.js";
 import { isPipelineActive } from "../lib/agents/pipeline.js";
 import {
@@ -69,41 +69,64 @@ router.get("/portfolio/balance", async (_req, res): Promise<void> => {
   }
 });
 
-router.get("/portfolio/positions", async (_req, res): Promise<void> => {
+async function syncPositionsFromKalshi(): Promise<void> {
   try {
     const positionsData = await getPositions({ settlement_status: "unsettled" });
-    const positions = await Promise.all(
-      positionsData.market_positions.map(async (p) => {
-        let currentPrice = 0;
-        let title = p.ticker;
-        let marketStatus = "open";
-        try {
-          const marketData = await getMarket(p.ticker);
-          currentPrice = parseFloat(marketData.market.last_price_dollars || "0");
-          title = marketData.market.title || p.ticker;
-          marketStatus = marketData.market.status;
-        } catch {}
 
-        const avgPrice = p.total_traded > 0 && p.position > 0 ? p.total_traded / p.position : 0;
-        const side = p.position > 0 ? "yes" : "no";
+    await db.delete(positionsTable);
 
-        return {
-          ticker: p.ticker,
-          title,
-          side,
-          quantity: Math.abs(p.position),
-          avgPrice: avgPrice / 100,
-          currentPrice,
-          unrealizedPnl: (currentPrice - avgPrice / 100) * Math.abs(p.position),
-          marketStatus,
-        };
-      })
-    );
+    for (const p of positionsData.market_positions) {
+      let currentPrice = 0;
+      let title = p.ticker;
+      let marketStatus = "open";
+      try {
+        const marketData = await getMarket(p.ticker);
+        currentPrice = parseFloat(marketData.market.last_price_dollars || "0");
+        title = marketData.market.title || p.ticker;
+        marketStatus = marketData.market.status;
+      } catch { /* use defaults */ }
 
-    res.json(GetPositionsResponse.parse(positions));
-  } catch {
-    res.json(GetPositionsResponse.parse([]));
+      const avgPrice = p.total_traded > 0 && p.position > 0 ? (p.total_traded / p.position) / 100 : 0;
+      const side = p.position > 0 ? "yes" : "no";
+      const quantity = Math.abs(p.position);
+      const unrealizedPnl = (currentPrice - avgPrice) * quantity;
+
+      await db.insert(positionsTable).values({
+        kalshiTicker: p.ticker,
+        title,
+        side: side as "yes" | "no",
+        quantity,
+        avgPrice,
+        currentPrice,
+        unrealizedPnl,
+        marketStatus,
+        lastSyncedAt: new Date(),
+      });
+    }
+  } catch (err) {
+    console.error("Position sync error:", err);
   }
+}
+
+router.get("/portfolio/positions", async (_req, res): Promise<void> => {
+  await syncPositionsFromKalshi();
+
+  const positions = await db.select().from(positionsTable);
+
+  res.json(
+    GetPositionsResponse.parse(
+      positions.map((p) => ({
+        ticker: p.kalshiTicker,
+        title: p.title,
+        side: p.side,
+        quantity: p.quantity,
+        avgPrice: p.avgPrice,
+        currentPrice: p.currentPrice,
+        unrealizedPnl: p.unrealizedPnl,
+        marketStatus: p.marketStatus,
+      }))
+    )
+  );
 });
 
 export default router;

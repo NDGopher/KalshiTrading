@@ -88,13 +88,15 @@ export async function runTradingCycle(): Promise<CycleResult> {
   try {
     const [settings] = await db.select().from(tradingSettingsTable).limit(1);
     if (!settings) {
+      const noSettingsResult: AgentRunLog = {
+        agentName: "Pipeline", status: "error", duration: 0,
+        details: "No trading settings found. Please save settings first.",
+      };
+      await logAgentRun(noSettingsResult);
       pipelineRunning = false;
       return {
         marketsScanned: 0, opportunitiesFound: 0, tradesExecuted: 0,
-        tradesSkipped: 0, totalDuration: 0, agentResults: [{
-          agentName: "Pipeline", status: "error", duration: 0,
-          details: "No trading settings found. Please save settings first.",
-        }],
+        tradesSkipped: 0, totalDuration: 0, agentResults: [noSettingsResult],
       };
     }
 
@@ -111,11 +113,13 @@ export async function runTradingCycle(): Promise<CycleResult> {
       const scanDuration = (Date.now() - scanStart) / 1000;
       updateAgentStatus("Scanner", "error", undefined, errMsg);
       agentResults.push({ agentName: "Scanner", status: "error", duration: scanDuration, details: errMsg });
+      for (const run of agentResults) await logAgentRun(run);
       pipelineRunning = false;
       return { marketsScanned: 0, opportunitiesFound: 0, tradesExecuted: 0, tradesSkipped: 0, totalDuration: (Date.now() - cycleStart) / 1000, agentResults };
     }
 
     if (scanResult.candidates.length === 0) {
+      for (const run of agentResults) await logAgentRun(run);
       pipelineRunning = false;
       return { marketsScanned: scanResult.totalScanned, opportunitiesFound: 0, tradesExecuted: 0, tradesSkipped: 0, totalDuration: (Date.now() - cycleStart) / 1000, agentResults };
     }
@@ -136,6 +140,7 @@ export async function runTradingCycle(): Promise<CycleResult> {
       const analysisDuration = (Date.now() - analysisStart) / 1000;
       updateAgentStatus("Analyst", "error", undefined, errMsg);
       agentResults.push({ agentName: "Analyst", status: "error", duration: analysisDuration, details: errMsg });
+      for (const run of agentResults) await logAgentRun(run);
       pipelineRunning = false;
       return { marketsScanned: scanResult.totalScanned, opportunitiesFound: 0, tradesExecuted: 0, tradesSkipped: 0, totalDuration: (Date.now() - cycleStart) / 1000, agentResults };
     }
@@ -171,6 +176,7 @@ export async function runTradingCycle(): Promise<CycleResult> {
     }
 
     if (approved.length === 0) {
+      for (const run of agentResults) await logAgentRun(run);
       pipelineRunning = false;
       return { marketsScanned: scanResult.totalScanned, opportunitiesFound: auditResults.length, tradesExecuted: 0, tradesSkipped: auditResults.length, totalDuration: (Date.now() - cycleStart) / 1000, agentResults };
     }
@@ -239,11 +245,13 @@ export async function runTradingCycle(): Promise<CycleResult> {
     };
   } catch (err: unknown) {
     const errMsg = err instanceof Error ? err.message : "Unknown error";
+    agentResults.push({ agentName: "Pipeline", status: "error", duration: (Date.now() - cycleStart) / 1000, details: errMsg });
+    for (const run of agentResults) await logAgentRun(run);
     pipelineRunning = false;
     return {
       marketsScanned: 0, opportunitiesFound: 0, tradesExecuted: 0,
       tradesSkipped: 0, totalDuration: (Date.now() - cycleStart) / 1000,
-      agentResults: [{ agentName: "Pipeline", status: "error", duration: (Date.now() - cycleStart) / 1000, details: errMsg }],
+      agentResults,
     };
   }
 }
@@ -252,11 +260,14 @@ export function startPipeline(intervalMinutes: number) {
   if (pipelineInterval) {
     clearInterval(pipelineInterval);
   }
+
+  runTradingCycle().catch((err) => console.error("Pipeline initial cycle error:", err));
+
   pipelineInterval = setInterval(() => {
     runTradingCycle().catch((err) => console.error("Pipeline cycle error:", err));
   }, intervalMinutes * 60 * 1000);
 
-  console.log(`Pipeline started with ${intervalMinutes} minute interval`);
+  console.log(`[Pipeline] Started: runs every ${intervalMinutes} min (first cycle immediate)`);
 }
 
 export function stopPipeline() {

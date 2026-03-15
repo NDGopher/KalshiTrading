@@ -57,6 +57,7 @@ artifacts-monorepo/
 ## Database Schema
 
 - **trades**: Trade history with market ticker, side, price, quantity, P&L, agent reasoning. Status: open | won | lost | pending | cancelled | failed
+- **positions**: Persisted portfolio positions synced from Kalshi (ticker, side, qty, avg price, current price, unrealized P&L, market status)
 - **agent_runs**: Log of each agent execution (scanner, analyst, auditor, risk_manager, executor, reconciler)
 - **trading_settings**: Risk parameters, sport filters, Kalshi API credentials (kalshi_api_key, kalshi_base_url)
 - **market_opportunities**: Detected opportunities with edge analysis from AI
@@ -91,8 +92,15 @@ artifacts-monorepo/
 
 ## Auth
 
-- API_SECRET: auto-generated if not set (secure by default). Mutations require Bearer token; GET/HEAD/OPTIONS are open.
+- API_SECRET: auto-generated random secret on startup if not set in env. Always enforced — all POST/PUT/DELETE require `Authorization: Bearer <token>`.
+- Dashboard auto-fetches the token from `GET /api/auth/token` and injects it into all mutations via the `customFetch` layer.
 - Kalshi credentials: stored in DB settings (write-only, never returned in reads). Falls back to KALSHI_API_KEY env var.
+
+## Background Operation
+
+- The API server workflow IS the background process. When `pipelineActive` is true in settings, `rehydratePipeline()` restarts the scheduler on server boot.
+- Pipeline runs via `setInterval` inside the Node process. First cycle runs immediately on start, then repeats at the configured interval.
+- All agent runs (including early-exit and error paths) are persisted to the `agent_runs` table for full observability.
 
 ## Key Configuration
 
