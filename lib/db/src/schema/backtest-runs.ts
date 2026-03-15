@@ -19,6 +19,7 @@ export const backtestRunsTable = pgTable("backtest_runs", {
   avgClv: real("avg_clv"),
   bestStreak: integer("best_streak"),
   worstStreak: integer("worst_streak"),
+  dipCatchSuccessRate: real("dip_catch_success_rate"),
   config: jsonb("config").$type<Record<string, unknown>>().default({}),
   errorMessage: text("error_message"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

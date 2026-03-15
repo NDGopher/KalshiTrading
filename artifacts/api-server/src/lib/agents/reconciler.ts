@@ -44,7 +44,6 @@ export async function reconcileOpenTrades(): Promise<ReconciliationResult> {
       const { market } = await getMarket(trade.kalshiTicker);
 
       const lastPrice = parseFloat(market.last_price_dollars || "0");
-      const clv = lastPrice > 0 ? computeClv(trade, lastPrice) : null;
 
       if (market.result && market.result !== "") {
         const won =
@@ -53,8 +52,8 @@ export async function reconcileOpenTrades(): Promise<ReconciliationResult> {
 
         const payout = won ? trade.quantity * (1 - trade.entryPrice) : -trade.quantity * trade.entryPrice;
 
-        const closingLinePrice = lastPrice > 0 ? lastPrice : (won ? 1.0 : 0.0);
-        const closingClv = computeClv(trade, closingLinePrice);
+        const finalClosingLine = trade.closingLinePrice ?? (lastPrice > 0 ? lastPrice : (won ? 1.0 : 0.0));
+        const closingClv = computeClv(trade, finalClosingLine);
 
         await db
           .update(tradesTable)
@@ -62,6 +61,7 @@ export async function reconcileOpenTrades(): Promise<ReconciliationResult> {
             status: won ? "won" : "lost",
             exitPrice: won ? 1.0 : 0.0,
             pnl: payout,
+            closingLinePrice: finalClosingLine,
             clv: closingClv,
             closedAt: new Date(),
           })
@@ -69,10 +69,11 @@ export async function reconcileOpenTrades(): Promise<ReconciliationResult> {
 
         settled++;
         reconciled++;
-      } else if (clv !== null && trade.clv === null) {
+      } else if (lastPrice > 0 && !trade.closingLinePrice) {
+        const clv = computeClv(trade, lastPrice);
         await db
           .update(tradesTable)
-          .set({ clv })
+          .set({ closingLinePrice: lastPrice, clv })
           .where(eq(tradesTable.id, trade.id));
       }
     } catch (err: unknown) {
@@ -115,13 +116,15 @@ export async function reconcilePaperTrades(): Promise<{ settled: number; errors:
           })
           .where(eq(paperTradesTable.id, trade.id));
 
-        if (won) {
-          const [settings] = await db.select().from(tradingSettingsTable).limit(1);
-          if (settings) {
-            const refund = trade.quantity * trade.entryPrice + payout;
+        const [settings] = await db.select().from(tradingSettingsTable).limit(1);
+        if (settings) {
+          const balanceChange = won
+            ? trade.quantity * (1 - trade.entryPrice) + trade.quantity * trade.entryPrice
+            : 0;
+          if (balanceChange > 0) {
             await db
               .update(tradingSettingsTable)
-              .set({ paperBalance: settings.paperBalance + refund })
+              .set({ paperBalance: settings.paperBalance + balanceChange })
               .where(eq(tradingSettingsTable.id, settings.id));
           }
         }

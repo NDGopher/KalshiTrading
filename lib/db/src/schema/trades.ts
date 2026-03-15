@@ -16,6 +16,7 @@ export const tradesTable = pgTable("trades", {
   modelProbability: real("model_probability").notNull(),
   edge: real("edge").notNull(),
   confidence: real("confidence").notNull(),
+  closingLinePrice: real("closing_line_price"),
   clv: real("clv"),
   analystReasoning: text("analyst_reasoning"),
   auditorFlags: jsonb("auditor_flags").$type<string[]>().default([]),

@@ -43,13 +43,25 @@ function simulateHoursBeforeClose(market: KalshiMarket): number {
   return Math.max(0.5, (duration * (1 - entryFraction)) / (1000 * 60 * 60));
 }
 
+function deterministicHash(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) {
+    h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+  }
+  return Math.abs(h);
+}
+
 function simulateAnalysis(candidate: ScanCandidate, market: KalshiMarket): AnalysisResult {
   const yesPrice = candidate.yesPrice;
   const settledYes = market.result === "yes";
-  const actualProb = settledYes ? 1.0 : 0.0;
 
-  const noise = (Math.random() - 0.5) * 0.2;
-  const modelProb = Math.max(0.05, Math.min(0.95, yesPrice + noise));
+  const hash = deterministicHash(market.ticker + market.close_time);
+  const hashFrac = (hash % 1000) / 1000;
+
+  const volumeSignal = Math.min(1, candidate.volume24h / 2000);
+  const spreadSignal = Math.min(1, candidate.spread / 0.1);
+  const shift = (hashFrac - 0.5) * 0.15 * (1 + volumeSignal - spreadSignal);
+  const modelProb = Math.max(0.05, Math.min(0.95, yesPrice + shift));
 
   const yesSide = modelProb > yesPrice;
   const side: "yes" | "no" = yesSide ? "yes" : "no";
@@ -57,13 +69,16 @@ function simulateAnalysis(candidate: ScanCandidate, market: KalshiMarket): Analy
     ? (modelProb - yesPrice) / yesPrice * 100
     : ((1 - modelProb) - (1 - yesPrice)) / (1 - yesPrice) * 100;
 
+  const confidenceBase = 0.4 + volumeSignal * 0.2 + (1 - spreadSignal) * 0.1;
+  const confidence = Math.min(0.9, confidenceBase + (hashFrac * 0.15));
+
   return {
     candidate,
     modelProbability: modelProb,
     edge: Math.max(0, edge),
-    confidence: 0.5 + Math.random() * 0.3,
+    confidence,
     side,
-    reasoning: "Backtest simulation analysis",
+    reasoning: `Deterministic backtest analysis: vol=${candidate.volume24h}, spread=${candidate.spread.toFixed(3)}, model=${(modelProb * 100).toFixed(1)}%`,
   };
 }
 
@@ -159,6 +174,8 @@ export async function runBacktest(config: BacktestConfig): Promise<number> {
     let totalTrades = 0;
     let totalEdge = 0;
     let totalClv = 0;
+    let dipCatchAttempts = 0;
+    let dipCatchWins = 0;
 
     for (const market of settledMarkets) {
       if (!market.result) continue;
@@ -243,6 +260,10 @@ export async function runBacktest(config: BacktestConfig): Promise<number> {
       totalClv += clv;
       totalTrades++;
       if (won) wins++;
+      if (stratMeta?.dipCatch) {
+        dipCatchAttempts++;
+        if (won) dipCatchWins++;
+      }
 
       if (bankroll > peakBankroll) peakBankroll = bankroll;
       const currentDrawdown = peakBankroll > 0 ? ((peakBankroll - bankroll) / peakBankroll) * 100 : 0;
@@ -293,6 +314,8 @@ export async function runBacktest(config: BacktestConfig): Promise<number> {
       sharpeRatio = stdDev > 0 ? (avgReturn / stdDev) * Math.sqrt(252) : 0;
     }
 
+    const dipCatchSuccessRate = dipCatchAttempts > 0 ? dipCatchWins / dipCatchAttempts : null;
+
     await db.update(backtestRunsTable).set({
       status: "completed",
       marketsEvaluated: settledMarkets.length,
@@ -306,6 +329,7 @@ export async function runBacktest(config: BacktestConfig): Promise<number> {
       avgClv,
       bestStreak,
       worstStreak,
+      dipCatchSuccessRate,
       completedAt: new Date(),
     }).where(eq(backtestRunsTable.id, run.id));
 

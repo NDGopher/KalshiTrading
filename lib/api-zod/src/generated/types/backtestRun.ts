@@ -23,6 +23,16 @@ export interface BacktestRun {
   /** @nullable */
   avgEdge?: number | null;
   /** @nullable */
+  avgClv?: number | null;
+  /** @nullable */
+  roi?: number | null;
+  /** @nullable */
+  bestStreak?: number | null;
+  /** @nullable */
+  worstStreak?: number | null;
+  /** @nullable */
+  dipCatchSuccessRate?: number | null;
+  /** @nullable */
   errorMessage?: string | null;
   createdAt: string;
   /** @nullable */

@@ -1064,6 +1064,16 @@ components:
           type: ["number", "null"]
         avgEdge:
           type: ["number", "null"]
+        avgClv:
+          type: ["number", "null"]
+        roi:
+          type: ["number", "null"]
+        bestStreak:
+          type: ["integer", "null"]
+        worstStreak:
+          type: ["integer", "null"]
+        dipCatchSuccessRate:
+          type: ["number", "null"]
         errorMessage:
           type: ["string", "null"]
         createdAt:
