@@ -53,7 +53,7 @@ const settingsSchema = z.object({
   kellyFraction: z.coerce.number().min(0.1).max(1.0),
   maxDrawdownPct: z.coerce.number().min(5).max(100),
   maxConsecutiveLosses: z.coerce.number().min(1).max(20),
-  maxSimultaneousPositions: z.coerce.number().min(1).max(50),
+  maxSimultaneousPositions: z.coerce.number().min(0).max(10000),
   minEdge: z.coerce.number().min(1).max(50),
   minLiquidity: z.coerce.number().min(10),
   minTimeToExpiry: z.coerce.number().min(1),
@@ -473,7 +473,7 @@ export default function Settings() {
                     {...register("maxSimultaneousPositions")}
                     className="flex h-10 w-full rounded-md border border-white/10 bg-black/50 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary/50"
                   />
-                  <p className="text-xs text-muted-foreground">Maximum open positions at once.</p>
+                  <p className="text-xs text-muted-foreground">Maximum open positions at once. Set to 0 for no limit — Kelly sizing controls exposure instead.</p>
                 </div>
               </CardContent>
             </Card>

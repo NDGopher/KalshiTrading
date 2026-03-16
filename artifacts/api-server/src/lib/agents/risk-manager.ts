@@ -52,7 +52,7 @@ export function computeRisk(
       rejectReason: `Drawdown halt: ${context.drawdownPct.toFixed(1)}% (max ${params.maxDrawdownPct}%)` };
   }
 
-  if (context.openPositions >= params.maxSimultaneousPositions) {
+  if (params.maxSimultaneousPositions > 0 && context.openPositions >= params.maxSimultaneousPositions) {
     return { approved: false, positionSize: 0, kellyFraction: 0, riskScore: 0.9,
       rejectReason: `Position cap: ${context.openPositions} open positions (max ${params.maxSimultaneousPositions})` };
   }
@@ -138,7 +138,7 @@ export async function assessRisk(
       kellyFraction: settings.kellyFraction,
       maxConsecutiveLosses: settings.maxConsecutiveLosses,
       maxDrawdownPct: settings.maxDrawdownPct,
-      maxSimultaneousPositions: settings.maxSimultaneousPositions || 8,
+      maxSimultaneousPositions: settings.maxSimultaneousPositions ?? 0,
     },
     bankroll,
     {

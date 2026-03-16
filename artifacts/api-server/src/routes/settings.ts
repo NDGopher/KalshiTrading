@@ -98,7 +98,7 @@ router.put("/settings", async (req, res): Promise<void> => {
   if (body.maxDrawdownPct !== undefined)
     updateData.maxDrawdownPct = clampNum(body.maxDrawdownPct, 5, 100, current.maxDrawdownPct);
   if (body.maxSimultaneousPositions !== undefined)
-    updateData.maxSimultaneousPositions = clampNum(body.maxSimultaneousPositions, 1, 50, current.maxSimultaneousPositions);
+    updateData.maxSimultaneousPositions = clampNum(body.maxSimultaneousPositions, 0, 10000, current.maxSimultaneousPositions);
   if (body.minEdge !== undefined)
     updateData.minEdge = clampNum(body.minEdge, 1, 50, current.minEdge);
   if (body.minLiquidity !== undefined)
