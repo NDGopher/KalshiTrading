@@ -1,7 +1,7 @@
 import { db, agentRunsTable, marketOpportunitiesTable, tradingSettingsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { scanMarkets } from "./scanner.js";
-import { analyzeMarkets } from "./analyst.js";
+import { analyzeMarkets, analyzeMarketsSimulated } from "./analyst.js";
 import { auditTrades } from "./auditor.js";
 import { assessRisk } from "./risk-manager.js";
 import { executeTrade, type ExecutionResult } from "./executor.js";
@@ -150,11 +150,19 @@ export async function runTradingCycle(): Promise<CycleResult> {
     updateAgentStatus("Analyst", "running");
     let analyses;
     try {
-      analyses = await analyzeMarkets(topCandidates);
-      const analysisDuration = (Date.now() - analysisStart) / 1000;
-      const withEdge = analyses.filter((a) => a.edge > 0);
-      updateAgentStatus("Analyst", "idle", `Analyzed ${analyses.length} markets, ${withEdge.length} with edge`);
-      agentResults.push({ agentName: "Analyst", status: "success", duration: analysisDuration, details: `${withEdge.length}/${analyses.length} markets have edge` });
+      if (paperMode) {
+        analyses = await analyzeMarketsSimulated(topCandidates);
+        const analysisDuration = (Date.now() - analysisStart) / 1000;
+        const withEdge = analyses.filter((a) => a.edge > 0);
+        updateAgentStatus("Analyst", "idle", `[Paper/Sim] Analyzed ${analyses.length} markets, ${withEdge.length} with edge`);
+        agentResults.push({ agentName: "Analyst", status: "success", duration: analysisDuration, details: `[Simulation] ${withEdge.length}/${analyses.length} markets have edge` });
+      } else {
+        analyses = await analyzeMarkets(topCandidates);
+        const analysisDuration = (Date.now() - analysisStart) / 1000;
+        const withEdge = analyses.filter((a) => a.edge > 0);
+        updateAgentStatus("Analyst", "idle", `Analyzed ${analyses.length} markets, ${withEdge.length} with edge`);
+        agentResults.push({ agentName: "Analyst", status: "success", duration: analysisDuration, details: `${withEdge.length}/${analyses.length} markets have edge` });
+      }
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : "Unknown error";
       const analysisDuration = (Date.now() - analysisStart) / 1000;
@@ -167,11 +175,13 @@ export async function runTradingCycle(): Promise<CycleResult> {
 
     let auditStart = Date.now();
     updateAgentStatus("Auditor", "running");
+    const auditMinEdge = paperMode ? Math.max(3, settings.minEdge - 2) : settings.minEdge;
+    const auditMinLiquidity = paperMode ? 0 : settings.minLiquidity;
     const auditResults = auditTrades(analyses, {
-      minLiquidity: settings.minLiquidity,
+      minLiquidity: auditMinLiquidity,
       minTimeToExpiry: settings.minTimeToExpiry,
       confidencePenaltyPct: settings.confidencePenaltyPct,
-      minEdge: settings.minEdge,
+      minEdge: auditMinEdge,
     });
     const approved = auditResults.filter((a) => a.approved);
     const auditDuration = (Date.now() - auditStart) / 1000;

@@ -1,6 +1,6 @@
 import { createOrder, getOrder } from "../kalshi-client.js";
 import { db, tradesTable, paperTradesTable, tradingSettingsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import type { RiskDecision } from "./risk-manager.js";
 
 export interface ExecutionResult {
@@ -28,6 +28,21 @@ async function executePaperTrade(decision: RiskDecision): Promise<ExecutionResul
   const currentBalance = settings?.paperBalance || 5000;
   const entryPrice = analysis.side === "yes" ? candidate.yesPrice : candidate.noPrice;
   const cost = decision.positionSize * entryPrice;
+
+  const [existingOpen] = await db
+    .select({ id: paperTradesTable.id })
+    .from(paperTradesTable)
+    .where(and(eq(paperTradesTable.kalshiTicker, candidate.market.ticker), eq(paperTradesTable.status, "open")))
+    .limit(1);
+
+  if (existingOpen) {
+    return {
+      decision,
+      executed: false,
+      error: `Already have open paper position in ${candidate.market.ticker}`,
+      paper: true,
+    };
+  }
 
   if (cost > currentBalance) {
     return {

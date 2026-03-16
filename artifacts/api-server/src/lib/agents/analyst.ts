@@ -178,3 +178,57 @@ export async function analyzeMarkets(candidates: ScanCandidate[]): Promise<Analy
 
   return results;
 }
+
+function simpleHash(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) { h = (Math.imul(31, h) + s.charCodeAt(i)) | 0; }
+  return Math.abs(h);
+}
+
+export function simulateAnalysisForPaper(candidate: ScanCandidate): AnalysisResult {
+  const { yesPrice, volume24h, liquidity, hoursToExpiry, spread } = candidate;
+  const signals = deriveMarketSignals(candidate);
+
+  const seed = simpleHash(candidate.market.ticker + "_paper_" + new Date().toDateString());
+  const hashFrac = (seed % 10000) / 10000;
+
+  const volumeSignal = Math.min(1, volume24h / 2000);
+  const liquiditySignal = Math.min(1, liquidity / 50000);
+  const spreadSignal = Math.min(1, spread / 0.1);
+
+  const efficiency = (volumeSignal + liquiditySignal) / 2;
+  const shift = (hashFrac - 0.5) * 0.20 * (1 + volumeSignal - spreadSignal * 0.5);
+  const modelProb = Math.max(0.03, Math.min(0.97, yesPrice + shift));
+
+  const yesSide = modelProb > yesPrice;
+  const side: "yes" | "no" = yesSide ? "yes" : "no";
+  const edge = yesSide
+    ? (modelProb - yesPrice) / yesPrice * 100
+    : ((1 - modelProb) - (1 - yesPrice)) / (1 - yesPrice) * 100;
+
+  const confidenceBase = 0.35 + efficiency * 0.25 + (1 - spreadSignal) * 0.15;
+  const confidence = Math.min(0.85, confidenceBase + hashFrac * 0.15);
+
+  const priceRegion = signals.priceRegion;
+  const direction = yesSide ? "above" : "below";
+  const biasSrc = signals.volumeToLiquidity > 2 ? "public money flow" : "spread inefficiency";
+  const reasoningParts = [
+    `Simulation: ${signals.timeCategory} ${priceRegion} market at ${signals.impliedProb.toFixed(1)}% implied.`,
+    `Model estimates true probability at ${(modelProb * 100).toFixed(1)}% — ${direction} market price.`,
+    `Edge sourced from ${biasSrc} (vol/liq ratio ${signals.volumeToLiquidity.toFixed(2)}).`,
+    `Market efficiency: ${signals.marketEfficiency}. Spread: ${signals.spreadPct.toFixed(1)}%.`,
+  ];
+
+  return {
+    candidate,
+    modelProbability: modelProb,
+    edge: Math.max(0, edge),
+    confidence,
+    side,
+    reasoning: reasoningParts.join(" "),
+  };
+}
+
+export async function analyzeMarketsSimulated(candidates: ScanCandidate[]): Promise<AnalysisResult[]> {
+  return candidates.map(simulateAnalysisForPaper);
+}
