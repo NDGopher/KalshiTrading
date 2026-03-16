@@ -358,10 +358,10 @@ export async function getSportsMarkets(sportKeywords: string[]): Promise<KalshiM
 
 /**
  * Fetches ALL active open markets from Kalshi with no category filter.
- * Markets are sorted by volume descending. Applies minimum volume/liquidity threshold
- * to keep only markets with real activity.
+ * Returns every market with a tradeable price (1¢–99¢).
+ * Volume/liquidity scoring is handled downstream by the scanner's compositeScore().
  */
-export async function getAllLiquidMarkets(minVolume = 50, maxPages = 10): Promise<KalshiMarket[]> {
+export async function getAllLiquidMarkets(maxPages = 10): Promise<KalshiMarket[]> {
   const allMarkets: KalshiMarket[] = [];
   let cursor: string | undefined;
   let pages = 0;
@@ -369,21 +369,22 @@ export async function getAllLiquidMarkets(minVolume = 50, maxPages = 10): Promis
   while (pages < maxPages) {
     try {
       const result = await getMarkets({ limit: 100, cursor, status: "open" });
+      if (!result.markets || result.markets.length === 0) break;
       allMarkets.push(...result.markets);
       cursor = result.cursor;
       pages++;
       if (!cursor || result.markets.length < 100) break;
-    } catch {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[Scanner] getAllLiquidMarkets page ${pages} error: ${msg}`);
       break;
     }
   }
+  console.log(`[Scanner] getAllLiquidMarkets: fetched ${allMarkets.length} total markets from API`);
 
-  // Filter: price not at extreme, has minimum activity
+  // Only filter out extreme prices — everything else is passed to the scanner for scoring
   return allMarkets.filter((m) => {
     const price = parseFloat(String(m.last_price_dollars || "0"));
-    if (price <= 0.01 || price >= 0.99) return false;
-    const vol = m.volume_24h || 0;
-    const liq = parseFloat(String(m.liquidity_dollars || "0")) || m.liquidity || 0;
-    return vol >= minVolume || liq >= 500;
+    return price > 0.01 && price < 0.99;
   });
 }

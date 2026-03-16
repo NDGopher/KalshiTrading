@@ -18,8 +18,8 @@ export interface ScanCandidate {
   hoursToExpiry: number;
 }
 
-// Max look-ahead window: 7 days. Beyond that, prices are too speculative.
-const MAX_HOURS_TO_EXPIRY = 168;
+// Kalshi KXMVE markets typically close 1-2 weeks out; keep window at 2 weeks (336 h)
+const MAX_HOURS_TO_EXPIRY = 336;
 
 function proximityScore(hoursToExpiry: number): number {
   if (hoursToExpiry <= 6) return 5.0;
@@ -27,6 +27,7 @@ function proximityScore(hoursToExpiry: number): number {
   if (hoursToExpiry <= 48) return 3.0;
   if (hoursToExpiry <= 96) return 2.0;
   if (hoursToExpiry <= 168) return 1.0;
+  if (hoursToExpiry <= 336) return 0.5;
   return 0.0;
 }
 
@@ -142,8 +143,8 @@ export async function scanMarkets(_sportFilters?: string[]): Promise<{
   source: "live" | "cached";
 }> {
   try {
-    // Fetch all liquid markets across ALL categories
-    const markets = await getAllLiquidMarkets(50, 10);
+    // Fetch all markets across ALL categories — no volume pre-filter
+    const markets = await getAllLiquidMarkets(10);
     const candidates: ScanCandidate[] = [];
 
     for (const market of markets) {
@@ -154,27 +155,32 @@ export async function scanMarkets(_sportFilters?: string[]): Promise<{
     candidates.sort((a, b) => compositeScore(b) - compositeScore(a));
     const topCandidates = candidates.slice(0, 100);
 
-    // Persist snapshots to DB (best-effort)
+    // If API returned nothing usable, fall through to the DB cache
+    if (topCandidates.length === 0) {
+      console.warn("[Scanner] API returned 0 valid candidates — falling back to cached market data");
+      const cached = await scanFromCachedDb();
+      return { ...cached, source: "cached" };
+    }
+
+    // Persist snapshots to DB (best-effort, so we have a warm cache for future fallbacks)
     try {
-      if (topCandidates.length > 0) {
-        const snapshots = topCandidates.map((c) => ({
-          kalshiTicker: c.market.ticker,
-          title: c.market.title || c.market.ticker,
-          category: c.market.category || null,
-          openPrice: null as number | null,
-          lastPrice: c.yesPrice,
-          yesAsk: getMarketYesAsk(c.market) || c.yesPrice + 0.02,
-          yesBid: getMarketYesBid(c.market) || c.yesPrice - 0.02,
-          volume24h: c.volume24h,
-          liquidity: c.liquidity,
-          status: c.market.status || "active",
-          result: c.market.result || null,
-          closeTime: c.market.close_time ? new Date(c.market.close_time) : null,
-          expirationTime: c.market.expiration_time ? new Date(c.market.expiration_time) : null,
-          rawData: c.market as unknown as Record<string, unknown>,
-        }));
-        await db.insert(historicalMarketsTable).values(snapshots);
-      }
+      const snapshots = topCandidates.map((c) => ({
+        kalshiTicker: c.market.ticker,
+        title: c.market.title || c.market.ticker,
+        category: c.market.category || null,
+        openPrice: null as number | null,
+        lastPrice: c.yesPrice,
+        yesAsk: getMarketYesAsk(c.market) || c.yesPrice + 0.02,
+        yesBid: getMarketYesBid(c.market) || c.yesPrice - 0.02,
+        volume24h: c.volume24h,
+        liquidity: c.liquidity,
+        status: c.market.status || "active",
+        result: c.market.result || null,
+        closeTime: c.market.close_time ? new Date(c.market.close_time) : null,
+        expirationTime: c.market.expiration_time ? new Date(c.market.expiration_time) : null,
+        rawData: c.market as unknown as Record<string, unknown>,
+      }));
+      await db.insert(historicalMarketsTable).values(snapshots);
     } catch (_e) {}
 
     return { candidates: topCandidates, totalScanned: markets.length, source: "live" };
