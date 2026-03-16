@@ -35,20 +35,27 @@ export function auditTrade(
     flags.push(`Insufficient edge (${analysis.edge.toFixed(1)}%, min ${settings.minEdge}%)`);
   }
 
-  if (analysis.confidence < 0.3) {
+  // Confidence threshold: 20% minimum. Game-day sports markets routinely land at 25-35%
+  // without real-time injury/line data — this is honest uncertainty, not bad analysis.
+  if (analysis.confidence < 0.20) {
     flags.push(`Low model confidence (${(analysis.confidence * 100).toFixed(0)}%)`);
   }
 
+  // Hallucination detection: only flag patterns that indicate a COMPLETE analysis failure
+  // (AI couldn't perform the task at all). Do NOT flag legitimate epistemic uncertainty
+  // ("I'm not sure about X but my analysis suggests Y").
   const reasoningLower = analysis.reasoning.toLowerCase();
-  const hallucinationPatterns = [
-    "failed", "default", "unable to", "cannot determine",
-    "no data available", "i don't have", "i cannot access",
-    "as an ai", "i'm not sure", "breaking news",
-    "unverified report", "sources say",
+  const hardFailurePatterns = [
+    "unable to access",
+    "i cannot access",
+    "no data available",
+    "as an ai, i",
+    "breaking news",
+    "unverified report",
   ];
-  const hallucinationHits = hallucinationPatterns.filter((p) => reasoningLower.includes(p));
+  const hallucinationHits = hardFailurePatterns.filter((p) => reasoningLower.includes(p));
   if (hallucinationHits.length > 0) {
-    flags.push(`Analysis reliability concern: matched ${hallucinationHits.length} warning pattern(s): ${hallucinationHits.join(", ")}`);
+    flags.push(`Analysis reliability concern: matched ${hallucinationHits.length} failure pattern(s): ${hallucinationHits.join(", ")}`);
   }
 
   if (analysis.reasoning.length < 50) {

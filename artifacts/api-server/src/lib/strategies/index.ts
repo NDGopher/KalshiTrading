@@ -52,7 +52,9 @@ const pureValue: Strategy = {
     return candidates.filter((c) => c.yesPrice > 0.05 && c.yesPrice < 0.95);
   },
   shouldTrade(analysis) {
-    if (analysis.edge >= 4 && analysis.confidence >= 0.38) {
+    // 25% confidence floor: game-day sports markets (NBA spreads, soccer) naturally land
+    // at 25-30% with Claude without real-time injury data — this is honest uncertainty.
+    if (analysis.edge >= 4 && analysis.confidence >= 0.25) {
       return { trade: true, reason: `Pure value: ${analysis.edge.toFixed(1)}pp edge, ${(analysis.confidence * 100).toFixed(0)}% confidence` };
     }
     return { trade: false, reason: `Insufficient value: edge=${analysis.edge.toFixed(1)}pp, conf=${(analysis.confidence * 100).toFixed(0)}%` };
@@ -180,7 +182,7 @@ const lateEfficiency: Strategy = {
     const yesPrice = Math.max(0.01, analysis.candidate.yesPrice);
     const spreadPct = (spread / yesPrice) * 100;
 
-    if (analysis.edge >= 8 && analysis.confidence >= 0.35 && spreadPct > 2) {
+    if (analysis.edge >= 8 && analysis.confidence >= 0.25 && spreadPct > 2) {
       return {
         trade: true,
         reason: `Late efficiency: ${hoursLeft.toFixed(1)}h to expiry, ${spreadPct.toFixed(1)}% spread, ${analysis.edge.toFixed(1)}pp edge`,

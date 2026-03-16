@@ -356,35 +356,109 @@ export async function getSportsMarkets(sportKeywords: string[]): Promise<KalshiM
   return allMarkets;
 }
 
-/**
- * Fetches ALL active open markets from Kalshi with no category filter.
- * Returns every market with a tradeable price (1¢–99¢).
- * Volume/liquidity scoring is handled downstream by the scanner's compositeScore().
- */
-export async function getAllLiquidMarkets(maxPages = 10): Promise<KalshiMarket[]> {
-  const allMarkets: KalshiMarket[] = [];
-  let cursor: string | undefined;
-  let pages = 0;
+const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-  while (pages < maxPages) {
-    try {
-      const result = await getMarkets({ limit: 100, cursor, status: "open" });
+/**
+ * Fetches one page of markets for a given category (or no filter if category is empty).
+ * Returns empty array on any error (rate limit, bad category name, etc.).
+ */
+async function fetchOnePage(category: string, cursor?: string): Promise<{ markets: KalshiMarket[]; cursor?: string }> {
+  try {
+    const params: Parameters<typeof getMarkets>[0] = { limit: 100, status: "open" };
+    if (category) params.category = category;
+    if (cursor) params.cursor = cursor;
+    return await getMarkets(params);
+  } catch {
+    return { markets: [] };
+  }
+}
+
+/**
+ * Fetches markets across ALL useful Kalshi categories SEQUENTIALLY to avoid rate limits.
+ * Each category gets up to 2 pages (200 markets). Also sweeps specific game-day series
+ * (soccer, NBA spreads, etc.) that are proven to trade at real prices.
+ *
+ * Result: diverse mix of game-day sports, politics, economics, financials + KXMVE parlays.
+ */
+export async function getAllLiquidMarkets(_maxPages = 10): Promise<KalshiMarket[]> {
+  // Kalshi category strings — each maps to a distinct set of events
+  const CATEGORIES = [
+    "",           // unfiltered default feed (highest-volume markets first)
+    "Politics",
+    "Economics",
+    "Financials",
+    "Sports",
+    "Entertainment",
+    "Weather",
+  ];
+
+  // Game-day series with REAL pre-game prices (20-80¢), proven in backtests.
+  // Fetch first page of each — most series have < 100 active games at once.
+  const GAME_SERIES = [
+    "KXLALIGAGAME",      // La Liga soccer — active Mar–May
+    "KXSERIEAGAME",      // Serie A soccer — active Mar–May
+    "KXUECLGAME",        // UEFA Conference League — active Mar–May
+    "KXCOPPAITALIAGAME", // Coppa Italia
+    "KXNBASERIES",       // NBA playoff series
+    "KXNBASPREAD",       // NBA game spreads
+    "KXNHLTOTAL",        // NHL goal totals
+    "KXNFLSPREAD",       // NFL spreads (off-season now, 0 markets until Sep)
+    "KXATPGAMETOTAL",    // ATP tennis
+    "KXWBCTOTAL",        // WBC/MLB run totals
+  ];
+
+  const allMarketsRaw: KalshiMarket[] = [];
+
+  // Phase 1: Category sweep
+  for (const category of CATEGORIES) {
+    let cursor: string | undefined;
+    for (let page = 0; page < 2; page++) {
+      await delay(300);
+      const result = await fetchOnePage(category, cursor);
       if (!result.markets || result.markets.length === 0) break;
-      allMarkets.push(...result.markets);
+      allMarketsRaw.push(...result.markets);
+      console.log(`[Scanner] category=${category || "default"} page ${page}: +${result.markets.length} markets`);
       cursor = result.cursor;
-      pages++;
       if (!cursor || result.markets.length < 100) break;
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.warn(`[Scanner] getAllLiquidMarkets page ${pages} error: ${msg}`);
-      break;
     }
   }
-  console.log(`[Scanner] getAllLiquidMarkets: fetched ${allMarkets.length} total markets from API`);
 
-  // Only filter out extreme prices — everything else is passed to the scanner for scoring
+  // Phase 2: Game-day series sweep — 1 page each (series rarely exceed 100 active markets)
+  let seriesCount = 0;
+  for (const seriesTicker of GAME_SERIES) {
+    await delay(300);
+    try {
+      const params: Parameters<typeof getMarkets>[0] = { limit: 100, status: "open", series_ticker: seriesTicker };
+      const result = await getMarkets(params);
+      if (result.markets && result.markets.length > 0) {
+        allMarketsRaw.push(...result.markets);
+        seriesCount += result.markets.length;
+        console.log(`[Scanner] series=${seriesTicker}: +${result.markets.length} game markets`);
+      }
+    } catch {
+      // Series not found or rate limited — skip silently
+    }
+  }
+
+  if (seriesCount > 0) {
+    console.log(`[Scanner] Game-series sweep: +${seriesCount} game-day markets`);
+  }
+
+  // Deduplicate by ticker (same market can appear in category and series results)
+  const seen = new Set<string>();
+  const allMarkets: KalshiMarket[] = [];
+  for (const m of allMarketsRaw) {
+    if (!seen.has(m.ticker)) {
+      seen.add(m.ticker);
+      allMarkets.push(m);
+    }
+  }
+
+  console.log(`[Scanner] getAllLiquidMarkets: ${allMarkets.length} unique markets total`);
+
+  // Only filter out extreme prices — scoring is done downstream by compositeScore()
   return allMarkets.filter((m) => {
     const price = parseFloat(String(m.last_price_dollars || "0"));
-    return price > 0.01 && price < 0.99;
+    return price > 0.02 && price < 0.98;
   });
 }
