@@ -7,8 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { formatCurrency } from "@/lib/utils";
-import { format, formatDistanceToNow } from "date-fns";
-import { FileText, RefreshCw, RotateCcw, TrendingUp, TrendingDown, Wallet, Target, Activity, BarChart3 } from "lucide-react";
+import { format } from "date-fns";
+import { FileText, RefreshCw, RotateCcw, TrendingUp, TrendingDown, Wallet, Target, Activity, BarChart3, AlertTriangle, Wifi, WifiOff } from "lucide-react";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell
 } from "recharts";
@@ -32,10 +32,17 @@ interface PaperTrade {
   analystReasoning: string | null;
   closedAt: string | null;
   createdAt: string;
+  currentPrice: number | null;
+  priceSource: "live" | "entry_fallback" | "settled" | null;
+  unrealizedPnl: number | null;
 }
 
 interface PaperStats {
   paperBalance: number;
+  totalPortfolioValue: number;
+  unrealizedPnl: number;
+  openPositionValue: number;
+  livePricesAvailable: boolean;
   totalTrades: number;
   openTrades: number;
   closedTrades: number;
@@ -53,24 +60,27 @@ function usePaperTrades() {
       const data = await res.json();
       return (data.trades || data) as PaperTrade[];
     },
-    refetchInterval: 10000,
+    refetchInterval: 15000,
   });
 }
 
 function usePaperStats() {
   return useQuery({
     queryKey: ["/api/paper-trades/stats"],
-    queryFn: async () => { const res = await fetch(`${API_BASE}/paper-trades/stats`); return res.json() as Promise<PaperStats>; },
-    refetchInterval: 10000,
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/paper-trades/stats`);
+      return res.json() as Promise<PaperStats>;
+    },
+    refetchInterval: 15000,
   });
 }
 
-function CustomTooltip({ active, payload, label }: any) {
+function CustomTooltip({ active, payload, label }: { active?: boolean; payload?: { name: string; value: number; color: string }[]; label?: string }) {
   if (!active || !payload?.length) return null;
   return (
     <div className="bg-card/95 border border-white/10 rounded-lg p-3 text-xs shadow-xl backdrop-blur-sm">
       <div className="text-muted-foreground mb-1">{label}</div>
-      {payload.map((p: any) => (
+      {payload.map((p) => (
         <div key={p.name} className="flex justify-between gap-4">
           <span style={{ color: p.color }}>{p.name}</span>
           <span className="font-mono font-bold text-white">{typeof p.value === "number" ? formatCurrency(p.value) : p.value}</span>
@@ -136,59 +146,85 @@ export default function Paper() {
   });
 
   const openTrades = allTrades.filter(t => t.status === "open");
-  const closedTrades = allTrades.filter(t => t.status !== "open");
+  const anyLivePrices = openTrades.some(t => t.priceSource === "live");
+  const allFallback = openTrades.length > 0 && openTrades.every(t => t.priceSource === "entry_fallback");
 
   const isPositive = (val?: number | null) => (val || 0) >= 0;
   const isPaperActive = overview?.paperTradingMode;
 
+  const portfolioValue = stats?.totalPortfolioValue ?? stats?.paperBalance ?? 5000;
+  const unrealizedPnl = stats?.unrealizedPnl ?? 0;
+  const realizedPnl = stats?.totalPnl ?? 0;
+  const cashBalance = stats?.paperBalance ?? 5000;
+
   const pnlTimeline = useMemo(() => {
     const sorted = [...allTrades].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-    let balance = 5000;
-    const points: { date: string; balance: number; pnl: number }[] = [{ date: "Start", balance: 5000, pnl: 0 }];
+    let cash = 5000;
+    const points: { date: string; portfolio: number; pnl: number }[] = [{ date: "Start", portfolio: 5000, pnl: 0 }];
     for (const t of sorted) {
       const cost = t.entryPrice * t.quantity;
       if (t.status === "open") {
-        balance -= cost;
+        cash -= cost;
       } else if (t.pnl != null) {
-        balance += t.pnl;
+        cash += t.pnl + cost;
       }
+      const openVal = openTrades
+        .filter(o => o.id <= t.id)
+        .reduce((s, o) => s + (o.currentPrice ?? o.entryPrice) * o.quantity, 0);
+      const portfolioPoint = cash + openVal;
       points.push({
         date: format(new Date(t.createdAt), "MMM d HH:mm"),
-        balance: Math.round(balance * 100) / 100,
-        pnl: Math.round((balance - 5000) * 100) / 100,
+        portfolio: Math.round(portfolioPoint * 100) / 100,
+        pnl: Math.round((portfolioPoint - 5000) * 100) / 100,
       });
     }
     return points;
-  }, [allTrades]);
+  }, [allTrades, openTrades]);
 
   const strategyBreakdown = useMemo(() => {
-    const map = new Map<string, { name: string; count: number; invested: number; pnl: number; wins: number }>();
+    const map = new Map<string, { name: string; count: number; invested: number; pnl: number; wins: number; unrealized: number }>();
     for (const t of allTrades) {
       const key = t.strategyName || "Unknown";
-      if (!map.has(key)) map.set(key, { name: key, count: 0, invested: 0, pnl: 0, wins: 0 });
+      if (!map.has(key)) map.set(key, { name: key, count: 0, invested: 0, pnl: 0, wins: 0, unrealized: 0 });
       const s = map.get(key)!;
       s.count++;
       s.invested += t.entryPrice * t.quantity;
       if (t.pnl != null) s.pnl += t.pnl;
+      if (t.unrealizedPnl != null) s.unrealized += t.unrealizedPnl;
       if (t.status === "won") s.wins++;
     }
     return Array.from(map.values());
   }, [allTrades]);
 
-  const unrealizedPnl = useMemo(() => {
-    return openTrades.reduce((sum, t) => {
-      const cost = t.entryPrice * t.quantity;
-      const modelProb = t.modelProbability ?? t.entryPrice;
-      const currentValue = t.side === "yes" ? modelProb * t.quantity : (1 - modelProb) * t.quantity;
-      return sum + (currentValue - cost);
-    }, 0);
-  }, [openTrades]);
-
   const statCards = [
-    { title: "Paper Balance", value: formatCurrency(stats?.paperBalance ?? 5000), icon: Wallet, color: "text-blue-400" },
-    { title: "Total P&L", value: formatCurrency(stats?.totalPnl ?? 0), icon: isPositive(stats?.totalPnl) ? TrendingUp : TrendingDown, color: isPositive(stats?.totalPnl) ? "text-success" : "text-destructive" },
-    { title: "Win Rate", value: stats?.winRate != null ? `${(stats.winRate * 100).toFixed(1)}%` : "—", icon: Target, color: "text-accent" },
-    { title: "Open / Total", value: `${stats?.openTrades ?? 0} / ${stats?.totalTrades ?? 0}`, icon: Activity, color: "text-purple-400" },
+    {
+      title: "Portfolio Value",
+      value: formatCurrency(portfolioValue),
+      sub: `Cash: ${formatCurrency(cashBalance)}`,
+      icon: Wallet,
+      color: "text-blue-400",
+    },
+    {
+      title: "Unrealized P&L",
+      value: `${unrealizedPnl >= 0 ? "+" : ""}${formatCurrency(unrealizedPnl)}`,
+      sub: stats?.livePricesAvailable === false ? "⚠ using entry price" : anyLivePrices ? "live prices" : "—",
+      icon: unrealizedPnl >= 0 ? TrendingUp : TrendingDown,
+      color: unrealizedPnl >= 0 ? "text-success" : "text-destructive",
+    },
+    {
+      title: "Realized P&L",
+      value: `${realizedPnl >= 0 ? "+" : ""}${formatCurrency(realizedPnl)}`,
+      sub: `Win rate: ${stats?.winRate != null ? `${(stats.winRate * 100).toFixed(1)}%` : "—"}`,
+      icon: Target,
+      color: isPositive(realizedPnl) ? "text-success" : "text-destructive",
+    },
+    {
+      title: "Open / Total",
+      value: `${stats?.openTrades ?? 0} / ${stats?.totalTrades ?? 0}`,
+      sub: `${stats?.wins ?? 0}W / ${stats?.losses ?? 0}L closed`,
+      icon: Activity,
+      color: "text-purple-400",
+    },
   ];
 
   return (
@@ -218,6 +254,13 @@ export default function Paper() {
           </div>
         </div>
 
+        {allFallback && (
+          <div className="flex items-center gap-2 text-xs text-yellow-400 bg-yellow-500/10 border border-yellow-500/20 rounded-lg px-4 py-2">
+            <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+            <span>Live Kalshi prices unavailable — showing entry price as current mark. P&L will update when prices are accessible.</span>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {statCards.map((stat) => (
             <Card key={stat.title} className="overflow-hidden">
@@ -226,7 +269,8 @@ export default function Paper() {
                 <stat.icon className={`w-4 h-4 ${stat.color}`} />
               </CardHeader>
               <CardContent>
-                <div className="text-3xl font-bold font-mono text-white">{stat.value}</div>
+                <div className={`text-3xl font-bold font-mono ${stat.color}`}>{stat.value}</div>
+                {stat.sub && <div className="text-[11px] text-muted-foreground mt-1">{stat.sub}</div>}
               </CardContent>
             </Card>
           ))}
@@ -238,14 +282,15 @@ export default function Paper() {
               <div className="flex items-center justify-between">
                 <CardTitle className="text-base flex items-center gap-2">
                   <TrendingUp className="w-4 h-4 text-primary" />
-                  Balance Over Time
+                  Portfolio Value Over Time
                 </CardTitle>
                 <div className="flex items-center gap-4 text-xs">
-                  <span className={`font-mono font-bold ${unrealizedPnl >= 0 ? "text-success" : "text-destructive"}`}>
+                  <span className={`font-mono font-bold flex items-center gap-1 ${unrealizedPnl >= 0 ? "text-success" : "text-destructive"}`}>
+                    {anyLivePrices ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3 text-yellow-400" />}
                     Unrealized: {unrealizedPnl >= 0 ? "+" : ""}{formatCurrency(unrealizedPnl)}
                   </span>
-                  <span className={`font-mono font-bold ${(stats?.totalPnl ?? 0) >= 0 ? "text-success" : "text-destructive"}`}>
-                    Realized P&L: {isPositive(stats?.totalPnl) ? "+" : ""}{formatCurrency(stats?.totalPnl ?? 0)}
+                  <span className={`font-mono font-bold ${realizedPnl >= 0 ? "text-success" : "text-destructive"}`}>
+                    Realized P&L: {realizedPnl >= 0 ? "+" : ""}{formatCurrency(realizedPnl)}
                   </span>
                 </div>
               </div>
@@ -255,7 +300,7 @@ export default function Paper() {
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={pnlTimeline} margin={{ top: 5, right: 5, left: 0, bottom: 5 }}>
                     <defs>
-                      <linearGradient id="balanceGradient" x1="0" y1="0" x2="0" y2="1">
+                      <linearGradient id="portfolioGradient" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="#a78bfa" stopOpacity={0.3} />
                         <stop offset="95%" stopColor="#a78bfa" stopOpacity={0.02} />
                       </linearGradient>
@@ -264,7 +309,7 @@ export default function Paper() {
                     <XAxis dataKey="date" tick={{ fill: "#6b7280", fontSize: 10 }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
                     <YAxis tick={{ fill: "#6b7280", fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={(v) => `$${v.toLocaleString()}`} domain={["auto", "auto"]} />
                     <Tooltip content={<CustomTooltip />} />
-                    <Area type="monotone" dataKey="balance" name="Balance" stroke="#a78bfa" strokeWidth={2} fill="url(#balanceGradient)" dot={false} activeDot={{ r: 4, fill: "#a78bfa" }} />
+                    <Area type="monotone" dataKey="portfolio" name="Portfolio" stroke="#a78bfa" strokeWidth={2} fill="url(#portfolioGradient)" dot={false} activeDot={{ r: 4, fill: "#a78bfa" }} />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
@@ -285,9 +330,9 @@ export default function Paper() {
                 <div className="divide-y divide-white/5">
                   {openTrades.map((t) => {
                     const cost = t.entryPrice * t.quantity;
-                    const modelProb = t.modelProbability ?? t.entryPrice;
-                    const currentValue = t.side === "yes" ? modelProb * t.quantity : (1 - modelProb) * t.quantity;
-                    const unrealized = currentValue - cost;
+                    const livePrice = t.currentPrice ?? t.entryPrice;
+                    const unrealized = t.unrealizedPnl ?? (livePrice * t.quantity - cost);
+                    const isLive = t.priceSource === "live";
                     return (
                       <div key={t.id} className="px-4 py-3 hover:bg-white/[0.02] transition-colors">
                         <div className="flex items-start justify-between gap-2">
@@ -306,8 +351,13 @@ export default function Paper() {
                           <Badge variant={t.side === "yes" ? "success" : "destructive"} className="text-[10px] h-4">{t.side.toUpperCase()}</Badge>
                           <span className="font-mono">{t.quantity} @ {formatCurrency(t.entryPrice)}</span>
                           <span className="flex items-center gap-1">
-                            <span className="text-muted-foreground/60">Curr:</span>
-                            <span className="font-mono text-white">{formatCurrency(modelProb)}</span>
+                            {isLive
+                              ? <Wifi className="w-2.5 h-2.5 text-success" />
+                              : <WifiOff className="w-2.5 h-2.5 text-yellow-400" />
+                            }
+                            <span className="text-muted-foreground/60">Mark:</span>
+                            <span className={`font-mono ${isLive ? "text-white" : "text-yellow-400"}`}>{formatCurrency(livePrice)}</span>
+                            {!isLive && <span className="text-yellow-400/70">(entry)</span>}
                           </span>
                           <span>Cost: {formatCurrency(cost)}</span>
                           {t.edge != null && <span className="text-primary">{t.edge.toFixed(1)}% edge</span>}
@@ -345,17 +395,22 @@ export default function Paper() {
                   </ResponsiveContainer>
                 </div>
                 <div className="space-y-2">
-                  {strategyBreakdown.map((s) => (
-                    <div key={s.name} className="flex items-center gap-2 text-xs">
-                      <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: STRATEGY_COLORS[s.name] || "#6b7280" }} />
-                      <span className="text-white font-medium flex-1 truncate">{s.name}</span>
-                      <span className="text-muted-foreground font-mono">{s.count} trades</span>
-                      <span className="text-muted-foreground font-mono">{formatCurrency(s.invested)}</span>
-                      <span className={`font-mono font-bold ${s.pnl >= 0 ? "text-success" : "text-destructive"}`}>
-                        {s.pnl !== 0 ? `${s.pnl >= 0 ? "+" : ""}${formatCurrency(s.pnl)}` : "open"}
-                      </span>
-                    </div>
-                  ))}
+                  {strategyBreakdown.map((s) => {
+                    const totalReturn = s.pnl + s.unrealized;
+                    return (
+                      <div key={s.name} className="flex items-center gap-2 text-xs">
+                        <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: STRATEGY_COLORS[s.name] || "#6b7280" }} />
+                        <span className="text-white font-medium flex-1 truncate">{s.name}</span>
+                        <span className="text-muted-foreground font-mono">{s.count} trades</span>
+                        <span className="text-muted-foreground font-mono">{formatCurrency(s.invested)}</span>
+                        <span className={`font-mono font-bold ${totalReturn >= 0 ? "text-success" : "text-destructive"}`}>
+                          {s.pnl !== 0 || s.unrealized !== 0
+                            ? `${totalReturn >= 0 ? "+" : ""}${formatCurrency(totalReturn)}`
+                            : "open"}
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
               </CardContent>
             </Card>
@@ -397,40 +452,56 @@ export default function Paper() {
                       <th className="px-6 py-4 font-semibold">Strategy</th>
                       <th className="px-6 py-4 font-semibold">Side / Qty</th>
                       <th className="px-6 py-4 font-semibold text-right">Entry</th>
-                      <th className="px-6 py-4 font-semibold text-right">Exit</th>
+                      <th className="px-6 py-4 font-semibold text-right">Mark / Exit</th>
                       <th className="px-6 py-4 font-semibold text-right">P&L</th>
                       <th className="px-6 py-4 font-semibold text-center">Status</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/5">
-                    {filteredTrades.map((trade) => (
-                      <tr key={trade.id} className="hover:bg-white/[0.02] transition-colors group" title={trade.analystReasoning || undefined}>
-                        <td className="px-6 py-4 whitespace-nowrap text-muted-foreground text-xs">{format(new Date(trade.createdAt), "MMM d, HH:mm")}</td>
-                        <td className="px-6 py-4 max-w-[250px]">
-                          <div className="font-medium text-white mb-1 truncate" title={trade.title}>{trade.title}</div>
-                          <div className="text-[10px] font-mono text-muted-foreground">{trade.kalshiTicker}</div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className="text-xs text-muted-foreground">{trade.strategyName || "—"}</span>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-2 mb-1">
-                            <Badge variant={trade.side === "yes" ? "success" : "destructive"} className="text-[10px] h-4">{trade.side.toUpperCase()}</Badge>
-                          </div>
-                          <div className="text-xs font-mono text-muted-foreground">{trade.quantity} cont.</div>
-                        </td>
-                        <td className="px-6 py-4 font-mono text-right text-white">{formatCurrency(trade.entryPrice)}</td>
-                        <td className="px-6 py-4 font-mono text-right text-muted-foreground">{trade.exitPrice != null ? formatCurrency(trade.exitPrice) : "—"}</td>
-                        <td className={`px-6 py-4 font-mono font-bold text-right ${trade.pnl != null ? (isPositive(trade.pnl) ? "text-success" : "text-destructive") : "text-muted-foreground"}`}>
-                          {trade.pnl != null ? `${isPositive(trade.pnl) ? "+" : ""}${formatCurrency(trade.pnl)}` : "—"}
-                        </td>
-                        <td className="px-6 py-4 text-center">
-                          <Badge variant={trade.status === "won" ? "success" : trade.status === "lost" ? "destructive" : trade.status === "open" ? "default" : "outline"}>
-                            {trade.status}
-                          </Badge>
-                        </td>
-                      </tr>
-                    ))}
+                    {filteredTrades.map((trade) => {
+                      const livePrice = trade.currentPrice ?? trade.entryPrice;
+                      const isLive = trade.priceSource === "live";
+                      const displayPnl = trade.status === "open"
+                        ? (trade.unrealizedPnl ?? null)
+                        : trade.pnl;
+                      return (
+                        <tr key={trade.id} className="hover:bg-white/[0.02] transition-colors group" title={trade.analystReasoning || undefined}>
+                          <td className="px-6 py-4 whitespace-nowrap text-muted-foreground text-xs">{format(new Date(trade.createdAt), "MMM d, HH:mm")}</td>
+                          <td className="px-6 py-4 max-w-[250px]">
+                            <div className="font-medium text-white mb-1 truncate" title={trade.title}>{trade.title}</div>
+                            <div className="text-[10px] font-mono text-muted-foreground">{trade.kalshiTicker}</div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className="text-xs text-muted-foreground">{trade.strategyName || "—"}</span>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-2 mb-1">
+                              <Badge variant={trade.side === "yes" ? "success" : "destructive"} className="text-[10px] h-4">{trade.side.toUpperCase()}</Badge>
+                            </div>
+                            <div className="text-xs font-mono text-muted-foreground">{trade.quantity} cont.</div>
+                          </td>
+                          <td className="px-6 py-4 font-mono text-right text-white">{formatCurrency(trade.entryPrice)}</td>
+                          <td className="px-6 py-4 font-mono text-right">
+                            {trade.status === "open" ? (
+                              <span className={`flex items-center justify-end gap-1 ${isLive ? "text-white" : "text-yellow-400"}`}>
+                                {isLive ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
+                                {formatCurrency(livePrice)}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground">{trade.exitPrice != null ? formatCurrency(trade.exitPrice) : "—"}</span>
+                            )}
+                          </td>
+                          <td className={`px-6 py-4 font-mono font-bold text-right ${displayPnl != null ? (isPositive(displayPnl) ? "text-success" : "text-destructive") : "text-muted-foreground"}`}>
+                            {displayPnl != null ? `${isPositive(displayPnl) ? "+" : ""}${formatCurrency(displayPnl)}` : "—"}
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            <Badge variant={trade.status === "won" ? "success" : trade.status === "lost" ? "destructive" : trade.status === "open" ? "default" : "outline"}>
+                              {trade.status}
+                            </Badge>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

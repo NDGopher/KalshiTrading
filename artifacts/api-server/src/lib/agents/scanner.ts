@@ -22,6 +22,23 @@ const SPORT_KEYWORDS = [
   "KXSPORT", "KXMVE"
 ];
 
+const MAX_HOURS_TO_EXPIRY = 168;
+
+function proximityScore(hoursToExpiry: number): number {
+  if (hoursToExpiry <= 6) return 5.0;
+  if (hoursToExpiry <= 24) return 4.0;
+  if (hoursToExpiry <= 48) return 3.0;
+  if (hoursToExpiry <= 96) return 2.0;
+  if (hoursToExpiry <= 168) return 1.0;
+  return 0.0;
+}
+
+function compositeScore(candidate: ScanCandidate): number {
+  const volNorm = Math.min(1, candidate.volume24h / 10000);
+  const proximity = proximityScore(candidate.hoursToExpiry);
+  return proximity * 3 + volNorm * 1;
+}
+
 function buildCandidateFromKalshi(market: KalshiMarket): ScanCandidate | null {
   const now = new Date();
   const yesPrice = parseFloat(String(market.last_price_dollars || "0"))
@@ -40,18 +57,21 @@ function buildCandidateFromKalshi(market: KalshiMarket): ScanCandidate | null {
   const hoursToExpiry = (expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60);
 
   if (hoursToExpiry < 0.5) return null;
+  if (hoursToExpiry > MAX_HOURS_TO_EXPIRY) return null;
 
   return { market, yesPrice, noPrice, spread, volume24h, liquidity, hoursToExpiry };
 }
 
 async function scanFromCachedDb(): Promise<{ candidates: ScanCandidate[]; totalScanned: number }> {
   const now = new Date();
+  const maxClose = new Date(now.getTime() + MAX_HOURS_TO_EXPIRY * 60 * 60 * 1000);
+
   const rows = await db
     .select()
     .from(historicalMarketsTable)
     .where(ne(historicalMarketsTable.status, "settled"))
     .orderBy(desc(historicalMarketsTable.snapshotAt))
-    .limit(100);
+    .limit(200);
 
   const seen = new Set<string>();
   const candidates: ScanCandidate[] = [];
@@ -66,6 +86,7 @@ async function scanFromCachedDb(): Promise<{ candidates: ScanCandidate[]; totalS
     const expiresAt = new Date(row.closeTime || row.expirationTime || now);
     const hoursToExpiry = (expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60);
     if (hoursToExpiry < 0.5) continue;
+    if (expiresAt > maxClose) continue;
 
     const yesAsk = row.yesAsk || price + 0.02;
     const yesBid = row.yesBid || price - 0.02;
@@ -102,7 +123,7 @@ async function scanFromCachedDb(): Promise<{ candidates: ScanCandidate[]; totalS
     });
   }
 
-  candidates.sort((a, b) => b.volume24h - a.volume24h);
+  candidates.sort((a, b) => compositeScore(b) - compositeScore(a));
   return { candidates: candidates.slice(0, 50), totalScanned: rows.length };
 }
 
@@ -122,7 +143,7 @@ export async function scanMarkets(customKeywords?: string[]): Promise<{
       if (candidate) candidates.push(candidate);
     }
 
-    candidates.sort((a, b) => b.volume24h - a.volume24h);
+    candidates.sort((a, b) => compositeScore(b) - compositeScore(a));
     const topCandidates = candidates.slice(0, 50);
 
     try {

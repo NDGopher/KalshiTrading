@@ -227,19 +227,25 @@ export async function fetchSettledMarkets(startDate: string, endDate: string): P
   return fetchFromApi(startDate, endDate);
 }
 
-export async function runBacktest(config: BacktestConfig): Promise<number> {
+export async function runBacktest(config: BacktestConfig, existingRunId?: number): Promise<number> {
   const strategy = getStrategy(config.strategyName);
   if (!strategy) {
     throw new Error(`Unknown strategy: ${config.strategyName}`);
   }
 
-  const [run] = await db.insert(backtestRunsTable).values({
-    strategyName: config.strategyName,
-    status: "running",
-    startDate: config.startDate,
-    endDate: config.endDate,
-    config: config as unknown as Record<string, unknown>,
-  }).returning();
+  let runId: number;
+  if (existingRunId != null) {
+    runId = existingRunId;
+  } else {
+    const [run] = await db.insert(backtestRunsTable).values({
+      strategyName: config.strategyName,
+      status: "running",
+      startDate: config.startDate,
+      endDate: config.endDate,
+      config: config as unknown as Record<string, unknown>,
+    }).returning();
+    runId = run.id;
+  }
 
   try {
     const settledMarkets = await fetchSettledMarkets(config.startDate, config.endDate);
@@ -249,8 +255,8 @@ export async function runBacktest(config: BacktestConfig): Promise<number> {
         status: "completed",
         marketsEvaluated: 0,
         completedAt: new Date(),
-      }).where(eq(backtestRunsTable.id, run.id));
-      return run.id;
+      }).where(eq(backtestRunsTable.id, runId));
+      return runId;
     }
 
     let bankroll = config.initialBankroll;
@@ -387,7 +393,7 @@ export async function runBacktest(config: BacktestConfig): Promise<number> {
       if (currentDrawdown > maxDrawdown) maxDrawdown = currentDrawdown;
 
       await db.insert(backtestTradesTable).values({
-        backtestRunId: run.id,
+        backtestRunId: runId,
         kalshiTicker: market.ticker,
         title: market.title || market.ticker,
         strategyName: config.strategyName,
@@ -448,16 +454,16 @@ export async function runBacktest(config: BacktestConfig): Promise<number> {
       worstStreak,
       dipCatchSuccessRate,
       completedAt: new Date(),
-    }).where(eq(backtestRunsTable.id, run.id));
+    }).where(eq(backtestRunsTable.id, runId));
 
-    return run.id;
+    return runId;
   } catch (err: unknown) {
     const errMsg = err instanceof Error ? err.message : "Unknown error";
     await db.update(backtestRunsTable).set({
       status: "error",
       errorMessage: errMsg,
       completedAt: new Date(),
-    }).where(eq(backtestRunsTable.id, run.id));
+    }).where(eq(backtestRunsTable.id, runId));
     throw err;
   }
 }

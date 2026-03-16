@@ -8,13 +8,14 @@ import { ingestSettledMarkets, getIngestionStats } from "../lib/historical-inges
 const router = Router();
 
 router.get("/backtest/strategies", (_req, res) => {
-  res.json({ strategies: getStrategyNames() });
+  const strategies = getStrategyNames();
+  res.json({ strategies: ["All", ...strategies] });
 });
 
 router.post("/backtest/run", async (req, res) => {
   try {
     const {
-      strategyName = "Pure Value",
+      strategyName = "All",
       startDate,
       endDate,
       initialBankroll = 5000,
@@ -22,7 +23,7 @@ router.post("/backtest/run", async (req, res) => {
       kellyFraction = 0.25,
       minEdge = 5,
       minLiquidity = 0,
-      useAiAnalysis = true,
+      useAiAnalysis = false,
     } = req.body;
 
     if (!startDate || !endDate) {
@@ -44,29 +45,55 @@ router.post("/backtest/run", async (req, res) => {
     }
 
     const strategiesToRun = strategyName === "All" ? validStrategies : [strategyName];
-    const runIds: number[] = [];
 
-    for (const strat of strategiesToRun) {
-      const runId = await runBacktest({
-        strategyName: strat,
-        startDate,
-        endDate,
-        initialBankroll,
-        maxPositionPct,
-        kellyFraction,
-        minEdge,
-        minLiquidity,
-        useAiAnalysis,
-      });
-      runIds.push(runId);
-    }
+    const placeholderRuns = await Promise.all(
+      strategiesToRun.map((strat) =>
+        db.insert(backtestRunsTable).values({
+          strategyName: strat,
+          status: "running",
+          startDate,
+          endDate,
+          config: { strategyName: strat, startDate, endDate, initialBankroll, maxPositionPct, kellyFraction, minEdge, minLiquidity, useAiAnalysis } as unknown as Record<string, unknown>,
+        }).returning()
+      )
+    );
+
+    const runIds = placeholderRuns.map((r) => r[0].id);
 
     res.json({
       runIds,
       runId: runIds[0],
-      message: strategiesToRun.length > 1
-        ? `Backtest completed for ${strategiesToRun.length} strategies`
-        : "Backtest completed",
+      status: "running",
+      message: `Backtest started for ${strategiesToRun.length} strateg${strategiesToRun.length > 1 ? "ies" : "y"}. Results will appear as they complete.`,
+    });
+
+    setImmediate(async () => {
+      for (let i = 0; i < strategiesToRun.length; i++) {
+        const strat = strategiesToRun[i];
+        const runId = runIds[i];
+        try {
+          await runBacktest({
+            strategyName: strat,
+            startDate,
+            endDate,
+            initialBankroll,
+            maxPositionPct,
+            kellyFraction,
+            minEdge,
+            minLiquidity,
+            useAiAnalysis,
+          }, runId);
+          console.log(`[Backtest] Completed run #${runId} for strategy: ${strat}`);
+        } catch (err: unknown) {
+          const errMsg = err instanceof Error ? err.message : "Unknown error";
+          console.error(`[Backtest] Run #${runId} failed for ${strat}: ${errMsg}`);
+          await db.update(backtestRunsTable).set({
+            status: "error",
+            errorMessage: errMsg,
+            completedAt: new Date(),
+          }).where(eq(backtestRunsTable.id, runId));
+        }
+      }
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Unknown error";

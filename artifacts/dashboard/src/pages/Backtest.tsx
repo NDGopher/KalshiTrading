@@ -185,12 +185,13 @@ export default function Backtest() {
   const { data: tradesData } = useBacktestTrades(selectedRunId);
   const [tradePage, setTradePage] = useState(0);
 
-  const [strategy, setStrategy] = useState("Pure Value");
+  const [strategy, setStrategy] = useState("All");
   const [startDate, setStartDate] = useState("2025-01-01");
-  const [endDate, setEndDate] = useState("2025-03-01");
+  const [endDate, setEndDate] = useState("2025-12-31");
   const [initialBankroll, setInitialBankroll] = useState(5000);
   const [useAi, setUseAi] = useState(false);
   const [running, setRunning] = useState(false);
+  const [pendingRunIds, setPendingRunIds] = useState<number[]>([]);
 
   const runBacktest = async () => {
     setRunning(true);
@@ -201,16 +202,20 @@ export default function Backtest() {
         body: JSON.stringify({ strategyName: strategy, startDate, endDate, initialBankroll, useAiAnalysis: useAi }),
       });
       const data = await res.json();
-      if (data.runId) {
-        toast({ title: "Backtest Complete", description: `Run #${data.runId} finished` });
-        queryClient.invalidateQueries({ queryKey: ["/api/backtest/results"] });
-        setSelectedRunId(data.runId);
+      if (data.error) {
+        toast({ title: "Error", description: data.error, variant: "destructive" });
+      } else if (data.runIds?.length) {
+        setPendingRunIds(data.runIds);
+        if (data.runIds.length === 1) setSelectedRunId(data.runIds[0]);
         setTradePage(0);
-      } else {
-        toast({ title: "Error", description: data.error || "Backtest failed", variant: "destructive" });
+        toast({
+          title: "Backtest Running",
+          description: data.message || `Fetching historical data and simulating trades. Results appear below as each strategy completes.`,
+        });
+        queryClient.invalidateQueries({ queryKey: ["/api/backtest/results"] });
       }
     } catch {
-      toast({ title: "Error", description: "Failed to run backtest", variant: "destructive" });
+      toast({ title: "Error", description: "Failed to start backtest", variant: "destructive" });
     } finally {
       setRunning(false);
     }
@@ -353,12 +358,69 @@ export default function Backtest() {
                 <label className="text-sm text-muted-foreground">Use AI analysis (costs API credits)</label>
               </div>
               <Button onClick={runBacktest} disabled={running} className="w-full bg-primary text-black hover:bg-primary/90 font-semibold">
-                {running ? "Running..." : <span className="flex items-center gap-2"><Play className="w-4 h-4" /> Run Backtest</span>}
+                {running
+                  ? <span className="flex items-center gap-2"><span className="animate-spin w-4 h-4 border-2 border-black/30 border-t-black rounded-full" /> Starting...</span>
+                  : <span className="flex items-center gap-2"><Play className="w-4 h-4" /> Run Backtest</span>
+                }
               </Button>
+              {pendingRunIds.length > 0 && (() => {
+                const pendingRuns = runs.filter(r => pendingRunIds.includes(r.id) && r.status === "running");
+                const completedPending = runs.filter(r => pendingRunIds.includes(r.id) && r.status !== "running");
+                return pendingRuns.length > 0 ? (
+                  <div className="rounded-lg bg-primary/10 border border-primary/20 p-3 space-y-1.5">
+                    <div className="flex items-center gap-2 text-xs text-primary font-semibold">
+                      <span className="animate-spin w-3 h-3 border-2 border-primary/30 border-t-primary rounded-full" />
+                      Fetching historical data from Kalshi...
+                    </div>
+                    {pendingRuns.map(r => (
+                      <div key={r.id} className="text-[10px] text-muted-foreground pl-5">{r.strategyName} — in progress</div>
+                    ))}
+                    {completedPending.map(r => (
+                      <div key={r.id} className="text-[10px] text-success pl-5">{r.strategyName} — {r.tradesSimulated} trades done</div>
+                    ))}
+                    <div className="text-[10px] text-muted-foreground/60 pt-1">Results appear below as each strategy completes. Page auto-refreshes every 5s.</div>
+                  </div>
+                ) : null;
+              })()}
             </CardContent>
           </Card>
 
           <div className="lg:col-span-2 space-y-4">
+            {runs.length > 0 && (
+              <Card className="glass-panel border-white/10">
+                <CardHeader className="border-b border-white/5 bg-black/20 py-3">
+                  <CardTitle className="text-sm flex items-center gap-2">Previous Runs — click to view trades</CardTitle>
+                </CardHeader>
+                <CardContent className="p-0 max-h-48 overflow-y-auto">
+                  {runs.map((r) => (
+                    <button
+                      key={r.id}
+                      onClick={() => { setSelectedRunId(r.id); setTradePage(0); }}
+                      className={`w-full flex items-center justify-between px-4 py-2.5 text-left text-xs hover:bg-white/[0.03] transition-colors border-b border-white/5 last:border-0 ${selectedRunId === r.id ? "bg-white/[0.05]" : ""}`}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className={`w-2 h-2 rounded-full flex-shrink-0 ${r.status === "running" ? "bg-yellow-400 animate-pulse" : r.status === "completed" ? "bg-success" : "bg-destructive"}`} />
+                        <span className="font-medium text-white truncate">{r.strategyName}</span>
+                        <span className="text-muted-foreground">{r.startDate?.slice(0, 7)} → {r.endDate?.slice(0, 7)}</span>
+                      </div>
+                      <div className="flex items-center gap-3 flex-shrink-0 ml-2">
+                        {r.status === "running" ? (
+                          <span className="text-yellow-400">Running...</span>
+                        ) : r.status === "completed" ? (
+                          <>
+                            <span className={`font-mono font-bold ${r.totalPnl >= 0 ? "text-success" : "text-destructive"}`}>{r.totalPnl >= 0 ? "+" : ""}${r.totalPnl?.toFixed(0)}</span>
+                            <span className="text-muted-foreground">{r.tradesSimulated}t</span>
+                            <span className="text-muted-foreground">{(r.winRate * 100).toFixed(0)}%WR</span>
+                          </>
+                        ) : (
+                          <span className="text-destructive">Error</span>
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                </CardContent>
+              </Card>
+            )}
             {selectedRun && (
               <>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
