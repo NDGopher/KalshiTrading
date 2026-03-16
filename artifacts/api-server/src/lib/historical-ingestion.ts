@@ -173,6 +173,8 @@ function generateGameMarketSnapshots(
   return snapshots;
 }
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 export async function ingestSettledMarkets(startDate: string, endDate: string): Promise<{
   ingested: number;
   skipped: number;
@@ -181,18 +183,19 @@ export async function ingestSettledMarkets(startDate: string, endDate: string): 
   const allMarkets: KalshiMarket[] = [];
   const startTime = new Date(startDate).getTime();
   const endTime = new Date(endDate).getTime();
-  const MAX_PAGES = 100;
+  const MAX_PAGES_PER_SERIES = 10; // Limit to avoid rate-limiting — game series have many short-lived markets
 
   console.log(`[Ingestion] Fetching settled game markets ${startDate} → ${endDate}...`);
 
-  // Pull from every sports series — game-specific ones first
+  // Pull from every sports series — game-specific ones are first in SPORTS_SERIES_TICKERS
   for (const seriesTicker of SPORTS_SERIES_TICKERS) {
     let cursor: string | undefined;
     let pages = 0;
     let pastRange = false;
     let seriesCount = 0;
+    let rateLimited = false;
 
-    while (pages < MAX_PAGES && !pastRange) {
+    while (pages < MAX_PAGES_PER_SERIES && !pastRange && !rateLimited) {
       try {
         const result = await getMarkets({
           limit: 100,
@@ -215,24 +218,36 @@ export async function ingestSettledMarkets(startDate: string, endDate: string): 
         cursor = result.cursor;
         pages++;
         if (!cursor || result.markets.length < 100) break;
+
+        // Small delay between pages within a series to avoid rate limiting
+        if (pages < MAX_PAGES_PER_SERIES) await sleep(300);
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
-        if (!msg.includes("429")) console.warn(`[Ingestion] ${seriesTicker} error: ${msg}`);
+        if (msg.includes("429") || msg.includes("rate")) {
+          console.warn(`[Ingestion] Rate limited on ${seriesTicker}, pausing 3s...`);
+          rateLimited = true;
+          await sleep(3000);
+        } else {
+          console.warn(`[Ingestion] ${seriesTicker} error: ${msg}`);
+        }
         break;
       }
     }
 
     if (seriesCount > 0) console.log(`[Ingestion] ${seriesTicker}: ${seriesCount} markets`);
+    // Delay between series to avoid rate limits
+    await sleep(500);
   }
 
-  // Fallback: keyword scan on generic settled endpoint
+  // Fallback: keyword scan on generic settled endpoint (find any sports markets not captured above)
   const seenTickers = new Set(allMarkets.map((m) => m.ticker));
   {
     let cursor: string | undefined;
     let pages = 0;
     let pastRange = false;
-    while (pages < 30 && !pastRange) {
+    while (pages < 10 && !pastRange) {
       try {
+        await sleep(300);
         const result = await getMarkets({ limit: 100, cursor, status: "settled" });
         for (const m of result.markets) {
           const closeTime = new Date(m.close_time).getTime();
@@ -268,30 +283,63 @@ export async function ingestSettledMarkets(startDate: string, endDate: string): 
 
     if (existing.length > 0) { skipped++; continue; }
 
+    // Use our pre-game probability as the model estimate (stored in openPrice)
+    // Keep ACTUAL Kalshi market prices (last_price_dollars, yes_bid_dollars, yes_ask_dollars)
+    // as the entry price in rawData — these reflect what the market was actually trading at.
     const preGameProb = getPreGameProbability(market);
-    const rawVolume = getMarketVolume24h(market);
+    const rawVolume = Math.round(getMarketVolume24h(market));
     const rawLiquidity = getMarketLiquidity(market);
-    const entryAsk = Math.min(0.99, preGameProb + 0.02);
-    const entryBid = Math.max(0.01, preGameProb - 0.02);
 
-    // Embed pre-game probability into rawData so the backtester gets realistic entry prices
-    const marketWithEntryPrice: KalshiMarket = {
+    // Get real Kalshi market prices — game markets use INTEGER cents (yes_bid/yes_ask/last_price),
+    // while some markets use string dollar-format (yes_bid_dollars/yes_ask_dollars/last_price_dollars).
+    // We handle both formats here and always convert to decimal fractions (e.g. 0.41).
+    const integerBid  = market.yes_bid  > 0 ? market.yes_bid  / 100 : 0;
+    const integerAsk  = market.yes_ask  > 0 ? market.yes_ask  / 100 : 0;
+    const integerLast = market.last_price > 0 ? market.last_price / 100 : 0;
+    const dollarBid   = market.yes_bid_dollars  != null ? parseFloat(String(market.yes_bid_dollars))  : 0;
+    const dollarAsk   = market.yes_ask_dollars  != null ? parseFloat(String(market.yes_ask_dollars))  : 0;
+    const dollarLast  = market.last_price_dollars != null ? parseFloat(String(market.last_price_dollars)) : 0;
+
+    const actualBid  = integerBid  || dollarBid;
+    const actualAsk  = integerAsk  || dollarAsk;
+    const actualMid  = actualBid > 0 && actualAsk > 0 ? (actualBid + actualAsk) / 2 : 0;
+    const actualLast = integerLast || dollarLast || actualMid;
+
+    // Determine entry price: use real Kalshi price if it's in a meaningful range (5-95¢)
+    // Otherwise fall back to our statistical pre-game estimate
+    const marketHasRealPrice = actualLast > 0.05 && actualLast < 0.95;
+    const entryPrice = marketHasRealPrice ? actualLast : preGameProb;
+    const entryAsk = marketHasRealPrice && actualAsk > 0.05 ? actualAsk : Math.min(0.99, entryPrice + 0.02);
+    const entryBid = marketHasRealPrice && actualBid > 0.01 ? actualBid : Math.max(0.01, entryPrice - 0.02);
+
+    // Store rawData with integer prices converted to dollar-string format.
+    // Kalshi game markets use integer cents (yes_bid=41, yes_ask=45) rather than the
+    // yes_bid_dollars / yes_ask_dollars string format. We convert before zeroing so
+    // getMarketYesPrice() can parse them correctly during backtesting.
+    const marketForStorage: KalshiMarket = {
       ...market,
-      last_price: 0,
-      last_price_dollars: preGameProb.toFixed(4),
-      yes_ask_dollars: entryAsk.toFixed(4),
-      yes_bid_dollars: entryBid.toFixed(4),
-      // Keep integer prices as 0 to force dollar-format parsing
+      // Preserve integer prices as dollar strings before zeroing the integer fields
+      yes_bid_dollars: market.yes_bid > 0
+        ? String((market.yes_bid / 100).toFixed(4))
+        : (market.yes_bid_dollars ?? undefined),
+      yes_ask_dollars: market.yes_ask > 0
+        ? String((market.yes_ask / 100).toFixed(4))
+        : (market.yes_ask_dollars ?? undefined),
+      last_price_dollars: market.last_price > 0
+        ? String((market.last_price / 100).toFixed(4))
+        : (market.last_price_dollars ?? undefined),
+      // Zero integer fields so parsers use the dollar strings above
       yes_bid: 0,
       yes_ask: 0,
+      last_price: 0,
     };
 
     await db.insert(historicalMarketsTable).values({
       kalshiTicker: market.ticker,
       title: market.title || market.yes_sub_title || market.ticker,
       category: market.category || "Sports",
-      openPrice: preGameProb,
-      lastPrice: preGameProb,
+      openPrice: preGameProb,  // Our statistical model estimate (fair value benchmark)
+      lastPrice: entryPrice,   // Actual market entry price (real or model fallback)
       yesAsk: entryAsk,
       yesBid: entryBid,
       volume24h: rawVolume,
@@ -301,7 +349,7 @@ export async function ingestSettledMarkets(startDate: string, endDate: string): 
       closeTime: market.close_time ? new Date(market.close_time) : null,
       expirationTime: market.expiration_time ? new Date(market.expiration_time) : null,
       snapshotAt: new Date(),
-      rawData: marketWithEntryPrice as unknown as Record<string, unknown>,
+      rawData: marketForStorage as unknown as Record<string, unknown>,
     });
 
     // Insert realistic time-series snapshots for entry-timing simulation
@@ -343,7 +391,7 @@ export async function getIngestionStats(): Promise<{
   const [earliestRow] = await db.select({ dt: sql<string>`min(close_time)` }).from(historicalMarketsTable);
   const [latestRow] = await db.select({ dt: sql<string>`max(close_time)` }).from(historicalMarketsTable);
 
-  const gameSeries = ["KXNHLTOTAL", "KXNBASPREAD", "KXATPGAMETOTAL", "KXWBCTOTAL", "KXNFLSPREAD", "KXSERIEAGAME", "KXLALIGAGAME", "KXSHLGAME"];
+  const gameSeries = ["KXNFLSPREAD", "KXLALIGAGAME", "KXSERIEAGAME", "KXUECLGAME", "KXNBASERIES", "KXCOPPAITALIAGAME"];
   const seriesBreakdown: Record<string, number> = {};
   let gameMarketsTotal = 0;
 

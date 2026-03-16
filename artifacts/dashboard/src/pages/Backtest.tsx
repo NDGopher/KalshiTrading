@@ -366,7 +366,7 @@ export default function Backtest() {
         <div>
           <h2 className="text-3xl font-bold font-display text-white tracking-tight">Backtesting Engine</h2>
           <p className="text-muted-foreground mt-1">
-            Real game-level market data — NHL totals, NBA spreads, MLB runs, ATP tennis. Real results, statistical pre-game entry prices.
+            Real game-level market data — NFL spreads, La Liga, Serie A, UCL winners, NBA playoff series, Coppa Italia. Real results, statistical pre-game entry prices.
           </p>
         </div>
 

@@ -296,20 +296,21 @@ export async function getSeries(params: {
 }
 
 export const SPORTS_SERIES_TICKERS = [
-  "KXNFL", "KXNBA", "KXMLB", "KXNHL", "KXSOC", "KXNCAA",
-  "KXSPORT", "KXMVE",
-  // Individual game markets (daily closes)
-  "KXNHLTOTAL",     // NHL game goal totals — e.g., "San Jose vs Ottawa: Total Goals"
-  "KXNBASPREAD",    // NBA game spread — e.g., "Golden State wins by over 7.5 Points?"
-  "KXATPGAMETOTAL", // ATP tennis game totals
-  "KXWBCTOTAL",     // WBC run totals
-  "KXNFLSPREAD",    // NFL game spreads
-  "KXNBASERIES",    // NBA series totals
+  // ── Game-day markets first (have real pre-game prices: 20-80¢) ──────────────
+  "KXUECLGAME",     // UEFA Conference League — "Team A vs Team B Winner?"
   "KXSERIEAGAME",   // Serie A soccer
   "KXLALIGAGAME",   // La Liga soccer
   "KXCOPPAITALIAGAME", // Coppa Italia
-  "KXUECLGAME",     // UEFA Conference League
-  "KXSHLGAME",      // SHL Hockey
+  "KXSHLGAME",      // SHL (Swedish) Hockey
+  "KXNHLTOTAL",     // NHL game goal totals — "Total Goals Over X.5?"
+  "KXNBASPREAD",    // NBA game spread — "Team wins by over N.5 points?"
+  "KXATPGAMETOTAL", // ATP tennis game totals
+  "KXWBCTOTAL",     // WBC/MLB run totals
+  "KXNFLSPREAD",    // NFL game spreads
+  "KXNBASERIES",    // NBA series results
+  // ── Season/championship futures (settle near 0¢/100¢ — lower priority) ────
+  "KXNFL", "KXNBA", "KXMLB", "KXNHL", "KXSOC", "KXNCAA",
+  "KXSPORT", "KXMVE",
 ];
 
 export async function getSportsMarkets(sportKeywords: string[]): Promise<KalshiMarket[]> {
