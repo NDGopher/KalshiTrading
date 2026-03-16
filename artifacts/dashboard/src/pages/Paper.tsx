@@ -302,9 +302,13 @@ export default function Paper() {
                             <div className="text-[10px] text-muted-foreground">unrealized</div>
                           </div>
                         </div>
-                        <div className="flex items-center gap-3 mt-2 text-[10px] text-muted-foreground">
+                        <div className="flex items-center gap-3 mt-2 text-[10px] text-muted-foreground flex-wrap">
                           <Badge variant={t.side === "yes" ? "success" : "destructive"} className="text-[10px] h-4">{t.side.toUpperCase()}</Badge>
                           <span className="font-mono">{t.quantity} @ {formatCurrency(t.entryPrice)}</span>
+                          <span className="flex items-center gap-1">
+                            <span className="text-muted-foreground/60">Curr:</span>
+                            <span className="font-mono text-white">{formatCurrency(modelProb)}</span>
+                          </span>
                           <span>Cost: {formatCurrency(cost)}</span>
                           {t.edge != null && <span className="text-primary">{t.edge.toFixed(1)}% edge</span>}
                         </div>

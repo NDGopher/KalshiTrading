@@ -175,16 +175,27 @@ function MarketCard({ market, index, isLive }: { market: LastCycleMarket; index:
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-2 pt-1">
+          <div className="space-y-1">
+            <div className="flex justify-between text-[10px] text-muted-foreground">
+              <span>Confidence</span>
+              <span className="font-mono font-semibold text-white">{(market.confidence * 100).toFixed(0)}%</span>
+            </div>
+            <div className="relative h-1.5 bg-white/5 rounded-full overflow-hidden">
+              <motion.div
+                className={`absolute h-full rounded-full ${market.confidence >= 0.7 ? "bg-primary" : market.confidence >= 0.5 ? "bg-yellow-400" : "bg-muted-foreground/40"}`}
+                initial={{ width: 0 }}
+                animate={{ width: `${market.confidence * 100}%` }}
+                transition={{ duration: 0.7, delay: index * 0.05 + 0.4 }}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 pt-1">
             <div className="text-center">
               <div className="text-[10px] text-muted-foreground uppercase">Edge</div>
               <div className={`text-sm font-mono font-bold ${edgePositive ? "text-success" : "text-muted-foreground"}`}>
                 {edgePositive ? "+" : ""}{market.edge.toFixed(1)}%
               </div>
-            </div>
-            <div className="text-center">
-              <div className="text-[10px] text-muted-foreground uppercase">Conf</div>
-              <div className="text-sm font-mono font-bold text-white">{(market.confidence * 100).toFixed(0)}%</div>
             </div>
             <div className="text-center">
               <div className="text-[10px] text-muted-foreground uppercase">Kelly</div>

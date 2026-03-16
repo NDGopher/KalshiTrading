@@ -772,7 +772,7 @@ export default function Backtest() {
                         <td className={`p-3 text-right font-mono ${(s.avgRoi ?? 0) >= 0 ? "text-green-400" : "text-red-400"}`}>{s.avgRoi != null ? `${s.avgRoi.toFixed(1)}%` : "—"}</td>
                         <td className={`p-3 text-right font-mono ${(s.avgClv ?? 0) >= 0 ? "text-green-400" : "text-red-400"}`}>{s.avgClv != null ? `${(s.avgClv * 100).toFixed(1)}c` : "—"}</td>
                         <td className="p-3 text-right font-mono text-white">{s.avgSharpe != null ? s.avgSharpe.toFixed(2) : "—"}</td>
-                        <td className="p-3 text-right font-mono text-white">{s.dipCatchSuccessRate != null ? `${s.dipCatchSuccessRate.toFixed(1)}%` : "—"}</td>
+                        <td className="p-3 text-right font-mono text-white">{s.dipCatchSuccessRate != null ? `${(s.dipCatchSuccessRate * 100).toFixed(1)}%` : "—"}</td>
                       </tr>
                     ))}
                   </tbody>
