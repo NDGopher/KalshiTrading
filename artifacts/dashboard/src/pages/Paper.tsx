@@ -92,8 +92,8 @@ function CustomTooltip({ active, payload, label }: { active?: boolean; payload?:
 
 const STRATEGY_COLORS: Record<string, string> = {
   "Pure Value": "#a78bfa",
-  "Dip Buyer": "#34d399",
-  "Fade the Public": "#f59e0b",
+  "Sharp Money": "#34d399",
+  "Contrarian Reversal": "#f59e0b",
   "Momentum": "#60a5fa",
   "Late Efficiency": "#f87171",
 };

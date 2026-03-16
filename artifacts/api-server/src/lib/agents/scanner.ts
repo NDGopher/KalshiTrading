@@ -1,6 +1,12 @@
-import { getSportsMarkets, getMarketYesAsk, getMarketYesBid, type KalshiMarket } from "../kalshi-client.js";
-import { db, marketOpportunitiesTable, historicalMarketsTable } from "@workspace/db";
-import { eq, desc, ne } from "drizzle-orm";
+import {
+  getAllLiquidMarkets,
+  getSportsMarkets,
+  getMarketYesAsk,
+  getMarketYesBid,
+  type KalshiMarket,
+} from "../kalshi-client.js";
+import { db, historicalMarketsTable } from "@workspace/db";
+import { ne, desc } from "drizzle-orm";
 
 export interface ScanCandidate {
   market: KalshiMarket;
@@ -12,16 +18,7 @@ export interface ScanCandidate {
   hoursToExpiry: number;
 }
 
-const SPORT_KEYWORDS = [
-  "nfl", "nba", "mlb", "soccer", "mls", "premier league",
-  "ncaa", "college", "football", "basketball", "baseball",
-  "nhl", "hockey", "ufc", "mma", "tennis", "golf",
-  "sports", "game", "match", "win", "points", "score",
-  "player", "team",
-  "KXNFL", "KXNBA", "KXMLB", "KXNHL", "KXSOC", "KXNCAA",
-  "KXSPORT", "KXMVE"
-];
-
+// Max look-ahead window: 7 days. Beyond that, prices are too speculative.
 const MAX_HOURS_TO_EXPIRY = 168;
 
 function proximityScore(hoursToExpiry: number): number {
@@ -35,15 +32,19 @@ function proximityScore(hoursToExpiry: number): number {
 
 function compositeScore(candidate: ScanCandidate): number {
   const volNorm = Math.min(1, candidate.volume24h / 10000);
+  const liqNorm = Math.min(1, candidate.liquidity / 50000);
   const proximity = proximityScore(candidate.hoursToExpiry);
-  return proximity * 3 + volNorm * 1;
+  // Spread quality: tighter spreads = more efficient market = better execution
+  const spreadQuality = Math.max(0, 1 - candidate.spread / 0.2);
+  return proximity * 3 + volNorm * 1.5 + liqNorm * 0.5 + spreadQuality * 0.5;
 }
 
 function buildCandidateFromKalshi(market: KalshiMarket): ScanCandidate | null {
   const now = new Date();
-  const yesPrice = parseFloat(String(market.last_price_dollars || "0"))
-    || getMarketYesAsk(market)
-    || (market.yes_bid + market.yes_ask) / 2 / 100;
+  const yesPrice =
+    parseFloat(String(market.last_price_dollars || "0")) ||
+    getMarketYesAsk(market) ||
+    (market.yes_bid + market.yes_ask) / 2 / 100;
   if (!yesPrice || yesPrice <= 0.01 || yesPrice >= 0.99) return null;
 
   const noPrice = 1 - yesPrice;
@@ -53,7 +54,9 @@ function buildCandidateFromKalshi(market: KalshiMarket): ScanCandidate | null {
   const spread = rawSpread > 0 && rawSpread < 0.5 ? rawSpread : Math.min(0.05, yesPrice * 0.05);
   const volume24h = market.volume_24h || 0;
   const liquidity = parseFloat(String(market.liquidity_dollars || "0")) || market.liquidity || 0;
-  const expiresAt = new Date(market.expected_expiration_time || market.expiration_time || market.close_time);
+  const expiresAt = new Date(
+    market.expected_expiration_time || market.expiration_time || market.close_time
+  );
   const hoursToExpiry = (expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60);
 
   if (hoursToExpiry < 0.5) return null;
@@ -99,7 +102,7 @@ async function scanFromCachedDb(): Promise<{ candidates: ScanCandidate[]; totalS
       ...(row.rawData as object),
       ticker: row.kalshiTicker,
       title: row.title || row.kalshiTicker,
-      category: row.category || "Sports",
+      category: row.category || "Unknown",
       last_price_dollars: String(price),
       yes_ask: Math.round(yesAsk * 100),
       yes_bid: Math.round(yesBid * 100),
@@ -127,15 +130,20 @@ async function scanFromCachedDb(): Promise<{ candidates: ScanCandidate[]; totalS
   return { candidates: candidates.slice(0, 50), totalScanned: rows.length };
 }
 
-export async function scanMarkets(customKeywords?: string[]): Promise<{
+/**
+ * Scan markets from Kalshi.
+ * By default fetches ALL liquid markets across every category (sports, politics, crypto, etc.).
+ * If sportFilters is provided and non-empty, it is logged but does not restrict the universe —
+ * we now trade all Kalshi markets with sufficient volume.
+ */
+export async function scanMarkets(_sportFilters?: string[]): Promise<{
   candidates: ScanCandidate[];
   totalScanned: number;
   source: "live" | "cached";
 }> {
-  const keywords = customKeywords || SPORT_KEYWORDS;
-
   try {
-    const markets = await getSportsMarkets(keywords);
+    // Fetch all liquid markets across ALL categories
+    const markets = await getAllLiquidMarkets(50, 10);
     const candidates: ScanCandidate[] = [];
 
     for (const market of markets) {
@@ -144,8 +152,9 @@ export async function scanMarkets(customKeywords?: string[]): Promise<{
     }
 
     candidates.sort((a, b) => compositeScore(b) - compositeScore(a));
-    const topCandidates = candidates.slice(0, 50);
+    const topCandidates = candidates.slice(0, 100);
 
+    // Persist snapshots to DB (best-effort)
     try {
       if (topCandidates.length > 0) {
         const snapshots = topCandidates.map((c) => ({
@@ -175,8 +184,28 @@ export async function scanMarkets(customKeywords?: string[]): Promise<{
     const isAuthError = errMsg.includes("401") || errMsg.includes("403");
 
     if (isRateLimit || isAuthError) {
-      console.warn(`[Scanner] Kalshi API unavailable (${isRateLimit ? "rate limited" : "auth error"}), falling back to cached market data`);
+      console.warn(
+        `[Scanner] Kalshi API unavailable (${isRateLimit ? "rate limited" : "auth error"}), falling back to cached market data`
+      );
       const cached = await scanFromCachedDb();
+
+      // Also try sports-specific scan as secondary source
+      try {
+        const sportsMarkets = await getSportsMarkets([
+          "nfl", "nba", "mlb", "soccer", "nhl", "ufc",
+        ]);
+        const sportsCandidates: ScanCandidate[] = [];
+        for (const m of sportsMarkets) {
+          const c = buildCandidateFromKalshi(m);
+          if (c) sportsCandidates.push(c);
+        }
+        const seen = new Set(cached.candidates.map((c) => c.market.ticker));
+        const newOnes = sportsCandidates.filter((c) => !seen.has(c.market.ticker));
+        cached.candidates.push(...newOnes);
+        cached.candidates.sort((a, b) => compositeScore(b) - compositeScore(a));
+        cached.totalScanned += sportsMarkets.length;
+      } catch {}
+
       return { ...cached, source: "cached" };
     }
 

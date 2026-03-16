@@ -11,11 +11,11 @@ import { useToast } from "@/hooks/use-toast";
 import { DollarSign, FileText, Shield, Layers, CheckCircle2, XCircle } from "lucide-react";
 
 const ALL_STRATEGIES = [
-  { name: "Pure Value", description: "Buys when model probability exceeds implied odds by a significant margin.", color: "#a78bfa" },
-  { name: "Dip Buyer", description: "Detects probability dips and buys the overreaction to short-term negative news.", color: "#34d399" },
-  { name: "Fade the Public", description: "Bets against heavy public money when sharp odds diverge from public sentiment.", color: "#f59e0b" },
-  { name: "Momentum", description: "Follows strong directional probability momentum signals.", color: "#60a5fa" },
-  { name: "Late Efficiency", description: "Exploits market inefficiencies in the final hours before settlement.", color: "#f87171" },
+  { name: "Pure Value", description: "Buys when model probability diverges meaningfully from market implied odds — works across all market types.", color: "#a78bfa" },
+  { name: "Sharp Money", description: "Follows elevated volume/liquidity flow — high activity signals informed ('sharp') traders are moving the market.", color: "#34d399" },
+  { name: "Contrarian Reversal", description: "Bets against sharp price overreactions when the AI model identifies the market has overshot fair value.", color: "#f59e0b" },
+  { name: "Momentum", description: "Follows strong directional price moves backed by model confidence in high-activity periods.", color: "#60a5fa" },
+  { name: "Late Efficiency", description: "Exploits spread inefficiencies in the final 36 hours before settlement when pricing hasn't converged.", color: "#f87171" },
 ];
 
 interface SettingsData {

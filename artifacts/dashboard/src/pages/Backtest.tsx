@@ -267,7 +267,7 @@ export default function Backtest() {
 
   const chartData = useMemo(() =>
     strategySummaries.map((s, i) => ({
-      name: s.strategyName.replace("Pure Value", "Pure Val").replace("Fade the Public", "Fade Pub").replace("Late Efficiency", "Late Eff").replace("Dip Buyer", "Dip Buy"),
+      name: s.strategyName.replace("Pure Value", "Pure Val").replace("Sharp Money", "Sharp $").replace("Contrarian Reversal", "Contrarian").replace("Late Efficiency", "Late Eff"),
       "Win Rate %": parseFloat((s.avgWinRate * 100).toFixed(1)),
       "ROI %": s.avgRoi != null ? parseFloat(s.avgRoi.toFixed(1)) : 0,
       "Avg CLV": s.avgClv != null ? parseFloat((s.avgClv * 100).toFixed(2)) : 0,

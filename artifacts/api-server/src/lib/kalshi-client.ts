@@ -355,3 +355,35 @@ export async function getSportsMarkets(sportKeywords: string[]): Promise<KalshiM
 
   return allMarkets;
 }
+
+/**
+ * Fetches ALL active open markets from Kalshi with no category filter.
+ * Markets are sorted by volume descending. Applies minimum volume/liquidity threshold
+ * to keep only markets with real activity.
+ */
+export async function getAllLiquidMarkets(minVolume = 50, maxPages = 10): Promise<KalshiMarket[]> {
+  const allMarkets: KalshiMarket[] = [];
+  let cursor: string | undefined;
+  let pages = 0;
+
+  while (pages < maxPages) {
+    try {
+      const result = await getMarkets({ limit: 100, cursor, status: "open" });
+      allMarkets.push(...result.markets);
+      cursor = result.cursor;
+      pages++;
+      if (!cursor || result.markets.length < 100) break;
+    } catch {
+      break;
+    }
+  }
+
+  // Filter: price not at extreme, has minimum activity
+  return allMarkets.filter((m) => {
+    const price = parseFloat(String(m.last_price_dollars || "0"));
+    if (price <= 0.01 || price >= 0.99) return false;
+    const vol = m.volume_24h || 0;
+    const liq = parseFloat(String(m.liquidity_dollars || "0")) || m.liquidity || 0;
+    return vol >= minVolume || liq >= 500;
+  });
+}

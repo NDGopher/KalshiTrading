@@ -1,14 +1,15 @@
 import { db, agentRunsTable, marketOpportunitiesTable, tradingSettingsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { scanMarkets } from "./scanner.js";
-import { analyzeMarkets, analyzeMarketsSimulated } from "./analyst.js";
+import { analyzeMarkets } from "./analyst.js";
 import { auditTrades } from "./auditor.js";
 import { assessRisk, type RiskDecision } from "./risk-manager.js";
-import { executeTrade, type ExecutionResult } from "./executor.js";
+import { executeTrade } from "./executor.js";
 import { reconcileOpenTrades, reconcilePaperTrades } from "./reconciler.js";
 import { checkBudget } from "./analyst.js";
 import { getBalance } from "../kalshi-client.js";
 import { evaluateStrategies } from "../strategies/index.js";
+import { startNewsFetcher, getNewsFetcherStatus } from "./news-fetcher.js";
 
 interface AgentRunLog {
   agentName: string;
@@ -193,25 +194,21 @@ export async function runTradingCycle(): Promise<CycleResult> {
       return { marketsScanned: scanResult.totalScanned, opportunitiesFound: 0, tradesExecuted: 0, tradesSkipped: 0, totalDuration: (Date.now() - cycleStart) / 1000, agentResults };
     }
 
-    const topCandidates = scanResult.candidates.slice(0, 10);
+    // Analyze top 20 candidates with real AI in both paper and live mode.
+    // Paper mode previously used simulated analysis, but real AI is used now
+    // so we accurately measure model performance before risking real capital.
+    const topCandidates = scanResult.candidates.slice(0, 20);
 
     let analysisStart = Date.now();
     updateAgentStatus("Analyst", "running");
     let analyses;
     try {
-      if (paperMode) {
-        analyses = await analyzeMarketsSimulated(topCandidates);
-        const analysisDuration = (Date.now() - analysisStart) / 1000;
-        const withEdge = analyses.filter((a) => a.edge > 0);
-        updateAgentStatus("Analyst", "idle", `[Paper/Sim] Analyzed ${analyses.length} markets, ${withEdge.length} with edge`);
-        agentResults.push({ agentName: "Analyst", status: "success", duration: analysisDuration, details: `[Simulation] ${withEdge.length}/${analyses.length} markets have edge` });
-      } else {
-        analyses = await analyzeMarkets(topCandidates);
-        const analysisDuration = (Date.now() - analysisStart) / 1000;
-        const withEdge = analyses.filter((a) => a.edge > 0);
-        updateAgentStatus("Analyst", "idle", `Analyzed ${analyses.length} markets, ${withEdge.length} with edge`);
-        agentResults.push({ agentName: "Analyst", status: "success", duration: analysisDuration, details: `${withEdge.length}/${analyses.length} markets have edge` });
-      }
+      analyses = await analyzeMarkets(topCandidates);
+      const analysisDuration = (Date.now() - analysisStart) / 1000;
+      const withEdge = analyses.filter((a) => a.edge > 0);
+      const modeLabel = paperMode ? " [paper]" : "";
+      updateAgentStatus("Analyst", "idle", `Analyzed ${analyses.length} markets${modeLabel}, ${withEdge.length} with edge`);
+      agentResults.push({ agentName: "Analyst", status: "success", duration: analysisDuration, details: `${withEdge.length}/${analyses.length} markets have edge${modeLabel}` });
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : "Unknown error";
       const analysisDuration = (Date.now() - analysisStart) / 1000;
@@ -434,6 +431,9 @@ export function startPipeline(intervalMinutes: number) {
     clearInterval(pipelineInterval);
   }
 
+  // Start the news fetcher so breaking news is available for analyst prompts
+  startNewsFetcher();
+
   runTradingCycle().catch((err) => console.error("Pipeline initial cycle error:", err));
 
   pipelineInterval = setInterval(() => {
@@ -441,6 +441,10 @@ export function startPipeline(intervalMinutes: number) {
   }, intervalMinutes * 60 * 1000);
 
   console.log(`[Pipeline] Started: runs every ${intervalMinutes} min (first cycle immediate)`);
+}
+
+export function getNewsFetcherInfo() {
+  return getNewsFetcherStatus();
 }
 
 export function stopPipeline() {
@@ -477,7 +481,7 @@ export async function scanAndDiscover(): Promise<ScanDiscoverResult> {
     return { marketsScanned: scanResult.totalScanned, opportunitiesFound: 0, scanDuration: (Date.now() - start) / 1000 };
   }
 
-  const topCandidates = scanResult.candidates.slice(0, 10);
+  const topCandidates = scanResult.candidates.slice(0, 20);
 
   updateAgentStatus("Analyst", "running");
   const analyses = await analyzeMarkets(topCandidates);
@@ -526,6 +530,10 @@ export async function bootstrapSettings(): Promise<void> {
 
 export async function rehydratePipeline(): Promise<void> {
   await bootstrapSettings();
+
+  // Always start the news fetcher on server boot so AI has news context
+  startNewsFetcher();
+
   const [settings] = await db.select().from(tradingSettingsTable).limit(1);
   if (settings?.pipelineActive) {
     const interval = settings.scanIntervalMinutes || 60;

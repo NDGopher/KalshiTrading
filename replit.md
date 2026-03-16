@@ -1,10 +1,10 @@
-# Kalshi Sports AI Trading System
+# Kalshi AI Trading System
 
 ## Overview
 
-Multi-agent automated sports trading system for Kalshi prediction markets. Features a 6-agent pipeline (Scanner → Analyst → Auditor → Risk Manager → Executor → Reconciler) with Claude AI analysis, running on a configurable schedule. Includes a React dashboard for monitoring P&L, trades, market opportunities, agent status, backtesting, paper trading, API cost tracking, and risk/credential settings.
+Multi-agent automated trading system for **all Kalshi prediction markets** (sports, politics, crypto, economics, weather, entertainment, etc.). Features a 6-agent pipeline (Scanner → Analyst → Auditor → Risk Manager → Executor → Reconciler) with Claude Haiku AI analysis and a real-time news intelligence layer. Includes a React dashboard for monitoring P&L, trades, market opportunities, agent status, backtesting, paper trading, API cost tracking, and risk/credential settings.
 
-**Target Sports**: NFL, NBA, MLB, Soccer (all major sports)
+**Market Universe**: ALL liquid Kalshi markets with volume > 50 or liquidity > $500 (not just sports)
 
 ## Stack
 
@@ -31,10 +31,11 @@ artifacts-monorepo/
 │   │       │   ├── kalshi-client.ts    # Kalshi REST API v2 client
 │   │       │   ├── backtester.ts       # Backtesting engine
 │   │       │   ├── strategies/         # Multi-strategy framework
-│   │       │   │   └── index.ts        # 5 strategies: Pure Value, Dip Buyer, Fade the Public, Momentum, Late Efficiency
+│   │       │   │   └── index.ts        # 5 strategies: Pure Value, Sharp Money, Contrarian Reversal, Momentum, Late Efficiency
 │   │       │   └── agents/             # 6-agent pipeline
-│   │       │       ├── scanner.ts      # Market scanner (finds sports markets)
-│   │       │       ├── analyst.ts      # Claude AI analyst (evaluates edge) + API cost tracking
+│   │       │       ├── scanner.ts      # Market scanner — fetches ALL liquid Kalshi markets (no sports-only filter)
+│   │       │       ├── analyst.ts      # Claude Haiku AI analyst (all market types) + news context injection
+│   │       │       ├── news-fetcher.ts # RSS news intelligence — polls ESPN/BBC/NYT every 5min, injects headlines
 │   │       │       ├── auditor.ts      # Constraint validator (hard-blocks flagged trades)
 │   │       │       ├── risk-manager.ts # Position sizing (Quarter Kelly, max 8 positions, 5% max, 20% drawdown)
 │   │       │       ├── executor.ts     # Order execution (live + paper trading mode)

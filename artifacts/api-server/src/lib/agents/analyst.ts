@@ -1,7 +1,8 @@
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { db, apiCostsTable, tradingSettingsTable } from "@workspace/db";
-import { sql, gte, and } from "drizzle-orm";
+import { sql, gte } from "drizzle-orm";
 import type { ScanCandidate } from "./scanner.js";
+import { getRelevantNews } from "./news-fetcher.js";
 
 export interface AnalysisResult {
   candidate: ScanCandidate;
@@ -67,11 +68,103 @@ function deriveMarketSignals(candidate: ScanCandidate) {
   const volumeToLiquidity = liquidity > 0 ? volume24h / liquidity : 0;
   const isHighVolume = volume24h > 500;
   const isNarrowSpread = spreadPct < 5;
-  const timeCategory = hoursToExpiry < 2 ? "imminent" : hoursToExpiry < 12 ? "near-term" : hoursToExpiry < 48 ? "medium-term" : "long-term";
-  const priceRegion = impliedProb < 20 ? "heavy-underdog" : impliedProb < 40 ? "underdog" : impliedProb < 60 ? "toss-up" : impliedProb < 80 ? "favorite" : "heavy-favorite";
-  const marketEfficiency = isHighVolume && isNarrowSpread ? "high" : isHighVolume || isNarrowSpread ? "medium" : "low";
+  const timeCategory =
+    hoursToExpiry < 2 ? "imminent" :
+    hoursToExpiry < 12 ? "near-term" :
+    hoursToExpiry < 48 ? "medium-term" : "long-term";
+  const priceRegion =
+    impliedProb < 20 ? "heavy-underdog" :
+    impliedProb < 40 ? "underdog" :
+    impliedProb < 60 ? "toss-up" :
+    impliedProb < 80 ? "favorite" : "heavy-favorite";
+  const marketEfficiency =
+    isHighVolume && isNarrowSpread ? "high" :
+    isHighVolume || isNarrowSpread ? "medium" : "low";
 
-  return { impliedProb, spreadPct, volumeToLiquidity, timeCategory, priceRegion, marketEfficiency };
+  // Open price comparison for drift analysis
+  const rawOpenPrice = (candidate.market as unknown as Record<string, number>).open_price;
+  const openPrice = rawOpenPrice != null && rawOpenPrice > 0 ? rawOpenPrice / 100 : null;
+  const priceChange = openPrice != null ? ((yesPrice - openPrice) / openPrice) * 100 : null;
+
+  return { impliedProb, spreadPct, volumeToLiquidity, timeCategory, priceRegion, marketEfficiency, openPrice, priceChange };
+}
+
+/**
+ * Detect market category for tailored AI analysis.
+ */
+function detectCategory(candidate: ScanCandidate): string {
+  const rawCat = (candidate.market.category || "").toLowerCase();
+  const ticker = candidate.market.ticker.toLowerCase();
+  const title = (candidate.market.title || "").toLowerCase();
+
+  if (rawCat.includes("sport") || ticker.startsWith("kxnfl") || ticker.startsWith("kxnba") ||
+      ticker.startsWith("kxmlb") || ticker.startsWith("kxnhl") || ticker.startsWith("kxsoc") ||
+      ticker.startsWith("kxufc") || title.match(/\b(nfl|nba|mlb|nhl|ufc|soccer|football|basketball|baseball|hockey|tennis|golf)\b/)) {
+    return "Sports";
+  }
+  if (rawCat.includes("polit") || rawCat.includes("elect") || ticker.includes("pres") ||
+      ticker.includes("senate") || ticker.includes("congress") || ticker.includes("gop") || ticker.includes("dem") ||
+      title.match(/\b(president|election|senate|house|congress|democrat|republican|trump|biden|harris|vote)\b/)) {
+    return "Politics";
+  }
+  if (rawCat.includes("crypto") || rawCat.includes("bitcoin") || ticker.includes("btc") ||
+      ticker.includes("eth") || ticker.includes("crypto") || title.match(/\b(bitcoin|ethereum|crypto|btc|eth|solana|xrp)\b/)) {
+    return "Crypto";
+  }
+  if (rawCat.includes("econ") || rawCat.includes("financ") || rawCat.includes("market") ||
+      title.match(/\b(gdp|inflation|cpi|fed|interest rate|unemployment|recession|sp500|nasdaq|dow)\b/)) {
+    return "Economics";
+  }
+  if (rawCat.includes("weather") || title.match(/\b(hurricane|temperature|rain|storm|earthquake|weather)\b/)) {
+    return "Weather";
+  }
+  if (rawCat.includes("entertain") || rawCat.includes("pop") ||
+      title.match(/\b(oscars|grammy|emmy|award|box office|movie|album|chart)\b/)) {
+    return "Entertainment";
+  }
+  return rawCat || "General";
+}
+
+/**
+ * Category-specific reasoning guidance for the AI.
+ */
+function getCategoryGuidance(category: string, signals: ReturnType<typeof deriveMarketSignals>): string {
+  switch (category) {
+    case "Sports":
+      return `Apply these sports-specific lenses:
+1. **Matchup & Form**: Consider recent team/player performance, head-to-head history, home/away advantage, injury reports, and travel fatigue.
+2. **Market Microstructure**: High volume/liquidity ratio (${signals.volumeToLiquidity.toFixed(2)}) can signal sharp money. Pre-game betting patterns often reflect insider knowledge.
+3. **Public Bias**: Public bettors overvalue favorites, popular teams, and overs. Fade the public when volume doesn't support the price.
+4. **Line Movement**: ${signals.priceChange != null ? `Price has moved ${signals.priceChange > 0 ? "up" : "down"} ${Math.abs(signals.priceChange).toFixed(1)}% from open — this reflects market opinion updating.` : "No open price available for drift comparison."}`;
+
+    case "Politics":
+      return `Apply these political market lenses:
+1. **Polling Accuracy**: Historical polling errors favor incumbents or the candidate currently trending. Base rates matter — consider state-level electoral history.
+2. **Media & Narrative**: Breaking news, endorsements, and debate performance can shift markets temporarily but markets often overcorrect.
+3. **Timing**: ${signals.timeCategory === "imminent" ? "Imminent resolution — strong weight on the most recent data." : "Still time for events to shift — weight current polls but discount single data points."}
+4. **Market Efficiency**: Political prediction markets are often informationally efficient — look for cases where the news cycle hasn't caught up yet.`;
+
+    case "Crypto":
+      return `Apply these crypto market lenses:
+1. **On-Chain Signals**: Large wallet movements and exchange flows often precede price moves. High volume in the prediction market may reflect on-chain activity.
+2. **Macro Context**: Interest rates, risk appetite, and regulatory news move all crypto. If macro is risk-off, crypto resolves are harder.
+3. **Price Momentum**: Crypto tends to trend. A market at ${signals.impliedProb.toFixed(0)}% implied probability — assess whether current spot price momentum supports this.
+4. **Volatility**: Crypto events often resolve at extremes. Widen your confidence interval accordingly.`;
+
+    case "Economics":
+      return `Apply these economic indicator lenses:
+1. **Data Revisions**: Economic data is frequently revised. Consider whether the initial release or revised figure matters for settlement.
+2. **Consensus vs. Surprise**: Markets price in consensus expectations. A ${signals.priceRegion} market may already reflect a large expected surprise — assess if the base case is fully priced.
+3. **Fed Reaction Function**: Economic releases are interpreted through the lens of Fed policy. A strong print may be bad if it delays rate cuts.
+4. **Leading vs. Lagging**: GDP and unemployment are lagging. PMI and jobless claims are leading. Weight accordingly.`;
+
+    default:
+      return `Apply these general prediction market lenses:
+1. **Base Rates**: What percentage of similar events historically resolve YES? Use this as your anchor.
+2. **Recent Evidence**: What new information in the last 48 hours is most relevant to resolution?
+3. **Market Sentiment**: The ${signals.priceRegion} pricing (${signals.impliedProb.toFixed(0)}% implied) — is this well-calibrated given the evidence?
+4. **Resolution Criteria**: Consider edge cases in how this market could resolve that participants may have overlooked.`;
+  }
 }
 
 export async function analyzeMarket(candidate: ScanCandidate): Promise<AnalysisResult> {
@@ -83,36 +176,46 @@ export async function analyzeMarket(candidate: ScanCandidate): Promise<AnalysisR
 
   const { market, yesPrice, volume24h, liquidity, hoursToExpiry, spread } = candidate;
   const signals = deriveMarketSignals(candidate);
+  const category = detectCategory(candidate);
+  const categoryGuidance = getCategoryGuidance(category, signals);
 
-  const prompt = `You are a quantitative sports prediction market analyst specializing in NFL, NBA, MLB, and Soccer markets. Analyze this Kalshi prediction market using multiple analytical lenses.
+  // Inject relevant breaking news headlines
+  const newsContext = getRelevantNews(market.title || market.ticker, 3);
+  const newsSection = newsContext
+    ? `\n## Breaking News Context\n${newsContext}\nConsider whether these headlines are relevant to this market's resolution.`
+    : "";
+
+  const openPriceSection = signals.openPrice != null
+    ? `- Open Price: $${signals.openPrice.toFixed(4)} → Current: $${yesPrice.toFixed(4)} (${signals.priceChange! > 0 ? "+" : ""}${signals.priceChange!.toFixed(1)}% drift)`
+    : "";
+
+  const prompt = `You are a quantitative prediction market analyst with expertise in sports, politics, economics, crypto, and current events. Analyze this Kalshi prediction market to find mispricing opportunities.
 
 ## Market Data
 - Title: ${market.title || market.ticker}
 - Ticker: ${market.ticker}
-- Category: ${market.category || "Sports"}
+- Category: ${category}
 - Yes Price: $${yesPrice.toFixed(4)} (implied probability: ${signals.impliedProb.toFixed(1)}%)
 - Spread: $${spread.toFixed(4)} (${signals.spreadPct.toFixed(1)}% relative)
 - 24h Volume: ${volume24h} contracts
 - Liquidity: $${liquidity.toFixed(2)}
 - Time to Expiry: ${hoursToExpiry.toFixed(1)} hours (${signals.timeCategory})
+${openPriceSection}
 
-## Derived Statistical Signals
+## Market Structure Signals
 - Price Region: ${signals.priceRegion} (${signals.impliedProb.toFixed(1)}% implied)
-- Volume/Liquidity Ratio: ${signals.volumeToLiquidity.toFixed(2)} (${signals.volumeToLiquidity > 3 ? "heavy flow suggests informed trading" : "normal flow"})
-- Market Efficiency: ${signals.marketEfficiency} (${signals.marketEfficiency === "high" ? "tight spread + high volume = hard to find edge" : signals.marketEfficiency === "low" ? "wide spread or low volume = possible mispricing" : "moderate efficiency"})
+- Volume/Liquidity Ratio: ${signals.volumeToLiquidity.toFixed(2)} (${signals.volumeToLiquidity > 3 ? "⚡ heavy flow — possible informed trading" : signals.volumeToLiquidity > 1 ? "moderate activity" : "light flow"})
+- Market Efficiency: ${signals.marketEfficiency} (${signals.marketEfficiency === "high" ? "tight spread + high volume — edge is rare" : signals.marketEfficiency === "low" ? "wide spread or low volume — mispricing more likely" : "moderate efficiency"})
+${newsSection}
 
-## Analysis Framework
-Apply these lenses in your evaluation:
-1. **Market Microstructure**: Is the implied probability well-calibrated given volume patterns? Heavy one-sided flow near expiry often signals informed money.
-2. **Sports Fundamentals**: Based on the event description, what do known sports factors (home/away, matchup history, recent form, injuries, weather) suggest?
-3. **Sentiment & Public Bias**: Public bettors tend to overvalue favorites and overs. Is there evidence of public bias in the pricing?
-4. **Statistical Edge**: Markets with ${signals.marketEfficiency} efficiency in the ${signals.priceRegion} region have known calibration patterns. Consider whether the implied probability matches historical base rates for similar events.
+## Analysis Framework (${category})
+${categoryGuidance}
 
 ## Instructions
-Provide your true probability estimate, confidence level, and reasoning that explicitly references at least 2 of the analysis lenses above.
+Estimate the true probability of YES resolution. Be specific about what evidence drives your estimate. If you are uncertain, reflect that in a lower confidence score.
 
-Respond in EXACTLY this JSON format:
-{"probability": <number 0-100>, "confidence": <number 0-100>, "reasoning": "<string referencing specific signals>"}`;
+Respond in EXACTLY this JSON format (no other text):
+{"probability": <number 0-100>, "confidence": <number 0-100>, "reasoning": "<2-3 sentence analysis referencing specific signals, category context, and any news>"}`;
 
   try {
     const message = await anthropic.messages.create({
@@ -179,56 +282,9 @@ export async function analyzeMarkets(candidates: ScanCandidate[]): Promise<Analy
   return results;
 }
 
-function simpleHash(s: string): number {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) { h = (Math.imul(31, h) + s.charCodeAt(i)) | 0; }
-  return Math.abs(h);
-}
-
-export function simulateAnalysisForPaper(candidate: ScanCandidate): AnalysisResult {
-  const { yesPrice, volume24h, liquidity, hoursToExpiry, spread } = candidate;
-  const signals = deriveMarketSignals(candidate);
-
-  const seed = simpleHash(candidate.market.ticker + "_paper_" + new Date().toDateString());
-  const hashFrac = (seed % 10000) / 10000;
-
-  const volumeSignal = Math.min(1, volume24h / 2000);
-  const liquiditySignal = Math.min(1, liquidity / 50000);
-  const spreadSignal = Math.min(1, spread / 0.1);
-
-  const efficiency = (volumeSignal + liquiditySignal) / 2;
-  const shift = (hashFrac - 0.5) * 0.20 * (1 + volumeSignal - spreadSignal * 0.5);
-  const modelProb = Math.max(0.03, Math.min(0.97, yesPrice + shift));
-
-  const yesSide = modelProb > yesPrice;
-  const side: "yes" | "no" = yesSide ? "yes" : "no";
-  const edge = yesSide
-    ? (modelProb - yesPrice) / yesPrice * 100
-    : ((1 - modelProb) - (1 - yesPrice)) / (1 - yesPrice) * 100;
-
-  const confidenceBase = 0.35 + efficiency * 0.25 + (1 - spreadSignal) * 0.15;
-  const confidence = Math.min(0.85, confidenceBase + hashFrac * 0.15);
-
-  const priceRegion = signals.priceRegion;
-  const direction = yesSide ? "above" : "below";
-  const biasSrc = signals.volumeToLiquidity > 2 ? "public money flow" : "spread inefficiency";
-  const reasoningParts = [
-    `Simulation: ${signals.timeCategory} ${priceRegion} market at ${signals.impliedProb.toFixed(1)}% implied.`,
-    `Model estimates true probability at ${(modelProb * 100).toFixed(1)}% — ${direction} market price.`,
-    `Edge sourced from ${biasSrc} (vol/liq ratio ${signals.volumeToLiquidity.toFixed(2)}).`,
-    `Market efficiency: ${signals.marketEfficiency}. Spread: ${signals.spreadPct.toFixed(1)}%.`,
-  ];
-
-  return {
-    candidate,
-    modelProbability: modelProb,
-    edge: Math.max(0, edge),
-    confidence,
-    side,
-    reasoning: reasoningParts.join(" "),
-  };
-}
-
+// Paper mode now uses the same real AI analysis as live mode.
+// This allows us to accurately measure AI performance in paper trading,
+// so the system genuinely learns before risking real capital.
 export async function analyzeMarketsSimulated(candidates: ScanCandidate[]): Promise<AnalysisResult[]> {
-  return candidates.map(simulateAnalysisForPaper);
+  return analyzeMarkets(candidates);
 }

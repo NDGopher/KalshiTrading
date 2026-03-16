@@ -66,7 +66,7 @@ async function settingsToResponse(settings: typeof tradingSettingsTable.$inferSe
     paperBalance: settings.paperBalance,
     dailyBudgetUsd: settings.dailyBudgetUsd,
     monthlyBudgetUsd: settings.monthlyBudgetUsd,
-    enabledStrategies: (settings.enabledStrategies as string[] | null) ?? ["Pure Value", "Dip Buyer", "Fade the Public", "Momentum", "Late Efficiency"],
+    enabledStrategies: (settings.enabledStrategies as string[] | null) ?? ["Pure Value", "Sharp Money", "Contrarian Reversal", "Momentum", "Late Efficiency"],
     kalshiApiKeySet: !!(settings.kalshiApiKey || process.env.KALSHI_API_KEY),
     kalshiBaseUrl: settings.kalshiBaseUrl || null,
     budgetStatus,
