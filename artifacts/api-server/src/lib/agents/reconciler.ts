@@ -47,7 +47,7 @@ export async function reconcileOpenTrades(): Promise<ReconciliationResult> {
 
       const { market } = await getMarket(trade.kalshiTicker);
 
-      const lastPrice = parseFloat(market.last_price_dollars || "0");
+      const lastPrice = parseFloat(String(market.last_price_dollars || "0"));
 
       if (market.result && market.result !== "") {
         const won =

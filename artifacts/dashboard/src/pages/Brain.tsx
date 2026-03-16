@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useGetAgentStatus, useGetDashboardOverview, useListAgentRuns, getGetAgentStatusQueryKey, getGetDashboardOverviewQueryKey, getListAgentRunsQueryKey } from "@workspace/api-client-react";
 import { Layout } from "@/components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -32,6 +33,8 @@ interface LastCycleMarket {
   kellyFraction: number | null;
   side: "yes" | "no";
   strategyName: string | null;
+  reasoning: string | null;
+  strategyReason: string | null;
   disposition: "executed" | "skipped_risk" | "skipped_audit" | "candidate";
   rejectionReason: string | null;
 }
@@ -61,6 +64,7 @@ function DispositionBadge({ d }: { d: LastCycleMarket["disposition"] }) {
 }
 
 function MarketCard({ market, index }: { market: LastCycleMarket; index: number }) {
+  const [reasoningExpanded, setReasoningExpanded] = useState(false);
   const glow = market.disposition === "executed"
     ? "ring-1 ring-success/30 shadow-lg shadow-success/5"
     : market.disposition === "skipped_risk"
@@ -135,12 +139,43 @@ function MarketCard({ market, index }: { market: LastCycleMarket; index: number 
           </div>
 
           {market.strategyName && (
-            <div className="text-[10px] text-primary/80 font-medium">{market.strategyName}</div>
+            <div className="flex items-center gap-1.5 text-[10px] text-primary/80 font-medium">
+              <span>{market.strategyName}</span>
+              {market.strategyReason && (
+                <span className="text-muted-foreground/50 truncate max-w-[120px]" title={market.strategyReason}>— {market.strategyReason}</span>
+              )}
+            </div>
           )}
 
           {market.rejectionReason && (
             <div className="text-[10px] text-destructive/80 bg-destructive/5 rounded px-2 py-1 border border-destructive/10">
               ✕ {market.rejectionReason}
+            </div>
+          )}
+
+          {market.reasoning && (
+            <div>
+              <button
+                className="text-[10px] text-muted-foreground/50 hover:text-muted-foreground transition-colors flex items-center gap-1"
+                onClick={() => setReasoningExpanded(e => !e)}
+              >
+                {reasoningExpanded ? "▲" : "▼"} AI Reasoning
+              </button>
+              <AnimatePresence>
+                {reasoningExpanded && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="mt-1.5 text-[10px] text-muted-foreground/70 leading-relaxed bg-black/20 rounded p-2 border border-white/5 font-mono">
+                      {market.reasoning}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           )}
         </CardContent>

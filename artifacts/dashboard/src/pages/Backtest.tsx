@@ -5,9 +5,10 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { FlaskConical, Play, BarChart3, Target, ChevronDown, ChevronRight, TrendingUp, Crosshair } from "lucide-react";
+import { FlaskConical, Play, BarChart3, Target, ChevronDown, ChevronRight, TrendingUp, Crosshair, Award, ChevronLeft } from "lucide-react";
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Cell
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Cell,
+  ScatterChart, Scatter, ReferenceLine
 } from "recharts";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -69,6 +70,7 @@ interface StrategySummary {
 
 const API_BASE = `${import.meta.env.BASE_URL}api`;
 const STRATEGY_COLORS = ["#a78bfa", "#34d399", "#f59e0b", "#60a5fa", "#f87171"];
+const PAGE_SIZE = 20;
 
 function useStrategies() {
   return useQuery({
@@ -105,7 +107,7 @@ function CustomTooltip({ active, payload, label }: any) {
       {payload.map((p: any) => (
         <div key={p.name} className="flex justify-between gap-4">
           <span style={{ color: p.color }}>{p.name}</span>
-          <span className="font-mono text-white">{typeof p.value === "number" ? p.value.toFixed(1) : p.value}{p.unit || ""}</span>
+          <span className="font-mono text-white">{typeof p.value === "number" ? p.value.toFixed(2) : p.value}{p.unit || ""}</span>
         </div>
       ))}
     </div>
@@ -133,18 +135,16 @@ function TradeRow({ trade }: { trade: BacktestTrade }) {
         <td className="p-3 text-right font-mono text-white text-xs">${trade.entryPrice.toFixed(2)}</td>
         <td className="p-3 text-right font-mono text-white text-xs">{trade.edge.toFixed(1)}%</td>
         <td className={`p-3 text-right font-mono text-xs ${trade.clv != null ? (trade.clv >= 0 ? "text-green-400" : "text-red-400") : "text-muted-foreground"}`}>
-          {trade.clv != null ? (trade.clv * 100).toFixed(2) + "%" : "-"}
+          {trade.clv != null ? (trade.clv * 100).toFixed(2) + "c" : "-"}
         </td>
         <td className={`p-3 text-right font-mono font-bold text-xs ${trade.pnl >= 0 ? "text-green-400" : "text-red-400"}`}>${trade.pnl.toFixed(2)}</td>
         <td className="p-3 text-center text-xs text-muted-foreground">{trade.marketResult || "-"}</td>
         <td className="p-3 text-center">
           <span className={`px-2 py-0.5 rounded text-xs font-bold ${trade.outcome === "won" ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"}`}>{trade.outcome}</span>
         </td>
-        {trade.dipCatch != null && (
-          <td className="p-3 text-center">
-            {trade.dipCatch ? <span className="text-xs text-success">✓ Dip</span> : <span className="text-xs text-muted-foreground">—</span>}
-          </td>
-        )}
+        <td className="p-3 text-center">
+          {trade.dipCatch ? <span className="text-xs text-success">✓</span> : <span className="text-xs text-muted-foreground">—</span>}
+        </td>
       </tr>
       <AnimatePresence>
         {expanded && trade.reasoning && (
@@ -182,6 +182,7 @@ export default function Backtest() {
   const { data: resultsData } = useBacktestResults();
   const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
   const { data: tradesData } = useBacktestTrades(selectedRunId);
+  const [tradePage, setTradePage] = useState(0);
 
   const [strategy, setStrategy] = useState("Pure Value");
   const [startDate, setStartDate] = useState("2025-01-01");
@@ -203,6 +204,7 @@ export default function Backtest() {
         toast({ title: "Backtest Complete", description: `Run #${data.runId} finished` });
         queryClient.invalidateQueries({ queryKey: ["/api/backtest/results"] });
         setSelectedRunId(data.runId);
+        setTradePage(0);
       } else {
         toast({ title: "Error", description: data.error || "Backtest failed", variant: "destructive" });
       }
@@ -220,20 +222,92 @@ export default function Backtest() {
 
   const chartData = useMemo(() =>
     strategySummaries.map((s, i) => ({
-      name: s.strategyName.replace(" the ", " ").replace("Pure Value", "Pure Val").replace("Fade the Public", "Fade Pub").replace("Late Efficiency", "Late Eff").replace("Dip Buyer", "Dip Buy"),
+      name: s.strategyName.replace("Pure Value", "Pure Val").replace("Fade the Public", "Fade Pub").replace("Late Efficiency", "Late Eff").replace("Dip Buyer", "Dip Buy"),
       "Win Rate %": parseFloat((s.avgWinRate * 100).toFixed(1)),
       "ROI %": s.avgRoi != null ? parseFloat(s.avgRoi.toFixed(1)) : 0,
       "Avg CLV": s.avgClv != null ? parseFloat((s.avgClv * 100).toFixed(2)) : 0,
-      trades: s.totalTrades,
       color: STRATEGY_COLORS[i % STRATEGY_COLORS.length],
     })),
     [strategySummaries]
   );
 
   const dipTrades = trades.filter(t => t.dipCatch === true);
+  const nonDipTrades = trades.filter(t => t.dipCatch !== true);
   const dipWins = dipTrades.filter(t => t.outcome === "won").length;
-  const bestDip = dipTrades.reduce((best, t) => t.pnl > (best?.pnl || -Infinity) ? t : best, null as BacktestTrade | null);
-  const worstDip = dipTrades.reduce((worst, t) => t.pnl < (worst?.pnl || Infinity) ? t : worst, null as BacktestTrade | null);
+  const nonDipWins = nonDipTrades.filter(t => t.outcome === "won").length;
+  const dipWinRate = dipTrades.length > 0 ? dipWins / dipTrades.length : 0;
+  const nonDipWinRate = nonDipTrades.length > 0 ? nonDipWins / nonDipTrades.length : 0;
+  const avgDipDepth = dipTrades.length > 0
+    ? dipTrades.reduce((sum, t) => sum + (t.distanceFromPeak || 0), 0) / dipTrades.length
+    : 0;
+  const bestDip = dipTrades.reduce<BacktestTrade | null>((best, t) => t.pnl > (best?.pnl ?? -Infinity) ? t : best, null);
+  const worstDip = dipTrades.reduce<BacktestTrade | null>((worst, t) => t.pnl < (worst?.pnl ?? Infinity) ? t : worst, null);
+
+  const dipDepthOutcomeData = useMemo(() => {
+    if (!dipTrades.length) return [];
+    const buckets: Record<string, { won: number; lost: number }> = {};
+    for (const t of dipTrades) {
+      const depth = Math.abs(t.distanceFromPeak || 0);
+      const label = depth < 0.05 ? "<5%" : depth < 0.1 ? "5-10%" : depth < 0.2 ? "10-20%" : "20%+";
+      if (!buckets[label]) buckets[label] = { won: 0, lost: 0 };
+      if (t.outcome === "won") buckets[label].won++;
+      else buckets[label].lost++;
+    }
+    const order = ["<5%", "5-10%", "10-20%", "20%+"];
+    return order.filter(k => buckets[k]).map(label => ({
+      label,
+      won: buckets[label].won,
+      lost: buckets[label].lost,
+      winRate: parseFloat(((buckets[label].won / (buckets[label].won + buckets[label].lost)) * 100).toFixed(1)),
+    }));
+  }, [dipTrades]);
+
+  const top5BestDips = [...dipTrades].sort((a, b) => b.pnl - a.pnl).slice(0, 5);
+  const top5WorstDips = [...dipTrades].sort((a, b) => a.pnl - b.pnl).slice(0, 5);
+
+  const clvTrades = trades.filter(t => t.clv != null);
+  const clvHistogram = useMemo(() => {
+    if (!clvTrades.length) return [];
+    const BUCKET_SIZE = 0.02;
+    const buckets: Record<string, number> = {};
+    for (const t of clvTrades) {
+      const v = t.clv!;
+      const bucket = Math.floor(v / BUCKET_SIZE) * BUCKET_SIZE;
+      const label = `${(bucket * 100).toFixed(0)}c`;
+      buckets[label] = (buckets[label] || 0) + 1;
+    }
+    return Object.entries(buckets).sort(([a], [b]) => parseFloat(a) - parseFloat(b)).map(([label, count]) => ({ label, count, positive: parseFloat(label) >= 0 }));
+  }, [clvTrades]);
+
+  const strategyClv = useMemo(() => {
+    const map = new Map<string, { name: string; clvSum: number; count: number }>();
+    for (const t of clvTrades) {
+      const key = t.strategyName || "Unknown";
+      if (!map.has(key)) map.set(key, { name: key, clvSum: 0, count: 0 });
+      const s = map.get(key)!;
+      s.clvSum += t.clv!;
+      s.count++;
+    }
+    return Array.from(map.values())
+      .map(s => ({ ...s, avgClv: s.count > 0 ? s.clvSum / s.count : 0 }))
+      .sort((a, b) => b.avgClv - a.avgClv);
+  }, [clvTrades]);
+
+  const clvPnlScatter = useMemo(() =>
+    clvTrades.filter(t => t.pnl != null).map(t => ({ clv: (t.clv!) * 100, pnl: t.pnl, won: t.outcome === "won", title: t.title })),
+    [clvTrades]
+  );
+
+  const clvLeaderboard = useMemo(() =>
+    [...clvTrades].sort((a, b) => (b.clv!) - (a.clv!)).slice(0, 10),
+    [clvTrades]
+  );
+
+  const avgClv = clvTrades.length > 0 ? clvTrades.reduce((s, t) => s + t.clv!, 0) / clvTrades.length : 0;
+  const clvHitRate = clvTrades.length > 0 ? clvTrades.filter(t => t.clv! >= 0).length / clvTrades.length : 0;
+
+  const pageTrades = trades.slice(tradePage * PAGE_SIZE, (tradePage + 1) * PAGE_SIZE);
+  const totalPages = Math.ceil(trades.length / PAGE_SIZE);
 
   return (
     <Layout>
@@ -283,9 +357,9 @@ export default function Backtest() {
             </CardContent>
           </Card>
 
-          <div className="lg:col-span-2 space-y-6">
+          <div className="lg:col-span-2 space-y-4">
             {selectedRun && (
-              <div className="space-y-4">
+              <>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <Card className="glass-panel border-white/10"><CardContent className="p-4 text-center">
                     <div className="text-xs text-muted-foreground uppercase tracking-wider">Total P&L</div>
@@ -322,7 +396,7 @@ export default function Backtest() {
                     <div className="text-lg font-mono font-bold mt-1 text-white">{selectedRun.dipCatchSuccessRate != null ? (selectedRun.dipCatchSuccessRate * 100).toFixed(1) + "%" : "N/A"}</div>
                   </CardContent></Card>
                 </div>
-              </div>
+              </>
             )}
           </div>
         </div>
@@ -334,7 +408,7 @@ export default function Backtest() {
                 <BarChart3 className="w-5 h-5 text-primary" />
                 Strategy Comparison
               </CardTitle>
-              <CardDescription>Side-by-side performance across all backtest runs — higher is better for Win Rate and ROI</CardDescription>
+              <CardDescription>Win Rate, ROI, and CLV across all strategies — higher is better</CardDescription>
             </CardHeader>
             <CardContent className="p-6">
               <div className="h-72">
@@ -351,7 +425,6 @@ export default function Backtest() {
                   </BarChart>
                 </ResponsiveContainer>
               </div>
-
               <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mt-4">
                 {strategySummaries.map((s, i) => (
                   <div key={s.strategyName} className="p-3 rounded-lg bg-black/30 border border-white/5 text-center">
@@ -359,10 +432,309 @@ export default function Backtest() {
                     <div className="text-[10px] text-muted-foreground font-medium truncate">{s.strategyName}</div>
                     <div className="text-sm font-mono font-bold text-white mt-1">{(s.avgWinRate * 100).toFixed(0)}% WR</div>
                     <div className={`text-[10px] font-mono ${(s.avgRoi ?? 0) >= 0 ? "text-success" : "text-destructive"}`}>{s.avgRoi != null ? `${s.avgRoi.toFixed(1)}%` : "—"} ROI</div>
-                    <div className="text-[10px] text-muted-foreground mt-0.5">{s.totalTrades} trades</div>
                   </div>
                 ))}
               </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {clvTrades.length > 0 && (
+          <div className="space-y-6">
+            <div className="flex items-center gap-2">
+              <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                <Target className="w-5 h-5 text-primary" />
+                CLV Analytics — Run #{selectedRunId}
+              </h3>
+              <Badge variant="outline" className="text-[10px]">{clvTrades.length} trades with CLV</Badge>
+            </div>
+
+            <div className="grid grid-cols-3 gap-4">
+              <Card className="glass-panel border-white/10"><CardContent className="p-4 text-center">
+                <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Avg CLV</div>
+                <div className={`text-xl font-mono font-bold ${avgClv >= 0 ? "text-success" : "text-destructive"}`}>{(avgClv * 100).toFixed(2)}c</div>
+                <p className="text-[10px] text-muted-foreground mt-1">Closing line value per contract</p>
+              </CardContent></Card>
+              <Card className="glass-panel border-white/10"><CardContent className="p-4 text-center">
+                <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">CLV Hit Rate</div>
+                <div className="text-xl font-mono font-bold text-white">{(clvHitRate * 100).toFixed(1)}%</div>
+                <p className="text-[10px] text-muted-foreground mt-1">Trades where CLV was positive</p>
+              </CardContent></Card>
+              <Card className="glass-panel border-white/10"><CardContent className="p-4 text-center">
+                <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Best CLV</div>
+                <div className="text-xl font-mono font-bold text-success">{clvLeaderboard.length > 0 ? `${(clvLeaderboard[0].clv! * 100).toFixed(2)}c` : "—"}</div>
+                <p className="text-[10px] text-muted-foreground mt-1 truncate">{clvLeaderboard.length > 0 ? clvLeaderboard[0].title : ""}</p>
+              </CardContent></Card>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {clvHistogram.length > 0 && (
+                <Card className="glass-panel border-white/10">
+                  <CardHeader className="border-b border-white/5 bg-black/20 py-3">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <BarChart3 className="w-4 h-4 text-primary" />CLV Distribution Histogram
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-4">
+                    <div className="h-48">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={clvHistogram} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                          <XAxis dataKey="label" tick={{ fill: "#6b7280", fontSize: 9 }} axisLine={false} tickLine={false} />
+                          <YAxis tick={{ fill: "#6b7280", fontSize: 9 }} axisLine={false} tickLine={false} />
+                          <Tooltip content={<CustomTooltip />} />
+                          <ReferenceLine x="0c" stroke="rgba(255,255,255,0.2)" strokeDasharray="3 3" />
+                          <Bar dataKey="count" name="Trades" radius={[2, 2, 0, 0]} maxBarSize={30}>
+                            {clvHistogram.map((b) => <Cell key={b.label} fill={b.positive ? "#34d399" : "#f87171"} fillOpacity={0.8} />)}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {strategyClv.length > 0 && (
+                <Card className="glass-panel border-white/10">
+                  <CardHeader className="border-b border-white/5 bg-black/20 py-3">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <TrendingUp className="w-4 h-4 text-accent" />Avg CLV by Strategy
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-4">
+                    <div className="h-48">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={strategyClv} layout="vertical" margin={{ top: 0, right: 10, left: 0, bottom: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                          <XAxis type="number" tick={{ fill: "#6b7280", fontSize: 9 }} axisLine={false} tickLine={false} tickFormatter={(v) => `${(v * 100).toFixed(1)}c`} />
+                          <YAxis dataKey="name" type="category" tick={{ fill: "#9ca3af", fontSize: 9 }} axisLine={false} tickLine={false} width={70} tickFormatter={(s: string) => s.split(" ")[0]} />
+                          <Tooltip content={<CustomTooltip />} />
+                          <ReferenceLine x={0} stroke="rgba(255,255,255,0.2)" strokeDasharray="3 3" />
+                          <Bar dataKey="avgClv" name="Avg CLV" radius={[0, 3, 3, 0]} maxBarSize={20}>
+                            {strategyClv.map((s) => <Cell key={s.name} fill={s.avgClv >= 0 ? "#34d399" : "#f87171"} fillOpacity={0.85} />)}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {clvPnlScatter.length > 0 && (
+                <Card className="glass-panel border-white/10">
+                  <CardHeader className="border-b border-white/5 bg-black/20 py-3">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <Target className="w-4 h-4 text-primary" />CLV vs P&L Scatter
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-4">
+                    <div className="h-48">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <ScatterChart margin={{ top: 5, right: 5, left: 0, bottom: 5 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                          <XAxis dataKey="clv" name="CLV" tick={{ fill: "#6b7280", fontSize: 9 }} axisLine={false} tickLine={false} label={{ value: "CLV (c)", position: "insideBottom", offset: -2, fill: "#6b7280", fontSize: 9 }} />
+                          <YAxis dataKey="pnl" name="P&L" tick={{ fill: "#6b7280", fontSize: 9 }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `$${v.toFixed(0)}`} />
+                          <Tooltip content={({ active, payload }) => {
+                            if (!active || !payload?.length) return null;
+                            const d = payload[0].payload;
+                            return (
+                              <div className="bg-card/95 border border-white/10 rounded-lg p-3 text-xs shadow-xl backdrop-blur-sm">
+                                <div className="font-semibold text-white mb-1 max-w-[180px] truncate">{d.title}</div>
+                                <div className="font-mono text-muted-foreground">CLV: {d.clv.toFixed(2)}c</div>
+                                <div className={`font-mono font-bold ${d.pnl >= 0 ? "text-success" : "text-destructive"}`}>P&L: ${d.pnl.toFixed(2)}</div>
+                              </div>
+                            );
+                          }} />
+                          <ReferenceLine x={0} stroke="rgba(255,255,255,0.15)" strokeDasharray="4 4" />
+                          <ReferenceLine y={0} stroke="rgba(255,255,255,0.15)" strokeDasharray="4 4" />
+                          <Scatter name="Trades" data={clvPnlScatter}>
+                            {clvPnlScatter.map((d, i) => <Cell key={i} fill={d.won ? "#34d399" : "#f87171"} fillOpacity={0.8} />)}
+                          </Scatter>
+                        </ScatterChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground/60 text-center mt-2">Green = won · Red = lost</p>
+                  </CardContent>
+                </Card>
+              )}
+
+              {clvLeaderboard.length > 0 && (
+                <Card className="glass-panel border-white/10">
+                  <CardHeader className="border-b border-white/5 bg-black/20 py-3">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <Award className="w-4 h-4 text-yellow-400" />CLV Leaderboard
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    <div className="divide-y divide-white/5">
+                      {clvLeaderboard.map((t, i) => (
+                        <div key={t.id} className="flex items-center gap-3 px-4 py-2 hover:bg-white/[0.02]">
+                          <span className={`text-xs font-bold w-5 text-center ${i === 0 ? "text-yellow-400" : i === 1 ? "text-gray-300" : i === 2 ? "text-amber-600" : "text-muted-foreground"}`}>#{i + 1}</span>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-[11px] font-semibold text-white truncate">{t.title}</div>
+                            <div className="text-[10px] text-muted-foreground">{t.strategyName}</div>
+                          </div>
+                          <div className="text-right">
+                            <div className={`text-sm font-mono font-bold ${(t.clv!) >= 0 ? "text-success" : "text-destructive"}`}>{(t.clv! * 100).toFixed(2)}c</div>
+                            <div className={`text-[10px] font-mono ${t.pnl >= 0 ? "text-success/70" : "text-destructive/70"}`}>${t.pnl.toFixed(2)}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          </div>
+        )}
+
+        {dipTrades.length > 0 && selectedRun && (
+          <Card className="glass-panel border-white/10">
+            <CardHeader className="border-b border-white/5 bg-black/20">
+              <CardTitle className="flex items-center gap-2"><Crosshair className="w-5 h-5 text-accent" />Dip Catch Analytics</CardTitle>
+              <CardDescription>Run #{selectedRunId}: dip-buying performance vs general market entry</CardDescription>
+            </CardHeader>
+            <CardContent className="p-6 space-y-6">
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                <div className="p-4 rounded-lg bg-black/30 border border-white/5 text-center">
+                  <div className="text-xs text-muted-foreground uppercase mb-1">Dip Catches</div>
+                  <div className="text-2xl font-mono font-bold text-white">{dipTrades.length}</div>
+                </div>
+                <div className="p-4 rounded-lg bg-black/30 border border-white/5 text-center">
+                  <div className="text-xs text-muted-foreground uppercase mb-1">Dip Win Rate</div>
+                  <div className={`text-2xl font-mono font-bold ${dipWinRate >= 0.5 ? "text-success" : "text-destructive"}`}>{(dipWinRate * 100).toFixed(0)}%</div>
+                </div>
+                <div className="p-4 rounded-lg bg-black/30 border border-white/5 text-center">
+                  <div className="text-xs text-muted-foreground uppercase mb-1">Non-Dip Win Rate</div>
+                  <div className={`text-2xl font-mono font-bold ${nonDipWinRate >= 0.5 ? "text-success" : "text-destructive"}`}>{nonDipTrades.length > 0 ? `${(nonDipWinRate * 100).toFixed(0)}%` : "—"}</div>
+                </div>
+                <div className="p-4 rounded-lg bg-black/30 border border-white/5 text-center">
+                  <div className="text-xs text-muted-foreground uppercase mb-1">Avg Dip Depth</div>
+                  <div className="text-2xl font-mono font-bold text-white">{(avgDipDepth * 100).toFixed(1)}%</div>
+                  <div className="text-[10px] text-muted-foreground">from peak</div>
+                </div>
+                <div className="p-4 rounded-lg bg-black/30 border border-white/5 text-center">
+                  <div className="text-xs text-muted-foreground uppercase mb-1">Dip vs Non-Dip</div>
+                  <div className={`text-lg font-mono font-bold ${dipWinRate >= nonDipWinRate ? "text-success" : "text-destructive"}`}>
+                    {dipWinRate >= nonDipWinRate ? `+${((dipWinRate - nonDipWinRate) * 100).toFixed(1)}pp` : `${((dipWinRate - nonDipWinRate) * 100).toFixed(1)}pp`}
+                  </div>
+                  <div className="text-[10px] text-muted-foreground">win rate advantage</div>
+                </div>
+              </div>
+
+              {dipDepthOutcomeData.length > 0 && (
+                <div>
+                  <div className="text-sm font-medium text-white mb-3 flex items-center gap-2">
+                    <BarChart3 className="w-4 h-4 text-primary" /> Dip Depth vs Outcome
+                  </div>
+                  <div className="h-40">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={dipDepthOutcomeData} barCategoryGap="30%">
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                        <XAxis dataKey="label" tick={{ fill: "#6b7280", fontSize: 10 }} axisLine={false} tickLine={false} />
+                        <YAxis tick={{ fill: "#6b7280", fontSize: 10 }} axisLine={false} tickLine={false} />
+                        <Tooltip content={<CustomTooltip />} />
+                        <Legend wrapperStyle={{ fontSize: "10px", color: "#9ca3af" }} />
+                        <Bar dataKey="won" name="Won" fill="#34d399" fillOpacity={0.8} radius={[2, 2, 0, 0]} maxBarSize={40} />
+                        <Bar dataKey="lost" name="Lost" fill="#f87171" fillOpacity={0.8} radius={[2, 2, 0, 0]} maxBarSize={40} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <div className="text-xs font-semibold text-success/80 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                    <Award className="w-3.5 h-3.5" /> Top 5 Best Dip Catches
+                  </div>
+                  <div className="space-y-2">
+                    {top5BestDips.map((t, i) => (
+                      <div key={t.id} className="flex items-center gap-2 p-2 rounded bg-black/20 border border-white/5">
+                        <span className="text-xs font-bold text-success w-4">#{i + 1}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-xs text-white truncate">{t.title}</div>
+                          <div className="text-[10px] text-muted-foreground">{t.distanceFromPeak != null ? `${(t.distanceFromPeak * 100).toFixed(1)}% from peak` : ""}</div>
+                        </div>
+                        <span className="text-xs font-mono font-bold text-success">${t.pnl.toFixed(2)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs font-semibold text-destructive/80 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                    <Crosshair className="w-3.5 h-3.5" /> Top 5 Worst Dip Catches
+                  </div>
+                  <div className="space-y-2">
+                    {top5WorstDips.map((t, i) => (
+                      <div key={t.id} className="flex items-center gap-2 p-2 rounded bg-black/20 border border-white/5">
+                        <span className="text-xs font-bold text-destructive w-4">#{i + 1}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-xs text-white truncate">{t.title}</div>
+                          <div className="text-[10px] text-muted-foreground">{t.distanceFromPeak != null ? `${(t.distanceFromPeak * 100).toFixed(1)}% from peak` : ""}</div>
+                        </div>
+                        <span className="text-xs font-mono font-bold text-destructive">${t.pnl.toFixed(2)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {trades.length > 0 && (
+          <Card className="glass-panel border-white/10">
+            <CardHeader className="border-b border-white/5 bg-black/20 flex flex-row items-center justify-between">
+              <div>
+                <CardTitle>Backtest Trades — Run #{selectedRunId}</CardTitle>
+                <CardDescription>{trades.length} simulated trades — click a row to expand AI reasoning</CardDescription>
+              </div>
+              {totalPages > 1 && (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <button onClick={() => setTradePage(p => Math.max(0, p - 1))} disabled={tradePage === 0} className="p-1 rounded hover:bg-white/10 disabled:opacity-30">
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <span>Page {tradePage + 1} / {totalPages}</span>
+                  <button onClick={() => setTradePage(p => Math.min(totalPages - 1, p + 1))} disabled={tradePage === totalPages - 1} className="p-1 rounded hover:bg-white/10 disabled:opacity-30">
+                    <ChevronDown className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto max-h-[600px]">
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 bg-card/90 backdrop-blur-sm border-b border-white/5">
+                    <tr>
+                      <th className="text-left p-3 text-muted-foreground font-medium">Market</th>
+                      <th className="text-left p-3 text-muted-foreground font-medium">Strategy</th>
+                      <th className="text-center p-3 text-muted-foreground font-medium">Side</th>
+                      <th className="text-right p-3 text-muted-foreground font-medium">Entry</th>
+                      <th className="text-right p-3 text-muted-foreground font-medium">Edge</th>
+                      <th className="text-right p-3 text-muted-foreground font-medium">CLV</th>
+                      <th className="text-right p-3 text-muted-foreground font-medium">P&L</th>
+                      <th className="text-center p-3 text-muted-foreground font-medium">Settled</th>
+                      <th className="text-center p-3 text-muted-foreground font-medium">Result</th>
+                      <th className="text-center p-3 text-muted-foreground font-medium">Dip</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/5">
+                    {pageTrades.map((t) => <TradeRow key={t.id} trade={t} />)}
+                  </tbody>
+                </table>
+              </div>
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between px-4 py-3 border-t border-white/5">
+                  <span className="text-xs text-muted-foreground">Showing {tradePage * PAGE_SIZE + 1}–{Math.min((tradePage + 1) * PAGE_SIZE, trades.length)} of {trades.length}</span>
+                  <div className="flex items-center gap-2">
+                    <Button variant="outline" size="sm" onClick={() => setTradePage(p => Math.max(0, p - 1))} disabled={tradePage === 0} className="h-7 px-2 text-xs">Prev</Button>
+                    <Button variant="outline" size="sm" onClick={() => setTradePage(p => Math.min(totalPages - 1, p + 1))} disabled={tradePage === totalPages - 1} className="h-7 px-2 text-xs">Next</Button>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         )}
@@ -408,81 +780,6 @@ export default function Backtest() {
           </Card>
         )}
 
-        {dipTrades.length > 0 && selectedRun && (
-          <Card className="glass-panel border-white/10">
-            <CardHeader className="border-b border-white/5 bg-black/20">
-              <CardTitle className="flex items-center gap-2"><Crosshair className="w-5 h-5 text-accent" />Dip Catch Analytics</CardTitle>
-              <CardDescription>Performance of dip-buying signals in Run #{selectedRunId}</CardDescription>
-            </CardHeader>
-            <CardContent className="p-6">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                <div className="p-4 rounded-lg bg-black/30 border border-white/5 text-center">
-                  <div className="text-xs text-muted-foreground uppercase mb-1">Dip Catches</div>
-                  <div className="text-2xl font-mono font-bold text-white">{dipTrades.length}</div>
-                </div>
-                <div className="p-4 rounded-lg bg-black/30 border border-white/5 text-center">
-                  <div className="text-xs text-muted-foreground uppercase mb-1">Dip Win Rate</div>
-                  <div className={`text-2xl font-mono font-bold ${dipTrades.length > 0 && dipWins / dipTrades.length >= 0.5 ? "text-success" : "text-destructive"}`}>
-                    {dipTrades.length > 0 ? `${((dipWins / dipTrades.length) * 100).toFixed(0)}%` : "—"}
-                  </div>
-                </div>
-                <div className="p-4 rounded-lg bg-black/30 border border-white/5 text-center">
-                  <div className="text-xs text-muted-foreground uppercase mb-1">Best Dip P&L</div>
-                  <div className="text-2xl font-mono font-bold text-success">{bestDip ? `$${bestDip.pnl.toFixed(2)}` : "—"}</div>
-                  {bestDip && <div className="text-[10px] text-muted-foreground mt-0.5 truncate">{bestDip.title}</div>}
-                </div>
-                <div className="p-4 rounded-lg bg-black/30 border border-white/5 text-center">
-                  <div className="text-xs text-muted-foreground uppercase mb-1">Worst Dip P&L</div>
-                  <div className="text-2xl font-mono font-bold text-destructive">{worstDip ? `$${worstDip.pnl.toFixed(2)}` : "—"}</div>
-                  {worstDip && <div className="text-[10px] text-muted-foreground mt-0.5 truncate">{worstDip.title}</div>}
-                </div>
-              </div>
-              <div className="space-y-2">
-                {dipTrades.slice(0, 5).map(t => (
-                  <div key={t.id} className="flex items-center gap-3 p-2 rounded bg-black/20 border border-white/5">
-                    <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${t.outcome === "won" ? "bg-success" : "bg-destructive"}`} />
-                    <span className="text-xs text-white truncate flex-1">{t.title}</span>
-                    <span className="text-[10px] text-muted-foreground font-mono">{t.distanceFromPeak != null ? `${(t.distanceFromPeak * 100).toFixed(1)}% from peak` : ""}</span>
-                    <span className={`text-xs font-mono font-bold ${t.pnl >= 0 ? "text-success" : "text-destructive"}`}>${t.pnl.toFixed(2)}</span>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {trades.length > 0 && (
-          <Card className="glass-panel border-white/10">
-            <CardHeader className="border-b border-white/5 bg-black/20">
-              <CardTitle>Backtest Trades</CardTitle>
-              <CardDescription>{trades.length} simulated trades for Run #{selectedRunId} — click a row to expand AI reasoning</CardDescription>
-            </CardHeader>
-            <CardContent className="p-0">
-              <div className="overflow-x-auto max-h-[600px]">
-                <table className="w-full text-sm">
-                  <thead className="sticky top-0 bg-card/90 backdrop-blur-sm border-b border-white/5">
-                    <tr>
-                      <th className="text-left p-3 text-muted-foreground font-medium">Market</th>
-                      <th className="text-left p-3 text-muted-foreground font-medium">Strategy</th>
-                      <th className="text-center p-3 text-muted-foreground font-medium">Side</th>
-                      <th className="text-right p-3 text-muted-foreground font-medium">Entry</th>
-                      <th className="text-right p-3 text-muted-foreground font-medium">Edge</th>
-                      <th className="text-right p-3 text-muted-foreground font-medium">CLV</th>
-                      <th className="text-right p-3 text-muted-foreground font-medium">P&L</th>
-                      <th className="text-center p-3 text-muted-foreground font-medium">Settled</th>
-                      <th className="text-center p-3 text-muted-foreground font-medium">Result</th>
-                      <th className="text-center p-3 text-muted-foreground font-medium">Dip</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-white/5">
-                    {trades.map((t) => <TradeRow key={t.id} trade={t} />)}
-                  </tbody>
-                </table>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
         <Card className="glass-panel border-white/10">
           <CardHeader className="border-b border-white/5 bg-black/20">
             <CardTitle className="flex items-center gap-2"><BarChart3 className="w-5 h-5 text-primary" />Previous Runs</CardTitle>
@@ -520,7 +817,7 @@ export default function Backtest() {
                           <span className={`px-2 py-0.5 rounded text-xs font-bold ${r.status === "completed" ? "bg-green-500/20 text-green-400" : r.status === "error" ? "bg-red-500/20 text-red-400" : "bg-yellow-500/20 text-yellow-400"}`}>{r.status}</span>
                         </td>
                         <td className="p-3">
-                          <Button variant="ghost" size="sm" onClick={() => setSelectedRunId(r.id)} className="text-primary hover:text-primary/80">View</Button>
+                          <Button variant="ghost" size="sm" onClick={() => { setSelectedRunId(r.id); setTradePage(0); }} className="text-primary hover:text-primary/80">View</Button>
                         </td>
                       </tr>
                     ))}

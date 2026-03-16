@@ -34,6 +34,7 @@ interface SettingsData {
   pipelineActive: boolean;
   paperTradingMode: boolean;
   paperBalance: number;
+  enabledStrategies: string[] | null;
   dailyBudgetUsd: number;
   monthlyBudgetUsd: number;
   kalshiApiKeySet: boolean;
@@ -135,7 +136,7 @@ export default function Settings() {
       });
       setKalshiBaseUrl(settings.kalshiBaseUrl || "");
       setPaperMode(settings.paperTradingMode || false);
-      const loaded = (settings as any).enabledStrategies;
+      const loaded = settings.enabledStrategies;
       if (Array.isArray(loaded) && loaded.length > 0) {
         setEnabledStrategies(loaded);
       } else {

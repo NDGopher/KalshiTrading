@@ -86,7 +86,7 @@ async function syncPositionsFromKalshi(): Promise<void> {
       let marketStatus = "open";
       try {
         const marketData = await getMarket(p.ticker);
-        currentPrice = parseFloat(marketData.market.last_price_dollars || "0");
+        currentPrice = parseFloat(String(marketData.market.last_price_dollars || "0"));
         title = marketData.market.title || p.ticker;
         marketStatus = marketData.market.status;
       } catch { /* use defaults */ }

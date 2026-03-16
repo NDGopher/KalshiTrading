@@ -68,7 +68,7 @@ export default function Trades() {
     const map = new Map<string, { name: string; clvSum: number; count: number; pnl: number }>();
     for (const t of trades) {
       if (t.clv == null) continue;
-      const key = (t as any).strategyName || "Unknown";
+      const key = t.strategyName || "Unknown";
       if (!map.has(key)) map.set(key, { name: key, clvSum: 0, count: 0, pnl: 0 });
       const s = map.get(key)!;
       s.clvSum += t.clv;

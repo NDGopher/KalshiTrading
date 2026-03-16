@@ -24,7 +24,7 @@ const SPORT_KEYWORDS = [
 
 function buildCandidateFromKalshi(market: KalshiMarket): ScanCandidate | null {
   const now = new Date();
-  const yesPrice = parseFloat(market.last_price_dollars || "0")
+  const yesPrice = parseFloat(String(market.last_price_dollars || "0"))
     || getMarketYesAsk(market)
     || (market.yes_bid + market.yes_ask) / 2 / 100;
   if (!yesPrice || yesPrice <= 0.01 || yesPrice >= 0.99) return null;
@@ -35,7 +35,7 @@ function buildCandidateFromKalshi(market: KalshiMarket): ScanCandidate | null {
   const rawSpread = rawAsk > 0 && rawBid > 0 ? Math.abs(rawAsk - rawBid) : 0;
   const spread = rawSpread > 0 && rawSpread < 0.5 ? rawSpread : Math.min(0.05, yesPrice * 0.05);
   const volume24h = market.volume_24h || 0;
-  const liquidity = parseFloat(market.liquidity_dollars || "0") || market.liquidity || 0;
+  const liquidity = parseFloat(String(market.liquidity_dollars || "0")) || market.liquidity || 0;
   const expiresAt = new Date(market.expected_expiration_time || market.expiration_time || market.close_time);
   const hoursToExpiry = (expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60);
 

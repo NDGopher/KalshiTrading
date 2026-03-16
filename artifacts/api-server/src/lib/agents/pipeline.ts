@@ -38,6 +38,8 @@ export interface LastCycleMarket {
   kellyFraction: number | null;
   side: "yes" | "no";
   strategyName: string | null;
+  reasoning: string | null;
+  strategyReason: string | null;
   disposition: "executed" | "skipped_risk" | "skipped_audit" | "skipped_duplicate" | "candidate";
   rejectionReason: string | null;
 }
@@ -342,6 +344,8 @@ export async function runTradingCycle(): Promise<CycleResult> {
         kellyFraction: risk?.kellyFraction ?? null,
         side: analysis?.side ?? "yes",
         strategyName: strategyMatches[0]?.strategyName ?? null,
+        reasoning: analysis?.reasoning ?? null,
+        strategyReason: strategyMatches[0]?.reason ?? null,
         disposition,
         rejectionReason,
       } as LastCycleMarket;
