@@ -37,13 +37,29 @@ function marketToCandidate(market: KalshiMarket, simulatedTimeBeforeClose?: numb
 }
 
 function simulateHoursBeforeClose(market: KalshiMarket): number {
-  const openTime = new Date(market.open_time || market.close_time).getTime();
-  const closeTime = new Date(market.close_time).getTime();
-  const duration = closeTime - openTime;
-  if (duration <= 0) return 4;
+  const openTs = new Date(market.open_time || market.close_time).getTime();
+  const closeTs = new Date(market.close_time).getTime();
   const hash = deterministicHash(market.ticker + market.close_time);
   const hashFrac = (hash % 1000) / 1000;
-  const entryFraction = 0.3 + hashFrac * 0.5;
+
+  // For game markets, use expected_expiration_time (actual game time) to anchor entry.
+  // We simulate entering pre-game, not during the game.
+  const gameTs = market.expected_expiration_time
+    ? new Date(market.expected_expiration_time).getTime()
+    : null;
+
+  if (gameTs && gameTs > openTs && gameTs < closeTs) {
+    const preLaunchDuration = gameTs - openTs;
+    // Enter at 10–90% through the pre-game period (before game starts)
+    const entryFraction = 0.10 + hashFrac * 0.80;
+    const entryTs = openTs + preLaunchDuration * entryFraction;
+    return Math.max(0.5, (closeTs - entryTs) / (1000 * 60 * 60));
+  }
+
+  // Fallback for non-game markets (futures, season-length bets)
+  const duration = closeTs - openTs;
+  if (duration <= 0) return 4;
+  const entryFraction = 0.2 + hashFrac * 0.5;
   return Math.max(0.5, (duration * (1 - entryFraction)) / (1000 * 60 * 60));
 }
 

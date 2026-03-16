@@ -68,6 +68,17 @@ router.post("/backtest/run", async (req, res) => {
     });
 
     setImmediate(async () => {
+      // Auto-ingest game markets for the date range if we don't have enough data yet
+      try {
+        const stats = await getIngestionStats();
+        if (stats.gameMarkets < 10) {
+          console.log("[Backtest] Auto-ingesting game markets (insufficient data)...");
+          await ingestSettledMarkets(startDate, endDate);
+        }
+      } catch (ingestErr) {
+        console.warn("[Backtest] Auto-ingest failed (non-fatal):", ingestErr);
+      }
+
       for (let i = 0; i < strategiesToRun.length; i++) {
         const strat = strategiesToRun[i];
         const runId = runIds[i];

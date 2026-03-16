@@ -298,6 +298,18 @@ export async function getSeries(params: {
 export const SPORTS_SERIES_TICKERS = [
   "KXNFL", "KXNBA", "KXMLB", "KXNHL", "KXSOC", "KXNCAA",
   "KXSPORT", "KXMVE",
+  // Individual game markets (daily closes)
+  "KXNHLTOTAL",     // NHL game goal totals — e.g., "San Jose vs Ottawa: Total Goals"
+  "KXNBASPREAD",    // NBA game spread — e.g., "Golden State wins by over 7.5 Points?"
+  "KXATPGAMETOTAL", // ATP tennis game totals
+  "KXWBCTOTAL",     // WBC run totals
+  "KXNFLSPREAD",    // NFL game spreads
+  "KXNBASERIES",    // NBA series totals
+  "KXSERIEAGAME",   // Serie A soccer
+  "KXLALIGAGAME",   // La Liga soccer
+  "KXCOPPAITALIAGAME", // Coppa Italia
+  "KXUECLGAME",     // UEFA Conference League
+  "KXSHLGAME",      // SHL Hockey
 ];
 
 export async function getSportsMarkets(sportKeywords: string[]): Promise<KalshiMarket[]> {

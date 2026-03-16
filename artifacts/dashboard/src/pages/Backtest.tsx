@@ -1,11 +1,11 @@
 import { useState, useMemo } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { Layout } from "@/components/Layout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { FlaskConical, Play, BarChart3, Target, ChevronDown, ChevronRight, TrendingUp, Crosshair, Award, ChevronLeft } from "lucide-react";
+import { FlaskConical, Play, BarChart3, Target, ChevronDown, ChevronRight, TrendingUp, Crosshair, Award, ChevronLeft, Database, Download, CheckCircle } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Cell,
   ScatterChart, Scatter, ReferenceLine
@@ -68,9 +68,28 @@ interface StrategySummary {
   bestRunPnl: number | null;
 }
 
+interface IngestionStats {
+  totalMarkets: number;
+  settledMarkets: number;
+  gameMarkets: number;
+  dateRange: { earliest: string | null; latest: string | null };
+  seriesBreakdown: Record<string, number>;
+}
+
 const API_BASE = `${import.meta.env.BASE_URL}api`;
 const STRATEGY_COLORS = ["#a78bfa", "#34d399", "#f59e0b", "#60a5fa", "#f87171"];
 const PAGE_SIZE = 20;
+
+function useIngestionStats() {
+  return useQuery({
+    queryKey: ["/api/backtest/ingestion-stats"],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/backtest/ingestion-stats`);
+      return res.json() as Promise<IngestionStats>;
+    },
+    refetchInterval: 10000,
+  });
+}
 
 function useStrategies() {
   return useQuery({
@@ -181,6 +200,7 @@ export default function Backtest() {
   const queryClient = useQueryClient();
   const { data: strategiesData } = useStrategies();
   const { data: resultsData } = useBacktestResults();
+  const { data: ingestionStats, isLoading: statsLoading } = useIngestionStats();
   const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
   const { data: tradesData } = useBacktestTrades(selectedRunId);
   const [tradePage, setTradePage] = useState(0);
@@ -192,6 +212,25 @@ export default function Backtest() {
   const [useAi, setUseAi] = useState(false);
   const [running, setRunning] = useState(false);
   const [pendingRunIds, setPendingRunIds] = useState<number[]>([]);
+
+  const ingestMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`${API_BASE}/backtest/ingest`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ startDate, endDate }),
+      });
+      return res.json() as Promise<{ ingested: number; skipped: number; seriesBreakdown: Record<string, number> }>;
+    },
+    onSuccess: (data) => {
+      toast({
+        title: `Ingested ${data.ingested} game markets`,
+        description: `Skipped ${data.skipped} already-existing. Series: ${Object.entries(data.seriesBreakdown || {}).map(([k, v]) => `${k}:${v}`).join(", ")}`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/backtest/ingestion-stats"] });
+    },
+    onError: () => toast({ title: "Ingestion failed", variant: "destructive" }),
+  });
 
   const runBacktest = async () => {
     setRunning(true);
@@ -315,13 +354,66 @@ export default function Backtest() {
   const pageTrades = trades.slice(tradePage * PAGE_SIZE, (tradePage + 1) * PAGE_SIZE);
   const totalPages = Math.ceil(trades.length / PAGE_SIZE);
 
+  const gameMarkets = ingestionStats?.gameMarkets ?? 0;
+  const seriesBreakdown = ingestionStats?.seriesBreakdown ?? {};
+  const topSeries = Object.entries(seriesBreakdown)
+    .filter(([k]) => ["KXNHLTOTAL", "KXNBASPREAD", "KXWBCTOTAL", "KXATPGAMETOTAL", "KXNFLSPREAD"].includes(k))
+    .sort(([, a], [, b]) => b - a);
+
   return (
     <Layout>
       <div className="space-y-8">
         <div>
           <h2 className="text-3xl font-bold font-display text-white tracking-tight">Backtesting Engine</h2>
-          <p className="text-muted-foreground mt-1">Test strategies against historical settled markets.</p>
+          <p className="text-muted-foreground mt-1">
+            Real game-level market data — NHL totals, NBA spreads, MLB runs, ATP tennis. Real results, statistical pre-game entry prices.
+          </p>
         </div>
+
+        {/* Data Coverage Banner */}
+        <Card className={`glass-panel border ${gameMarkets >= 50 ? "border-success/30 bg-success/5" : gameMarkets > 0 ? "border-yellow-500/30 bg-yellow-500/5" : "border-orange-500/30 bg-orange-500/5"}`}>
+          <CardContent className="p-4">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <Database className={`w-5 h-5 ${gameMarkets >= 50 ? "text-success" : "text-yellow-400"}`} />
+                <div>
+                  <div className="text-sm font-semibold text-white">
+                    {statsLoading ? "Checking data..." : gameMarkets === 0
+                      ? "No game markets ingested yet — click Ingest to load real historical data"
+                      : `${gameMarkets} real game markets in DB`}
+                  </div>
+                  {topSeries.length > 0 && (
+                    <div className="text-xs text-muted-foreground mt-0.5 flex flex-wrap gap-2">
+                      {topSeries.map(([k, v]) => (
+                        <span key={k} className="px-1.5 py-0.5 rounded bg-white/5 font-mono">{k.replace("KX", "")}:{v}</span>
+                      ))}
+                    </div>
+                  )}
+                  {gameMarkets > 0 && ingestionStats?.dateRange.earliest && (
+                    <div className="text-xs text-muted-foreground mt-0.5">
+                      Coverage: {ingestionStats.dateRange.earliest?.slice(0, 10)} → {ingestionStats.dateRange.latest?.slice(0, 10)}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <Button
+                onClick={() => ingestMutation.mutate()}
+                disabled={ingestMutation.isPending}
+                variant="outline"
+                size="sm"
+                className="border-white/20 hover:border-primary/50 gap-2"
+              >
+                {ingestMutation.isPending ? (
+                  <><span className="animate-spin w-3.5 h-3.5 border-2 border-white/20 border-t-white rounded-full" /> Ingesting...</>
+                ) : ingestMutation.isSuccess ? (
+                  <><CheckCircle className="w-3.5 h-3.5 text-success" /> Done!</>
+                ) : (
+                  <><Download className="w-3.5 h-3.5" /> Ingest Historical Data</>
+                )}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <Card className="glass-panel border-white/10">
