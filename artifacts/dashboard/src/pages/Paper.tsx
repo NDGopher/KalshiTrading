@@ -8,12 +8,18 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { formatCurrency } from "@/lib/utils";
 import { format } from "date-fns";
-import { FileText, RefreshCw, RotateCcw, TrendingUp, TrendingDown, Wallet, Target, Activity, BarChart3, AlertTriangle, Wifi, WifiOff } from "lucide-react";
+import { FileText, RefreshCw, RotateCcw, TrendingUp, TrendingDown, Wallet, Target, Activity, BarChart3, AlertTriangle, Wifi, WifiOff, ExternalLink } from "lucide-react";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell
 } from "recharts";
 
 const API_BASE = `${import.meta.env.BASE_URL}api`;
+
+function kalshiUrl(ticker: string): string {
+  const lastDash = ticker.lastIndexOf("-");
+  const eventTicker = lastDash !== -1 ? ticker.substring(0, lastDash) : ticker;
+  return `https://kalshi.com/markets/${eventTicker}/${ticker}`;
+}
 
 interface PaperTrade {
   id: number;
@@ -338,7 +344,16 @@ export default function Paper() {
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
                             <div className="text-xs font-semibold text-white truncate">{t.title}</div>
-                            <div className="text-[10px] font-mono text-muted-foreground mt-0.5">{t.kalshiTicker}</div>
+                            <a
+                              href={kalshiUrl(t.kalshiTicker)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[10px] font-mono text-muted-foreground hover:text-primary transition-colors flex items-center gap-1 mt-0.5 w-fit"
+                              title="View on Kalshi"
+                            >
+                              {t.kalshiTicker}
+                              <ExternalLink className="w-2.5 h-2.5" />
+                            </a>
                           </div>
                           <div className="text-right flex-shrink-0">
                             <div className={`text-sm font-mono font-bold ${unrealized >= 0 ? "text-success" : "text-destructive"}`}>
@@ -469,7 +484,16 @@ export default function Paper() {
                           <td className="px-6 py-4 whitespace-nowrap text-muted-foreground text-xs">{format(new Date(trade.createdAt), "MMM d, HH:mm")}</td>
                           <td className="px-6 py-4 max-w-[250px]">
                             <div className="font-medium text-white mb-1 truncate" title={trade.title}>{trade.title}</div>
-                            <div className="text-[10px] font-mono text-muted-foreground">{trade.kalshiTicker}</div>
+                            <a
+                              href={kalshiUrl(trade.kalshiTicker)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[10px] font-mono text-muted-foreground hover:text-primary transition-colors flex items-center gap-1 w-fit"
+                              title="View on Kalshi"
+                            >
+                              {trade.kalshiTicker}
+                              <ExternalLink className="w-2.5 h-2.5 opacity-0 group-hover:opacity-100 transition-opacity" />
+                            </a>
                           </td>
                           <td className="px-6 py-4">
                             <span className="text-xs text-muted-foreground">{trade.strategyName || "—"}</span>
