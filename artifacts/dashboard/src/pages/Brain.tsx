@@ -6,20 +6,41 @@ import { useQuery } from "@tanstack/react-query";
 import { formatDistanceToNow, format } from "date-fns";
 import {
   Search, BrainCircuit, ShieldCheck, Scale, Zap, RefreshCw,
-  ArrowRight, CheckCircle2, AlertTriangle, XCircle, Clock, Activity
+  ArrowRight, CheckCircle2, AlertTriangle, XCircle, Clock, Activity,
+  TrendingUp, TrendingDown
 } from "lucide-react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 
 const API_BASE = `${import.meta.env.BASE_URL}api`;
 
 function useCosts() {
   return useQuery({
     queryKey: ["/api/costs"],
-    queryFn: async () => {
-      const res = await fetch(`${API_BASE}/costs`);
-      return res.json();
-    },
+    queryFn: async () => { const res = await fetch(`${API_BASE}/costs`); return res.json(); },
     refetchInterval: 10000,
+  });
+}
+
+interface LastCycleMarket {
+  ticker: string;
+  title: string;
+  sport: string;
+  yesPrice: number;
+  modelProbability: number;
+  confidence: number;
+  edge: number;
+  kellyFraction: number | null;
+  side: "yes" | "no";
+  strategyName: string | null;
+  disposition: "executed" | "skipped_risk" | "skipped_audit" | "candidate";
+  rejectionReason: string | null;
+}
+
+function useLastCycle() {
+  return useQuery<{ markets: LastCycleMarket[]; cycleAt: string | null }>({
+    queryKey: ["/api/agents/last-cycle"],
+    queryFn: async () => { const res = await fetch(`${API_BASE}/agents/last-cycle`); return res.json(); },
+    refetchInterval: 5000,
   });
 }
 
@@ -32,21 +53,120 @@ const AGENT_PIPELINE = [
   { name: "Reconciler", icon: RefreshCw, description: "Settles & tracks outcomes", color: "text-orange-400", bg: "from-orange-500/20 to-orange-600/10" },
 ];
 
+function DispositionBadge({ d }: { d: LastCycleMarket["disposition"] }) {
+  if (d === "executed") return <Badge className="bg-success/20 text-success border-success/30 text-[10px]">EXECUTED</Badge>;
+  if (d === "skipped_risk") return <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30 text-[10px]">RISK BLOCKED</Badge>;
+  if (d === "skipped_audit") return <Badge className="bg-destructive/20 text-destructive border-destructive/30 text-[10px]">FILTERED</Badge>;
+  return <Badge variant="outline" className="text-muted-foreground text-[10px]">CANDIDATE</Badge>;
+}
+
+function MarketCard({ market, index }: { market: LastCycleMarket; index: number }) {
+  const glow = market.disposition === "executed"
+    ? "ring-1 ring-success/30 shadow-lg shadow-success/5"
+    : market.disposition === "skipped_risk"
+    ? "ring-1 ring-yellow-500/20"
+    : market.disposition === "skipped_audit"
+    ? "opacity-60"
+    : "";
+
+  const modelPct = (market.modelProbability * 100).toFixed(1);
+  const marketPct = (market.yesPrice * 100).toFixed(1);
+  const edgePositive = market.edge > 0;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.04, duration: 0.3 }}
+    >
+      <Card className={`glass-panel border-white/10 transition-all duration-300 ${glow}`}>
+        <CardContent className="p-4 space-y-3">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <div className="text-[11px] font-mono text-muted-foreground/70 truncate">{market.ticker}</div>
+              <div className="text-xs font-semibold text-white truncate mt-0.5" title={market.title}>{market.title}</div>
+              <div className="text-[10px] text-muted-foreground mt-0.5">{market.sport}</div>
+            </div>
+            <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+              <DispositionBadge d={market.disposition} />
+              <Badge variant={market.side === "yes" ? "success" : "destructive"} className="text-[10px]">
+                {market.side.toUpperCase()}
+              </Badge>
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <div className="flex justify-between text-[10px] text-muted-foreground">
+              <span>Market price</span>
+              <span className="font-mono text-white">{marketPct}%</span>
+            </div>
+            <div className="relative h-1.5 bg-white/5 rounded-full overflow-hidden">
+              <div className="absolute h-full bg-white/20 rounded-full" style={{ width: `${market.yesPrice * 100}%` }} />
+            </div>
+            <div className="flex justify-between text-[10px] text-muted-foreground">
+              <span>Model probability</span>
+              <span className={`font-mono font-semibold ${market.modelProbability > market.yesPrice ? "text-success" : "text-destructive"}`}>{modelPct}%</span>
+            </div>
+            <div className="relative h-1.5 bg-white/5 rounded-full overflow-hidden">
+              <div
+                className={`absolute h-full rounded-full ${market.modelProbability > market.yesPrice ? "bg-success" : "bg-destructive"}`}
+                style={{ width: `${market.modelProbability * 100}%` }}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2 pt-1">
+            <div className="text-center">
+              <div className="text-[10px] text-muted-foreground uppercase">Edge</div>
+              <div className={`text-sm font-mono font-bold ${edgePositive ? "text-success" : "text-muted-foreground"}`}>
+                {edgePositive ? "+" : ""}{market.edge.toFixed(1)}%
+              </div>
+            </div>
+            <div className="text-center">
+              <div className="text-[10px] text-muted-foreground uppercase">Conf</div>
+              <div className="text-sm font-mono font-bold text-white">{(market.confidence * 100).toFixed(0)}%</div>
+            </div>
+            <div className="text-center">
+              <div className="text-[10px] text-muted-foreground uppercase">Kelly</div>
+              <div className="text-sm font-mono font-bold text-white">
+                {market.kellyFraction != null ? `${(market.kellyFraction * 100).toFixed(1)}%` : "—"}
+              </div>
+            </div>
+          </div>
+
+          {market.strategyName && (
+            <div className="text-[10px] text-primary/80 font-medium">{market.strategyName}</div>
+          )}
+
+          {market.rejectionReason && (
+            <div className="text-[10px] text-destructive/80 bg-destructive/5 rounded px-2 py-1 border border-destructive/10">
+              ✕ {market.rejectionReason}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </motion.div>
+  );
+}
+
 export default function Brain() {
   const { data: agents } = useGetAgentStatus({ query: { queryKey: getGetAgentStatusQueryKey(), refetchInterval: 3000 } });
   const { data: overview } = useGetDashboardOverview({ query: { queryKey: getGetDashboardOverviewQueryKey(), refetchInterval: 5000 } });
   const { data: runs } = useListAgentRuns({ limit: 20 }, { query: { queryKey: getListAgentRunsQueryKey({ limit: 20 }), refetchInterval: 3000 } });
   const { data: costs } = useCosts();
+  const { data: lastCycle } = useLastCycle();
 
   const agentMap = new Map((agents || []).map(a => [a.name, a]));
+  const currentAgent = agents?.find(a => a.status === "running");
+  const cycleMarkets = lastCycle?.markets || [];
+  const executed = cycleMarkets.filter(m => m.disposition === "executed");
+  const filtered = cycleMarkets.filter(m => m.disposition !== "executed");
 
   const statusIcon = (status: string) => {
     if (status === "running") return <span className="relative flex h-3 w-3"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" /><span className="relative inline-flex rounded-full h-3 w-3 bg-primary" /></span>;
     if (status === "error") return <XCircle className="w-3.5 h-3.5 text-destructive" />;
     return <CheckCircle2 className="w-3.5 h-3.5 text-muted-foreground" />;
   };
-
-  const currentAgent = agents?.find(a => a.status === "running");
 
   return (
     <Layout>
@@ -78,15 +198,8 @@ export default function Brain() {
               const isRunning = liveAgent?.status === "running";
               const isError = liveAgent?.status === "error";
               const Icon = agent.icon;
-
               return (
-                <motion.div
-                  key={agent.name}
-                  className="flex items-center gap-2 flex-shrink-0"
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.08 }}
-                >
+                <motion.div key={agent.name} className="flex items-center gap-2 flex-shrink-0" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.08 }}>
                   <Card className={`w-44 glass-panel border-white/10 transition-all duration-500 ${isRunning ? "ring-2 ring-primary/50 shadow-lg shadow-primary/10" : isError ? "ring-1 ring-destructive/30" : ""}`}>
                     <CardContent className="p-4 flex flex-col items-center text-center gap-2">
                       <div className={`p-3 rounded-xl bg-gradient-to-br ${agent.bg} ${isRunning ? "animate-pulse" : ""}`}>
@@ -103,23 +216,73 @@ export default function Brain() {
                         </span>
                       </div>
                       {liveAgent?.lastRunAt && (
-                        <div className="text-[10px] text-muted-foreground/60">
-                          {formatDistanceToNow(new Date(liveAgent.lastRunAt), { addSuffix: true })}
-                        </div>
+                        <div className="text-[10px] text-muted-foreground/60">{formatDistanceToNow(new Date(liveAgent.lastRunAt), { addSuffix: true })}</div>
                       )}
                     </CardContent>
                   </Card>
-                  {i < AGENT_PIPELINE.length - 1 && (
-                    <ArrowRight className="w-5 h-5 text-white/20 flex-shrink-0" />
-                  )}
+                  {i < AGENT_PIPELINE.length - 1 && <ArrowRight className="w-5 h-5 text-white/20 flex-shrink-0" />}
                 </motion.div>
               );
             })}
           </div>
         </div>
 
+        {cycleMarkets.length > 0 && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                  <Activity className="w-5 h-5 text-primary" />
+                  Last Cycle Markets
+                  <Badge variant="outline" className="text-[10px] ml-1">{cycleMarkets.length} analyzed</Badge>
+                </h3>
+                {lastCycle?.cycleAt && (
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    Cycle completed {formatDistanceToNow(new Date(lastCycle.cycleAt), { addSuffix: true })}
+                  </p>
+                )}
+              </div>
+              <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-success" />{executed.length} executed</span>
+                <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-destructive" />{filtered.length} filtered</span>
+              </div>
+            </div>
+
+            {executed.length > 0 && (
+              <div>
+                <div className="text-xs text-success/80 font-semibold uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Executed Trades
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                  {executed.map((m, i) => <MarketCard key={m.ticker} market={m} index={i} />)}
+                </div>
+              </div>
+            )}
+
+            {filtered.length > 0 && (
+              <div>
+                <div className="text-xs text-muted-foreground/60 font-semibold uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                  <XCircle className="w-3.5 h-3.5" /> Evaluated but Not Traded
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                  {filtered.map((m, i) => <MarketCard key={m.ticker} market={m} index={i} />)}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {cycleMarkets.length === 0 && (
+          <Card className="glass-panel border-white/10">
+            <CardContent className="p-12 text-center">
+              <BrainCircuit className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
+              <p className="text-muted-foreground">No cycle data yet. Trigger a pipeline run to see per-market analysis.</p>
+            </CardContent>
+          </Card>
+        )}
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-6">
+          <div className="lg:col-span-2">
             <Card className="glass-panel border-white/10">
               <CardHeader className="border-b border-white/5 bg-black/20 py-3">
                 <CardTitle className="text-base flex items-center gap-2">
@@ -133,12 +296,8 @@ export default function Brain() {
                     <tbody className="divide-y divide-white/5">
                       {runs?.map((run) => (
                         <tr key={run.id} className="hover:bg-white/[0.02] transition-colors">
-                          <td className="px-4 py-2.5 w-24 whitespace-nowrap text-[11px] font-mono text-muted-foreground/70">
-                            {format(new Date(run.createdAt), "HH:mm:ss")}
-                          </td>
-                          <td className="px-4 py-2.5 w-32">
-                            <span className="text-xs font-semibold text-white">{run.agentName}</span>
-                          </td>
+                          <td className="px-4 py-2.5 w-24 whitespace-nowrap text-[11px] font-mono text-muted-foreground/70">{format(new Date(run.createdAt), "HH:mm:ss")}</td>
+                          <td className="px-4 py-2.5 w-32"><span className="text-xs font-semibold text-white">{run.agentName}</span></td>
                           <td className="px-4 py-2.5">
                             <div className="flex items-center gap-1.5">
                               {run.status === "success" && <CheckCircle2 className="w-3.5 h-3.5 text-success flex-shrink-0" />}
@@ -149,17 +308,11 @@ export default function Brain() {
                               </span>
                             </div>
                           </td>
-                          <td className="px-4 py-2.5 text-right text-[11px] font-mono text-muted-foreground/60 w-16">
-                            {run.duration.toFixed(1)}s
-                          </td>
+                          <td className="px-4 py-2.5 text-right text-[11px] font-mono text-muted-foreground/60 w-16">{run.duration.toFixed(1)}s</td>
                         </tr>
                       ))}
                       {!runs?.length && (
-                        <tr>
-                          <td colSpan={4} className="px-4 py-12 text-center text-muted-foreground">
-                            No pipeline executions yet.
-                          </td>
-                        </tr>
+                        <tr><td colSpan={4} className="px-4 py-12 text-center text-muted-foreground">No pipeline executions yet.</td></tr>
                       )}
                     </tbody>
                   </table>
@@ -203,9 +356,7 @@ export default function Brain() {
               <CardHeader className="border-b border-white/5 bg-black/20 py-3">
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-base">API Cost Tracker</CardTitle>
-                  {costs?.budgetPaused && (
-                    <Badge variant="destructive" className="text-[10px]">BUDGET PAUSED</Badge>
-                  )}
+                  {costs?.budgetPaused && <Badge variant="destructive" className="text-[10px]">BUDGET PAUSED</Badge>}
                 </div>
               </CardHeader>
               <CardContent className="p-4 space-y-3">
@@ -219,10 +370,7 @@ export default function Brain() {
                   </div>
                   {costs?.daily?.budgetUsd > 0 && (
                     <div className="w-full h-1.5 bg-white/5 rounded-full mt-1.5 overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all ${costs.daily.exceeded ? "bg-destructive" : "bg-primary"}`}
-                        style={{ width: `${Math.min(100, ((costs.daily.costUsd || 0) / costs.daily.budgetUsd) * 100)}%` }}
-                      />
+                      <div className={`h-full rounded-full transition-all ${costs.daily.exceeded ? "bg-destructive" : "bg-primary"}`} style={{ width: `${Math.min(100, ((costs.daily.costUsd || 0) / costs.daily.budgetUsd) * 100)}%` }} />
                     </div>
                   )}
                 </div>
@@ -236,10 +384,7 @@ export default function Brain() {
                   </div>
                   {costs?.monthly?.budgetUsd > 0 && (
                     <div className="w-full h-1.5 bg-white/5 rounded-full mt-1.5 overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all ${costs.monthly.exceeded ? "bg-destructive" : "bg-primary"}`}
-                        style={{ width: `${Math.min(100, ((costs.monthly.costUsd || 0) / costs.monthly.budgetUsd) * 100)}%` }}
-                      />
+                      <div className={`h-full rounded-full transition-all ${costs.monthly.exceeded ? "bg-destructive" : "bg-primary"}`} style={{ width: `${Math.min(100, ((costs.monthly.costUsd || 0) / costs.monthly.budgetUsd) * 100)}%` }} />
                     </div>
                   )}
                 </div>

@@ -7,6 +7,7 @@ import {
   startPipeline,
   stopPipeline,
   isPipelineActive,
+  getLastCycleSummary,
 } from "../lib/agents/pipeline.js";
 import {
   GetAgentStatusResponse,
@@ -99,6 +100,11 @@ router.post("/agents/run-cycle", async (_req, res): Promise<void> => {
       })),
     })
   );
+});
+
+router.get("/agents/last-cycle", (_req, res): void => {
+  const summary = getLastCycleSummary();
+  res.json(summary);
 });
 
 export default router;

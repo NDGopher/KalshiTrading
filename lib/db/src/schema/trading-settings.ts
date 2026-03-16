@@ -20,6 +20,7 @@ export const tradingSettingsTable = pgTable("trading_settings", {
   paperBalance: real("paper_balance").notNull().default(5000),
   dailyBudgetUsd: real("daily_budget_usd").notNull().default(5),
   monthlyBudgetUsd: real("monthly_budget_usd").notNull().default(50),
+  enabledStrategies: jsonb("enabled_strategies").$type<string[]>().default(["Pure Value", "Dip Buyer", "Fade the Public", "Momentum", "Late Efficiency"]),
   kalshiApiKey: text("kalshi_api_key"),
   kalshiBaseUrl: text("kalshi_base_url"),
 });

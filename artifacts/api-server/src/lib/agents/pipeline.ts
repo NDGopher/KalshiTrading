@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { scanMarkets } from "./scanner.js";
 import { analyzeMarkets, analyzeMarketsSimulated } from "./analyst.js";
 import { auditTrades } from "./auditor.js";
-import { assessRisk } from "./risk-manager.js";
+import { assessRisk, type RiskDecision } from "./risk-manager.js";
 import { executeTrade, type ExecutionResult } from "./executor.js";
 import { reconcileOpenTrades, reconcilePaperTrades } from "./reconciler.js";
 import { checkBudget } from "./analyst.js";
@@ -25,6 +25,28 @@ export interface CycleResult {
   totalDuration: number;
   agentResults: AgentRunLog[];
   paperMode?: boolean;
+}
+
+export interface LastCycleMarket {
+  ticker: string;
+  title: string;
+  sport: string;
+  yesPrice: number;
+  modelProbability: number;
+  confidence: number;
+  edge: number;
+  kellyFraction: number | null;
+  side: "yes" | "no";
+  strategyName: string | null;
+  disposition: "executed" | "skipped_risk" | "skipped_audit" | "skipped_duplicate" | "candidate";
+  rejectionReason: string | null;
+}
+
+let lastCycleMarkets: LastCycleMarket[] = [];
+let lastCycleAt: Date | null = null;
+
+export function getLastCycleSummary() {
+  return { markets: lastCycleMarkets, cycleAt: lastCycleAt };
 }
 
 let pipelineInterval: ReturnType<typeof setInterval> | null = null;
@@ -104,6 +126,7 @@ export async function runTradingCycle(): Promise<CycleResult> {
     }
 
     const paperMode = settings.paperTradingMode;
+    const enabledStrategies = (settings.enabledStrategies as string[] | null) ?? undefined;
 
     const budgetCheck = await checkBudget();
     if (!budgetCheck.allowed) {
@@ -191,7 +214,7 @@ export async function runTradingCycle(): Promise<CycleResult> {
     await db.delete(marketOpportunitiesTable);
     for (const audit of auditResults) {
       const { analysis } = audit;
-      const strategyMatches = evaluateStrategies(analysis);
+      const strategyMatches = evaluateStrategies(analysis, enabledStrategies);
       await db.insert(marketOpportunitiesTable).values({
         kalshiTicker: analysis.candidate.market.ticker,
         title: analysis.candidate.market.title || analysis.candidate.market.ticker,
@@ -226,12 +249,12 @@ export async function runTradingCycle(): Promise<CycleResult> {
       }
     }
 
-    const riskDecisions = [];
+    const riskDecisions: RiskDecision[] = [];
     let effectiveBankroll = bankroll;
     let approvedThisCycle = 0;
     let strategySkipped = 0;
     for (const audit of approved) {
-      const strategyMatches = evaluateStrategies(audit.analysis);
+      const strategyMatches = evaluateStrategies(audit.analysis, enabledStrategies);
       if (strategyMatches.length === 0) {
         strategySkipped++;
         continue;
@@ -272,6 +295,58 @@ export async function runTradingCycle(): Promise<CycleResult> {
     const modeLabel = paperMode ? " (paper)" : "";
     updateAgentStatus("Executor", "idle", `Executed ${executed}/${riskApproved.length} trades${modeLabel}`);
     agentResults.push({ agentName: "Executor", status: "success", duration: execDuration, details: `${executed}/${riskApproved.length} executed${modeLabel}` });
+
+    // Build last cycle summary for Brain view
+    const executedTickers = new Set(
+      riskApproved
+        .filter((d) => d.approved)
+        .map((d) => d.audit.analysis.candidate.market.ticker)
+    );
+    const riskSkippedTickers = new Set(
+      riskDecisions
+        .filter((d) => !d.approved)
+        .map((d) => d.audit.analysis.candidate.market.ticker)
+    );
+    const auditFailedTickers = new Set(
+      auditResults
+        .filter((a) => !a.approved)
+        .map((a) => a.analysis.candidate.market.ticker)
+    );
+    lastCycleMarkets = topCandidates.map((c) => {
+      const analysis = analyses.find((a) => a.candidate.market.ticker === c.market.ticker);
+      const audit = auditResults.find((a) => a.analysis.candidate.market.ticker === c.market.ticker);
+      const risk = riskDecisions.find((d) => d.audit.analysis.candidate.market.ticker === c.market.ticker);
+      const strategyMatches = analysis ? evaluateStrategies(analysis, enabledStrategies) : [];
+      let disposition: LastCycleMarket["disposition"] = "candidate";
+      let rejectionReason: string | null = null;
+      if (executedTickers.has(c.market.ticker)) {
+        disposition = "executed";
+      } else if (riskSkippedTickers.has(c.market.ticker)) {
+        disposition = "skipped_risk";
+        rejectionReason = risk?.rejectReason || "Risk limit exceeded";
+      } else if (auditFailedTickers.has(c.market.ticker)) {
+        disposition = "skipped_audit";
+        rejectionReason = audit?.flags?.join(", ") || "Audit filters failed";
+      } else if (strategyMatches.length === 0) {
+        disposition = "skipped_audit";
+        rejectionReason = "No strategy match";
+      }
+      return {
+        ticker: c.market.ticker,
+        title: c.market.title || c.market.ticker,
+        sport: c.market.category || "Sports",
+        yesPrice: c.yesPrice,
+        modelProbability: analysis?.modelProbability ?? c.yesPrice,
+        confidence: analysis?.confidence ?? 0,
+        edge: analysis?.edge ?? 0,
+        kellyFraction: risk?.kellyFraction ?? null,
+        side: analysis?.side ?? "yes",
+        strategyName: strategyMatches[0]?.strategyName ?? null,
+        disposition,
+        rejectionReason,
+      } as LastCycleMarket;
+    });
+    lastCycleAt = new Date();
 
     let reconStart = Date.now();
     updateAgentStatus("Reconciler", "running");

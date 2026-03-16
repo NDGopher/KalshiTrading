@@ -169,9 +169,12 @@ export function getStrategyNames(): string[] {
   return strategies.map((s) => s.name);
 }
 
-export function evaluateStrategies(analysis: AnalysisResult): { strategyName: string; reason: string; metadata?: StrategyMetadata }[] {
+export function evaluateStrategies(analysis: AnalysisResult, enabledStrategyNames?: string[]): { strategyName: string; reason: string; metadata?: StrategyMetadata }[] {
   const matches: { strategyName: string; reason: string; metadata?: StrategyMetadata }[] = [];
-  for (const strategy of strategies) {
+  const activeStrategies = enabledStrategyNames
+    ? strategies.filter((s) => enabledStrategyNames.includes(s.name))
+    : strategies;
+  for (const strategy of activeStrategies) {
     const candidateMatch = strategy.selectCandidates([analysis.candidate]);
     if (candidateMatch.length > 0) {
       const result = strategy.shouldTrade(analysis);

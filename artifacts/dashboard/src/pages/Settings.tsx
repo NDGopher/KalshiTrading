@@ -8,7 +8,15 @@ import * as z from "zod";
 import { useEffect, useState, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { DollarSign, FileText, Shield } from "lucide-react";
+import { DollarSign, FileText, Shield, Layers, CheckCircle2, XCircle } from "lucide-react";
+
+const ALL_STRATEGIES = [
+  { name: "Pure Value", description: "Buys when model probability exceeds implied odds by a significant margin.", color: "#a78bfa" },
+  { name: "Dip Buyer", description: "Detects probability dips and buys the overreaction to short-term negative news.", color: "#34d399" },
+  { name: "Fade the Public", description: "Bets against heavy public money when sharp odds diverge from public sentiment.", color: "#f59e0b" },
+  { name: "Momentum", description: "Follows strong directional probability momentum signals.", color: "#60a5fa" },
+  { name: "Late Efficiency", description: "Exploits market inefficiencies in the final hours before settlement.", color: "#f87171" },
+];
 
 interface SettingsData {
   id: number;
@@ -89,6 +97,8 @@ export default function Settings() {
   const [connectionStatus, setConnectionStatus] = useState<{ success: boolean; message: string } | null>(null);
   const [paperMode, setPaperMode] = useState(false);
   const [togglingPaper, setTogglingPaper] = useState(false);
+  const [enabledStrategies, setEnabledStrategies] = useState<string[]>(ALL_STRATEGIES.map(s => s.name));
+  const [strategySaving, setStrategySaving] = useState(false);
   
   const updateMutation = useUpdateSettings({
     mutation: {
@@ -125,8 +135,36 @@ export default function Settings() {
       });
       setKalshiBaseUrl(settings.kalshiBaseUrl || "");
       setPaperMode(settings.paperTradingMode || false);
+      const loaded = (settings as any).enabledStrategies;
+      if (Array.isArray(loaded) && loaded.length > 0) {
+        setEnabledStrategies(loaded);
+      } else {
+        setEnabledStrategies(ALL_STRATEGIES.map(s => s.name));
+      }
     }
   }, [settings, reset]);
+
+  const toggleStrategy = useCallback(async (name: string) => {
+    const next = enabledStrategies.includes(name)
+      ? enabledStrategies.filter(s => s !== name)
+      : [...enabledStrategies, name];
+    setEnabledStrategies(next);
+    setStrategySaving(true);
+    try {
+      await fetch(`${API_BASE}/settings`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabledStrategies: next }),
+      });
+      queryClient.invalidateQueries({ queryKey: ['/api/settings'] });
+      toast({ title: next.includes(name) ? "Strategy Enabled" : "Strategy Disabled", description: name });
+    } catch {
+      setEnabledStrategies(enabledStrategies);
+      toast({ title: "Error", description: "Failed to save strategy settings.", variant: "destructive" });
+    } finally {
+      setStrategySaving(false);
+    }
+  }, [enabledStrategies, queryClient, toast]);
 
   const onSubmit = (data: SettingsFormValues) => {
     const payload = {
@@ -258,6 +296,59 @@ export default function Settings() {
                     </Button>
                   </div>
                 </div>
+              </CardContent>
+            </Card>
+
+            <Card className="glass-panel border-white/10">
+              <CardHeader className="border-b border-white/5 bg-black/20">
+                <CardTitle className="flex items-center gap-2">
+                  <Layers className="w-5 h-5 text-primary" />
+                  Strategy Selection
+                </CardTitle>
+                <CardDescription>
+                  Enable or disable individual strategies. Disabled strategies are skipped during evaluation.
+                  {strategySaving && <span className="text-primary ml-2 text-xs">Saving...</span>}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="p-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {ALL_STRATEGIES.map((strategy) => {
+                    const isEnabled = enabledStrategies.includes(strategy.name);
+                    return (
+                      <button
+                        key={strategy.name}
+                        type="button"
+                        onClick={() => toggleStrategy(strategy.name)}
+                        disabled={strategySaving}
+                        className={`relative flex flex-col gap-3 p-4 rounded-xl border transition-all duration-200 text-left ${
+                          isEnabled
+                            ? "bg-black/30 border-white/20 ring-1 ring-inset"
+                            : "bg-black/10 border-white/5 opacity-50 hover:opacity-70"
+                        }`}
+                        style={isEnabled ? { borderColor: strategy.color + "60" } : undefined}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <div className="w-2.5 h-2.5 rounded-full" style={{ background: strategy.color, opacity: isEnabled ? 1 : 0.3 }} />
+                            <span className="text-sm font-semibold text-white">{strategy.name}</span>
+                          </div>
+                          {isEnabled
+                            ? <CheckCircle2 className="w-4 h-4 text-success flex-shrink-0" />
+                            : <XCircle className="w-4 h-4 text-destructive/50 flex-shrink-0" />
+                          }
+                        </div>
+                        <p className="text-[11px] text-muted-foreground leading-relaxed">{strategy.description}</p>
+                        <div className={`text-[10px] font-bold uppercase tracking-wider ${isEnabled ? "text-success" : "text-muted-foreground/50"}`}>
+                          {isEnabled ? "ENABLED" : "DISABLED"}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-muted-foreground mt-4">
+                  {enabledStrategies.length} of {ALL_STRATEGIES.length} strategies active. 
+                  Changes take effect on the next pipeline cycle.
+                </p>
               </CardContent>
             </Card>
 
