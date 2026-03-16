@@ -46,9 +46,22 @@ export interface LastCycleMarket {
 
 let lastCycleMarkets: LastCycleMarket[] = [];
 let lastCycleAt: Date | null = null;
+let liveCycleId: string | null = null;
+let liveCycleInProgress = false;
+let liveCycleActiveAgent: string | null = null;
 
 export function getLastCycleSummary() {
-  return { markets: lastCycleMarkets, cycleAt: lastCycleAt };
+  return {
+    markets: lastCycleMarkets,
+    cycleAt: lastCycleAt,
+    cycleId: liveCycleId,
+    inProgress: liveCycleInProgress,
+    activeAgent: liveCycleActiveAgent,
+  };
+}
+
+function setLiveAgent(agent: string | null) {
+  liveCycleActiveAgent = agent;
 }
 
 let pipelineInterval: ReturnType<typeof setInterval> | null = null;
@@ -94,7 +107,15 @@ function updateAgentStatus(name: string, status: "idle" | "running" | "error", r
     if (result) agentStatuses[name].lastResult = result;
     if (error) agentStatuses[name].errorMessage = error;
     else agentStatuses[name].errorMessage = null;
+    if (status === "running") liveCycleActiveAgent = name;
+    else if (liveCycleActiveAgent === name) liveCycleActiveAgent = null;
   }
+}
+
+function finishCycle() {
+  pipelineRunning = false;
+  liveCycleInProgress = false;
+  liveCycleActiveAgent = null;
 }
 
 export async function runTradingCycle(): Promise<CycleResult> {
@@ -109,6 +130,9 @@ export async function runTradingCycle(): Promise<CycleResult> {
   }
 
   pipelineRunning = true;
+  liveCycleInProgress = true;
+  liveCycleId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  liveCycleActiveAgent = null;
   const cycleStart = Date.now();
   const agentResults: AgentRunLog[] = [];
 
@@ -120,7 +144,7 @@ export async function runTradingCycle(): Promise<CycleResult> {
         details: "No trading settings found. Please save settings first.",
       };
       await logAgentRun(noSettingsResult);
-      pipelineRunning = false;
+      finishCycle();
       return {
         marketsScanned: 0, opportunitiesFound: 0, tradesExecuted: 0,
         tradesSkipped: 0, totalDuration: 0, agentResults: [noSettingsResult],
@@ -137,7 +161,7 @@ export async function runTradingCycle(): Promise<CycleResult> {
         details: `Budget exceeded: ${budgetCheck.reason}. Pipeline paused.`,
       };
       await logAgentRun(budgetResult);
-      pipelineRunning = false;
+      finishCycle();
       return {
         marketsScanned: 0, opportunitiesFound: 0, tradesExecuted: 0,
         tradesSkipped: 0, totalDuration: 0, agentResults: [budgetResult],
@@ -159,13 +183,13 @@ export async function runTradingCycle(): Promise<CycleResult> {
       updateAgentStatus("Scanner", "error", undefined, errMsg);
       agentResults.push({ agentName: "Scanner", status: "error", duration: scanDuration, details: errMsg });
       for (const run of agentResults) await logAgentRun(run);
-      pipelineRunning = false;
+      finishCycle();
       return { marketsScanned: 0, opportunitiesFound: 0, tradesExecuted: 0, tradesSkipped: 0, totalDuration: (Date.now() - cycleStart) / 1000, agentResults };
     }
 
     if (scanResult.candidates.length === 0) {
       for (const run of agentResults) await logAgentRun(run);
-      pipelineRunning = false;
+      finishCycle();
       return { marketsScanned: scanResult.totalScanned, opportunitiesFound: 0, tradesExecuted: 0, tradesSkipped: 0, totalDuration: (Date.now() - cycleStart) / 1000, agentResults };
     }
 
@@ -194,7 +218,7 @@ export async function runTradingCycle(): Promise<CycleResult> {
       updateAgentStatus("Analyst", "error", undefined, errMsg);
       agentResults.push({ agentName: "Analyst", status: "error", duration: analysisDuration, details: errMsg });
       for (const run of agentResults) await logAgentRun(run);
-      pipelineRunning = false;
+      finishCycle();
       return { marketsScanned: scanResult.totalScanned, opportunitiesFound: 0, tradesExecuted: 0, tradesSkipped: 0, totalDuration: (Date.now() - cycleStart) / 1000, agentResults };
     }
 
@@ -233,7 +257,7 @@ export async function runTradingCycle(): Promise<CycleResult> {
 
     if (approved.length === 0) {
       for (const run of agentResults) await logAgentRun(run);
-      pipelineRunning = false;
+      finishCycle();
       return { marketsScanned: scanResult.totalScanned, opportunitiesFound: auditResults.length, tradesExecuted: 0, tradesSkipped: auditResults.length, totalDuration: (Date.now() - cycleStart) / 1000, agentResults, paperMode };
     }
 
@@ -382,7 +406,7 @@ export async function runTradingCycle(): Promise<CycleResult> {
       await logAgentRun(run);
     }
 
-    pipelineRunning = false;
+    finishCycle();
     return {
       marketsScanned: scanResult.totalScanned,
       opportunitiesFound: auditResults.length,
@@ -396,7 +420,7 @@ export async function runTradingCycle(): Promise<CycleResult> {
     const errMsg = err instanceof Error ? err.message : "Unknown error";
     agentResults.push({ agentName: "Pipeline", status: "error", duration: (Date.now() - cycleStart) / 1000, details: errMsg });
     for (const run of agentResults) await logAgentRun(run);
-    pipelineRunning = false;
+    finishCycle();
     return {
       marketsScanned: 0, opportunitiesFound: 0, tradesExecuted: 0,
       tradesSkipped: 0, totalDuration: (Date.now() - cycleStart) / 1000,

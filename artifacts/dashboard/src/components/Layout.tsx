@@ -186,10 +186,10 @@ export function Layout({ children }: LayoutProps) {
                 <span className="text-xs text-muted-foreground">
                   {overview?.paperTradingMode ? "Paper Balance" : "Portfolio Balance"}
                 </span>
-                {!overview?.paperTradingMode && overview?.pipelineActive && (
+                {!overview?.paperTradingMode && (
                   <span className="relative flex items-center gap-1 px-1.5 py-0.5 rounded bg-success/10 border border-success/20">
                     <span className="relative flex h-1.5 w-1.5">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75"></span>
+                      <span className={`${overview?.pipelineActive ? "animate-ping" : ""} absolute inline-flex h-full w-full rounded-full bg-success opacity-75`}></span>
                       <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-success"></span>
                     </span>
                     <span className="text-[10px] font-bold text-success uppercase tracking-wider">Live</span>
