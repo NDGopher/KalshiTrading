@@ -100,8 +100,48 @@ export interface KalshiMarket {
   yes_sub_title?: string;
   no_sub_title?: string;
   open_time?: string;
-  last_price_dollars?: string;
-  liquidity_dollars?: string;
+  last_price_dollars?: string | number;
+  liquidity_dollars?: string | number;
+  yes_ask_dollars?: string | number;
+  yes_bid_dollars?: string | number;
+  no_ask_dollars?: string | number;
+  no_bid_dollars?: string | number;
+  volume_24h_fp?: string | number;
+  volume_fp?: string | number;
+  open_interest_fp?: string | number;
+}
+
+export function getMarketYesPrice(m: KalshiMarket): number {
+  if (m.last_price != null && m.last_price > 0) return m.last_price / 100;
+  if (m.last_price_dollars != null) return parseFloat(String(m.last_price_dollars));
+  return 0;
+}
+
+export function getMarketYesAsk(m: KalshiMarket): number {
+  if (m.yes_ask != null && m.yes_ask > 0) return m.yes_ask / 100;
+  if (m.yes_ask_dollars != null) return parseFloat(String(m.yes_ask_dollars));
+  return 0;
+}
+
+export function getMarketYesBid(m: KalshiMarket): number {
+  if (m.yes_bid != null && m.yes_bid > 0) return m.yes_bid / 100;
+  if (m.yes_bid_dollars != null) return parseFloat(String(m.yes_bid_dollars));
+  return 0;
+}
+
+export function getMarketVolume24h(m: KalshiMarket): number {
+  if (m.volume_24h != null && m.volume_24h > 0) return m.volume_24h;
+  if (m.volume_24h_fp != null && parseFloat(String(m.volume_24h_fp)) > 0) return parseFloat(String(m.volume_24h_fp));
+  if (m.volume_fp != null && parseFloat(String(m.volume_fp)) > 0) return parseFloat(String(m.volume_fp)) / 100;
+  if (m.open_interest_fp != null && parseFloat(String(m.open_interest_fp)) > 0) return parseFloat(String(m.open_interest_fp)) / 100;
+  return 0;
+}
+
+export function getMarketLiquidity(m: KalshiMarket): number {
+  if (m.liquidity != null && m.liquidity > 0) return m.liquidity;
+  if (m.liquidity_dollars != null && parseFloat(String(m.liquidity_dollars)) > 0) return parseFloat(String(m.liquidity_dollars));
+  if (m.open_interest_fp != null && parseFloat(String(m.open_interest_fp)) > 0) return parseFloat(String(m.open_interest_fp)) / 100;
+  return 0;
 }
 
 export interface KalshiEvent {

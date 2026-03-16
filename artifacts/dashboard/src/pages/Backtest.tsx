@@ -336,7 +336,7 @@ export default function Backtest() {
                             <td className={`p-3 text-right font-mono ${s.avgPnl >= 0 ? "text-green-400" : "text-red-400"}`}>
                               ${s.avgPnl.toFixed(2)}
                             </td>
-                            <td className="p-3 text-right font-mono text-white">{s.avgWinRate.toFixed(1)}%</td>
+                            <td className="p-3 text-right font-mono text-white">{(s.avgWinRate * 100).toFixed(1)}%</td>
                             <td className={`p-3 text-right font-mono ${(s.avgRoi ?? 0) >= 0 ? "text-green-400" : "text-red-400"}`}>
                               {s.avgRoi != null ? `${s.avgRoi.toFixed(1)}%` : "—"}
                             </td>

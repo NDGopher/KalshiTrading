@@ -1,5 +1,5 @@
 import { db, historicalMarketsTable, marketSnapshotsTable } from "@workspace/db";
-import { getMarkets, type KalshiMarket, SPORTS_SERIES_TICKERS } from "./kalshi-client.js";
+import { getMarkets, type KalshiMarket, SPORTS_SERIES_TICKERS, getMarketYesPrice, getMarketYesAsk, getMarketYesBid, getMarketVolume24h, getMarketLiquidity } from "./kalshi-client.js";
 import { eq, and, gte, lte, sql } from "drizzle-orm";
 
 const SPORT_KEYWORDS = [
@@ -97,18 +97,28 @@ export async function ingestSettledMarkets(startDate: string, endDate: string): 
       continue;
     }
 
-    const openPrice = market.yes_ask > 0 ? market.yes_ask / 100 : null;
+    const lastPrice = getMarketYesPrice(market);
+    const yesAsk = getMarketYesAsk(market);
+    const yesBid = getMarketYesBid(market);
+    const volume24h = getMarketVolume24h(market);
+    const liquidity = getMarketLiquidity(market);
+
+    const openTime = new Date(market.open_time || market.close_time).getTime();
+    const closeTime = new Date(market.close_time).getTime();
+    const duration = closeTime - openTime;
+
+    const openPriceRaw = yesAsk > 0 && yesAsk < 0.99 ? yesAsk : null;
 
     await db.insert(historicalMarketsTable).values({
       kalshiTicker: market.ticker,
       title: market.title || market.ticker,
       category: market.category || null,
-      openPrice,
-      lastPrice: market.last_price / 100,
-      yesAsk: market.yes_ask / 100,
-      yesBid: market.yes_bid / 100,
-      volume24h: market.volume_24h || 0,
-      liquidity: market.liquidity || 0,
+      openPrice: openPriceRaw,
+      lastPrice,
+      yesAsk,
+      yesBid,
+      volume24h,
+      liquidity,
       status: "settled",
       result: market.result || null,
       closeTime: market.close_time ? new Date(market.close_time) : null,
@@ -117,24 +127,26 @@ export async function ingestSettledMarkets(startDate: string, endDate: string): 
       rawData: market as unknown as Record<string, unknown>,
     });
 
-    const openTime = new Date(market.open_time || market.close_time).getTime();
-    const closeTime = new Date(market.close_time).getTime();
-    const duration = closeTime - openTime;
     if (duration > 0) {
       const entryFractions = [0.3, 0.5, 0.7, 0.9];
       for (const frac of entryFractions) {
         const snapshotTime = openTime + duration * frac;
         const hoursToExpiry = (closeTime - snapshotTime) / (1000 * 60 * 60);
-        const yesPriceAtFrac = openPrice != null
-          ? openPrice + (market.last_price / 100 - openPrice) * frac
-          : market.last_price / 100;
+
+        const wonYes = market.result === "yes";
+        const trueOpenPrice = 0.5;
+        const trueClosePrice = wonYes ? 0.99 : 0.01;
+        const yesPriceAtFrac = openPriceRaw != null && openPriceRaw > 0.01 && openPriceRaw < 0.99
+          ? openPriceRaw + (trueClosePrice - openPriceRaw) * frac
+          : trueOpenPrice + (trueClosePrice - trueOpenPrice) * frac;
+
         await db.insert(marketSnapshotsTable).values({
           kalshiTicker: market.ticker,
           yesPrice: yesPriceAtFrac,
           noPrice: 1 - yesPriceAtFrac,
-          yesAsk: market.yes_ask > 0 ? market.yes_ask / 100 : null,
-          yesBid: market.yes_bid > 0 ? market.yes_bid / 100 : null,
-          volume: market.volume_24h || 0,
+          yesAsk: yesAsk > 0 ? yesAsk : null,
+          yesBid: yesBid > 0 ? yesBid : null,
+          volume: volume24h,
           snapshotAt: new Date(snapshotTime),
           hoursToExpiry,
           isEventStart: frac >= 0.9 ? 1 : 0,

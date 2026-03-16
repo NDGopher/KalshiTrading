@@ -1,5 +1,6 @@
 import type { ScanCandidate } from "../agents/scanner.js";
 import type { AnalysisResult } from "../agents/analyst.js";
+import { getMarketYesAsk, getMarketYesBid } from "../kalshi-client.js";
 
 export interface StrategyMetadata {
   dipCatch?: boolean;
@@ -50,10 +51,11 @@ const dipBuyer: Strategy = {
 
     const market = analysis.candidate.market;
     const rawOpenPrice = (market as unknown as Record<string, number>).open_price;
+    const yesAsk = getMarketYesAsk(market);
     const openPrice = rawOpenPrice != null && rawOpenPrice > 0
       ? rawOpenPrice / 100
-      : (market.yes_ask > 0 ? market.yes_ask / 100 : currentYesPrice * 1.15);
-    const peakEstimate = Math.max(openPrice, market.yes_ask / 100, currentYesPrice);
+      : (yesAsk > 0 && yesAsk < 1 ? yesAsk : currentYesPrice * 1.15);
+    const peakEstimate = Math.max(openPrice, yesAsk > 0 && yesAsk < 1 ? yesAsk : 0, currentYesPrice);
     const distanceFromPeak = peakEstimate > 0
       ? ((peakEstimate - currentYesPrice) / peakEstimate) * 100
       : 0;
@@ -117,13 +119,15 @@ const momentum: Strategy = {
     const currentPrice = analysis.candidate.yesPrice;
     const market = analysis.candidate.market;
     const rawOpenPrice = (market as unknown as Record<string, number>).open_price;
+    const mktAsk = getMarketYesAsk(market);
+    const mktBid = getMarketYesBid(market);
     const referencePrice = rawOpenPrice != null && rawOpenPrice > 0
       ? rawOpenPrice / 100
-      : (market.yes_bid > 0 && market.yes_ask > 0 ? (market.yes_ask / 100 + market.yes_bid / 100) / 2 : currentPrice);
+      : (mktBid > 0 && mktAsk > 0 && mktAsk < 1 ? (mktAsk + mktBid) / 2 : currentPrice * 0.87);
     const priceMovement = referencePrice > 0 ? Math.abs(currentPrice - referencePrice) / referencePrice * 100 : 0;
     const trendDirection = currentPrice > referencePrice ? "up" : "down";
 
-    if (volumeSurge > 3 && priceMovement >= 5 && analysis.edge >= 5 && analysis.confidence >= 0.45 && hoursLeft > 1) {
+    if (volumeSurge > 1.2 && priceMovement >= 5 && analysis.edge >= 5 && analysis.confidence >= 0.45 && hoursLeft > 1) {
       return {
         trade: true,
         reason: `Momentum (${trendDirection}): ${priceMovement.toFixed(1)}% price shift from ref ${(referencePrice * 100).toFixed(0)}c, vol surge ${volumeSurge.toFixed(1)}x, ${analysis.edge.toFixed(1)}% edge`,

@@ -1,6 +1,6 @@
 import { db, backtestRunsTable, backtestTradesTable, historicalMarketsTable, marketSnapshotsTable } from "@workspace/db";
 import { eq, and, gte, lte, sql, desc } from "drizzle-orm";
-import { getMarkets, type KalshiMarket, SPORTS_SERIES_TICKERS } from "./kalshi-client.js";
+import { getMarkets, type KalshiMarket, SPORTS_SERIES_TICKERS, getMarketYesPrice, getMarketYesAsk, getMarketYesBid, getMarketVolume24h, getMarketLiquidity } from "./kalshi-client.js";
 import { analyzeMarket, type AnalysisResult } from "./agents/analyst.js";
 import { auditTrade } from "./agents/auditor.js";
 import { computeRisk, type RiskParams } from "./agents/risk-manager.js";
@@ -20,13 +20,15 @@ interface BacktestConfig {
 }
 
 function marketToCandidate(market: KalshiMarket, simulatedTimeBeforeClose?: number): ScanCandidate | null {
-  const yesPrice = market.last_price / 100;
+  const yesPrice = getMarketYesPrice(market);
   if (yesPrice <= 0.01 || yesPrice >= 0.99) return null;
 
   const noPrice = 1 - yesPrice;
-  const spread = Math.abs(market.yes_ask - market.yes_bid) / 100;
-  const volume24h = market.volume_24h || 0;
-  const liquidity = market.liquidity || 0;
+  const yesAsk = getMarketYesAsk(market);
+  const yesBid = getMarketYesBid(market);
+  const spread = Math.abs(yesAsk - yesBid);
+  const volume24h = getMarketVolume24h(market);
+  const liquidity = getMarketLiquidity(market);
 
   const hoursToExpiry = simulatedTimeBeforeClose ??
     Math.max(0.5, (new Date(market.expected_expiration_time || market.expiration_time || market.close_time).getTime() - Date.now()) / (1000 * 60 * 60));
@@ -271,14 +273,19 @@ export async function runBacktest(config: BacktestConfig): Promise<number> {
       const snapshot = await getSnapshotForEntry(market.ticker, simHours, closeTime);
 
       let candidate: ScanCandidate | null;
-      if (snapshot) {
+      if (snapshot && snapshot.yesPrice > 0.01 && snapshot.yesPrice < 0.99) {
+        const rawAsk = getMarketYesAsk(market);
+        const rawBid = getMarketYesBid(market);
+        const rawSpread = Math.abs(rawAsk - rawBid);
+        const syntheticSpread = Math.min(0.05, Math.max(0.01, snapshot.yesPrice * 0.05));
+        const spread = rawSpread > 0 && rawSpread < 0.5 ? rawSpread : syntheticSpread;
         candidate = {
           market,
           yesPrice: snapshot.yesPrice,
           noPrice: snapshot.noPrice,
-          spread: Math.abs(market.yes_ask - market.yes_bid) / 100,
-          volume24h: market.volume_24h || 0,
-          liquidity: market.liquidity || 0,
+          spread,
+          volume24h: getMarketVolume24h(market),
+          liquidity: getMarketLiquidity(market),
           hoursToExpiry: snapshot.hoursToExpiry,
         };
       } else {

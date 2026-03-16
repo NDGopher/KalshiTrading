@@ -21,7 +21,7 @@ router.post("/backtest/run", async (req, res) => {
       maxPositionPct = 5,
       kellyFraction = 0.25,
       minEdge = 5,
-      minLiquidity = 100,
+      minLiquidity = 0,
       useAiAnalysis = true,
     } = req.body;
 
@@ -77,7 +77,7 @@ router.post("/backtest/run", async (req, res) => {
 function computeStrategyAggregates(runs: (typeof backtestRunsTable.$inferSelect)[]) {
   const completed = runs.filter((r) => r.status === "completed");
   const strategyMap = new Map<string, {
-    runs: number; totalPnl: number; totalWinRate: number;
+    runs: number; totalPnl: number; totalWinRate: number; winRateCount: number;
     totalRoi: number; roiCount: number;
     totalClv: number; clvCount: number;
     totalSharpe: number; sharpeCount: number;
@@ -86,18 +86,21 @@ function computeStrategyAggregates(runs: (typeof backtestRunsTable.$inferSelect)
   }>();
   for (const run of completed) {
     const existing = strategyMap.get(run.strategyName) || {
-      runs: 0, totalPnl: 0, totalWinRate: 0, totalRoi: 0, roiCount: 0,
+      runs: 0, totalPnl: 0, totalWinRate: 0, winRateCount: 0, totalRoi: 0, roiCount: 0,
       totalClv: 0, clvCount: 0, totalSharpe: 0, sharpeCount: 0,
       totalTrades: 0, dipCatchAttempts: 0, dipCatchRate: 0, bestRun: null,
     };
     existing.runs++;
-    existing.totalPnl += run.totalPnl;
-    existing.totalWinRate += run.winRate;
+    existing.totalPnl += parseFloat(String(run.totalPnl)) || 0;
+    if (run.tradesSimulated > 0) {
+      existing.totalWinRate += parseFloat(String(run.winRate)) || 0;
+      existing.winRateCount++;
+    }
     existing.totalTrades += run.tradesSimulated;
-    if (run.roi != null) { existing.totalRoi += run.roi; existing.roiCount++; }
-    if (run.avgClv != null) { existing.totalClv += run.avgClv; existing.clvCount++; }
-    if (run.sharpeRatio != null) { existing.totalSharpe += run.sharpeRatio; existing.sharpeCount++; }
-    if (run.dipCatchSuccessRate != null) { existing.dipCatchAttempts++; existing.dipCatchRate += run.dipCatchSuccessRate; }
+    if (run.roi != null) { existing.totalRoi += parseFloat(String(run.roi)) || 0; existing.roiCount++; }
+    if (run.avgClv != null) { existing.totalClv += parseFloat(String(run.avgClv)) || 0; existing.clvCount++; }
+    if (run.sharpeRatio != null) { existing.totalSharpe += parseFloat(String(run.sharpeRatio)) || 0; existing.sharpeCount++; }
+    if (run.dipCatchSuccessRate != null) { existing.dipCatchAttempts++; existing.dipCatchRate += parseFloat(String(run.dipCatchSuccessRate)) || 0; }
     if (!existing.bestRun || run.totalPnl > existing.bestRun.totalPnl) existing.bestRun = run;
     strategyMap.set(run.strategyName, existing);
   }
@@ -106,7 +109,7 @@ function computeStrategyAggregates(runs: (typeof backtestRunsTable.$inferSelect)
     totalRuns: data.runs,
     totalTrades: data.totalTrades,
     avgPnl: data.runs > 0 ? data.totalPnl / data.runs : 0,
-    avgWinRate: data.runs > 0 ? data.totalWinRate / data.runs : 0,
+    avgWinRate: data.winRateCount > 0 ? data.totalWinRate / data.winRateCount : 0,
     avgRoi: data.roiCount > 0 ? data.totalRoi / data.roiCount : null,
     avgClv: data.clvCount > 0 ? data.totalClv / data.clvCount : null,
     avgSharpe: data.sharpeCount > 0 ? data.totalSharpe / data.sharpeCount : null,
