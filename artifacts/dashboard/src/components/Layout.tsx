@@ -159,6 +159,14 @@ export function Layout({ children }: LayoutProps) {
                         />
                       </div>
                     )}
+                    {costs.monthly?.projectedUsd > 0 && (
+                      <div className="flex justify-between items-center mt-1">
+                        <span className="text-[9px] text-muted-foreground/60">Projected EOM</span>
+                        <span className={`text-[10px] font-mono ${costs.monthly.budgetUsd > 0 && costs.monthly.projectedUsd > costs.monthly.budgetUsd ? "text-destructive" : "text-muted-foreground/80"}`}>
+                          ${costs.monthly.projectedUsd.toFixed(4)}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

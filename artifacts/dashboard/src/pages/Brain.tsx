@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useGetAgentStatus, useGetDashboardOverview, useListAgentRuns, getGetAgentStatusQueryKey, getGetDashboardOverviewQueryKey, getListAgentRunsQueryKey } from "@workspace/api-client-react";
 import { Layout } from "@/components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,7 +8,6 @@ import { formatDistanceToNow, format } from "date-fns";
 import {
   Search, BrainCircuit, ShieldCheck, Scale, Zap, RefreshCw,
   ArrowRight, CheckCircle2, AlertTriangle, XCircle, Clock, Activity,
-  TrendingUp, TrendingDown
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -39,11 +38,23 @@ interface LastCycleMarket {
   rejectionReason: string | null;
 }
 
+interface LastCycleState {
+  markets: LastCycleMarket[];
+  cycleAt: string | null;
+  activeAgent: string | null;
+  cycleId: string | null;
+  inProgress: boolean;
+}
+
 function useLastCycle() {
-  return useQuery<{ markets: LastCycleMarket[]; cycleAt: string | null }>({
+  return useQuery<LastCycleState>({
     queryKey: ["/api/agents/last-cycle"],
-    queryFn: async () => { const res = await fetch(`${API_BASE}/agents/last-cycle`); return res.json(); },
-    refetchInterval: 5000,
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/agents/last-cycle`);
+      const data = await res.json();
+      return { markets: data.markets ?? [], cycleAt: data.cycleAt ?? null, activeAgent: data.activeAgent ?? null, cycleId: data.cycleId ?? null, inProgress: data.inProgress ?? false };
+    },
+    refetchInterval: 3000,
   });
 }
 
@@ -56,6 +67,36 @@ const AGENT_PIPELINE = [
   { name: "Reconciler", icon: RefreshCw, description: "Settles & tracks outcomes", color: "text-orange-400", bg: "from-orange-500/20 to-orange-600/10" },
 ];
 
+function TypewriterText({ text, active, speed = 18 }: { text: string; active: boolean; speed?: number }) {
+  const [displayed, setDisplayed] = useState(active ? "" : text);
+  const posRef = useRef(active ? 0 : text.length);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (!active) { setDisplayed(text); return; }
+    posRef.current = 0;
+    setDisplayed("");
+    timerRef.current = setInterval(() => {
+      posRef.current += 1;
+      setDisplayed(text.slice(0, posRef.current));
+      if (posRef.current >= text.length && timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    }, speed);
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [text, active, speed]);
+
+  return (
+    <span>
+      {displayed}
+      {active && displayed.length < text.length && (
+        <span className="inline-block w-[6px] h-[11px] bg-primary/70 ml-[1px] animate-pulse align-middle" />
+      )}
+    </span>
+  );
+}
+
 function DispositionBadge({ d }: { d: LastCycleMarket["disposition"] }) {
   if (d === "executed") return <Badge className="bg-success/20 text-success border-success/30 text-[10px]">EXECUTED</Badge>;
   if (d === "skipped_risk") return <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30 text-[10px]">RISK BLOCKED</Badge>;
@@ -63,8 +104,8 @@ function DispositionBadge({ d }: { d: LastCycleMarket["disposition"] }) {
   return <Badge variant="outline" className="text-muted-foreground text-[10px]">CANDIDATE</Badge>;
 }
 
-function MarketCard({ market, index }: { market: LastCycleMarket; index: number }) {
-  const [reasoningExpanded, setReasoningExpanded] = useState(false);
+function MarketCard({ market, index, isLive }: { market: LastCycleMarket; index: number; isLive: boolean }) {
+  const [reasoningExpanded, setReasoningExpanded] = useState(isLive);
   const glow = market.disposition === "executed"
     ? "ring-1 ring-success/30 shadow-lg shadow-success/5"
     : market.disposition === "skipped_risk"
@@ -83,11 +124,19 @@ function MarketCard({ market, index }: { market: LastCycleMarket; index: number 
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.04, duration: 0.3 }}
     >
-      <Card className={`glass-panel border-white/10 transition-all duration-300 ${glow}`}>
+      <Card className={`glass-panel border-white/10 transition-all duration-300 ${glow} ${isLive ? "ring-1 ring-primary/20" : ""}`}>
         <CardContent className="p-4 space-y-3">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
-              <div className="text-[11px] font-mono text-muted-foreground/70 truncate">{market.ticker}</div>
+              <div className="flex items-center gap-1.5 mb-0.5">
+                <div className="text-[11px] font-mono text-muted-foreground/70 truncate">{market.ticker}</div>
+                {isLive && (
+                  <span className="relative flex h-1.5 w-1.5 flex-shrink-0">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
+                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-primary" />
+                  </span>
+                )}
+              </div>
               <div className="text-xs font-semibold text-white truncate mt-0.5" title={market.title}>{market.title}</div>
               <div className="text-[10px] text-muted-foreground mt-0.5">{market.sport}</div>
             </div>
@@ -105,16 +154,23 @@ function MarketCard({ market, index }: { market: LastCycleMarket; index: number 
               <span className="font-mono text-white">{marketPct}%</span>
             </div>
             <div className="relative h-1.5 bg-white/5 rounded-full overflow-hidden">
-              <div className="absolute h-full bg-white/20 rounded-full" style={{ width: `${market.yesPrice * 100}%` }} />
+              <motion.div
+                className="absolute h-full bg-white/20 rounded-full"
+                initial={{ width: 0 }}
+                animate={{ width: `${market.yesPrice * 100}%` }}
+                transition={{ duration: 0.6, delay: index * 0.05 }}
+              />
             </div>
             <div className="flex justify-between text-[10px] text-muted-foreground">
               <span>Model probability</span>
               <span className={`font-mono font-semibold ${market.modelProbability > market.yesPrice ? "text-success" : "text-destructive"}`}>{modelPct}%</span>
             </div>
             <div className="relative h-1.5 bg-white/5 rounded-full overflow-hidden">
-              <div
+              <motion.div
                 className={`absolute h-full rounded-full ${market.modelProbability > market.yesPrice ? "bg-success" : "bg-destructive"}`}
-                style={{ width: `${market.modelProbability * 100}%` }}
+                initial={{ width: 0 }}
+                animate={{ width: `${market.modelProbability * 100}%` }}
+                transition={{ duration: 0.8, delay: index * 0.05 + 0.2 }}
               />
             </div>
           </div>
@@ -159,7 +215,7 @@ function MarketCard({ market, index }: { market: LastCycleMarket; index: number 
                 className="text-[10px] text-muted-foreground/50 hover:text-muted-foreground transition-colors flex items-center gap-1"
                 onClick={() => setReasoningExpanded(e => !e)}
               >
-                {reasoningExpanded ? "▲" : "▼"} AI Reasoning
+                {reasoningExpanded ? "▲" : "▼"} {isLive ? "Live AI Reasoning" : "AI Reasoning"}
               </button>
               <AnimatePresence>
                 {reasoningExpanded && (
@@ -171,7 +227,7 @@ function MarketCard({ market, index }: { market: LastCycleMarket; index: number 
                     className="overflow-hidden"
                   >
                     <div className="mt-1.5 text-[10px] text-muted-foreground/70 leading-relaxed bg-black/20 rounded p-2 border border-white/5 font-mono">
-                      {market.reasoning}
+                      <TypewriterText text={market.reasoning} active={isLive} speed={12} />
                     </div>
                   </motion.div>
                 )}
@@ -191,11 +247,30 @@ export default function Brain() {
   const { data: costs } = useCosts();
   const { data: lastCycle } = useLastCycle();
 
+  const prevCycleIdRef = useRef<string | null>(null);
+  const [liveTickerSet, setLiveTickerSet] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!lastCycle) return undefined;
+    const newId = lastCycle.cycleId ?? lastCycle.cycleAt;
+    if (newId && newId !== prevCycleIdRef.current) {
+      prevCycleIdRef.current = newId;
+      const newTickers = new Set<string>((lastCycle.markets || []).map((m: LastCycleMarket) => m.ticker));
+      setLiveTickerSet(newTickers);
+      const timer = setTimeout(() => setLiveTickerSet(new Set<string>()), 90000);
+      return () => clearTimeout(timer);
+    }
+    return undefined;
+  }, [lastCycle]);
+
   const agentMap = new Map((agents || []).map(a => [a.name, a]));
   const currentAgent = agents?.find(a => a.status === "running");
-  const cycleMarkets = lastCycle?.markets || [];
-  const executed = cycleMarkets.filter(m => m.disposition === "executed");
-  const filtered = cycleMarkets.filter(m => m.disposition !== "executed");
+  const cycleMarkets: LastCycleMarket[] = lastCycle?.markets || [];
+  const executed = cycleMarkets.filter((m: LastCycleMarket) => m.disposition === "executed");
+  const filtered = cycleMarkets.filter((m: LastCycleMarket) => m.disposition !== "executed");
+  const isCycleLive = overview?.pipelineActive && lastCycle?.inProgress;
+
+  const isLive = (ticker: string) => liveTickerSet.has(ticker);
 
   const statusIcon = (status: string) => {
     if (status === "running") return <span className="relative flex h-3 w-3"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" /><span className="relative inline-flex rounded-full h-3 w-3 bg-primary" /></span>;
@@ -212,7 +287,12 @@ export default function Brain() {
             <p className="text-muted-foreground mt-1">Live view of the 6-agent orchestration pipeline.</p>
           </div>
           <div className="flex items-center gap-3">
-            {overview?.pipelineActive ? (
+            {isCycleLive ? (
+              <Badge className="bg-primary/20 text-primary border-primary/30 gap-1.5 px-3 py-1 animate-pulse">
+                <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" /><span className="relative inline-flex rounded-full h-2 w-2 bg-primary" /></span>
+                Cycle In Progress
+              </Badge>
+            ) : overview?.pipelineActive ? (
               <Badge className="bg-success/20 text-success border-success/30 gap-1.5 px-3 py-1">
                 <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75" /><span className="relative inline-flex rounded-full h-2 w-2 bg-success" /></span>
                 Pipeline Active
@@ -221,6 +301,11 @@ export default function Brain() {
               <Badge variant="outline" className="gap-1.5 px-3 py-1 text-muted-foreground">
                 <span className="h-2 w-2 rounded-full bg-muted-foreground" />
                 Pipeline Halted
+              </Badge>
+            )}
+            {lastCycle?.activeAgent && (
+              <Badge variant="outline" className="text-xs text-primary border-primary/30 px-2 py-1">
+                ▶ {lastCycle.activeAgent}
               </Badge>
             )}
           </div>
@@ -232,12 +317,13 @@ export default function Brain() {
               const liveAgent = agentMap.get(agent.name);
               const isRunning = liveAgent?.status === "running";
               const isError = liveAgent?.status === "error";
+              const isActiveInCycle = lastCycle?.activeAgent === agent.name;
               const Icon = agent.icon;
               return (
                 <motion.div key={agent.name} className="flex items-center gap-2 flex-shrink-0" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.08 }}>
-                  <Card className={`w-44 glass-panel border-white/10 transition-all duration-500 ${isRunning ? "ring-2 ring-primary/50 shadow-lg shadow-primary/10" : isError ? "ring-1 ring-destructive/30" : ""}`}>
+                  <Card className={`w-44 glass-panel border-white/10 transition-all duration-500 ${isRunning || isActiveInCycle ? "ring-2 ring-primary/50 shadow-lg shadow-primary/10" : isError ? "ring-1 ring-destructive/30" : ""}`}>
                     <CardContent className="p-4 flex flex-col items-center text-center gap-2">
-                      <div className={`p-3 rounded-xl bg-gradient-to-br ${agent.bg} ${isRunning ? "animate-pulse" : ""}`}>
+                      <div className={`p-3 rounded-xl bg-gradient-to-br ${agent.bg} ${isRunning || isActiveInCycle ? "animate-pulse" : ""}`}>
                         <Icon className={`w-6 h-6 ${agent.color}`} />
                       </div>
                       <div>
@@ -246,8 +332,8 @@ export default function Brain() {
                       </div>
                       <div className="flex items-center gap-1.5 mt-1">
                         {statusIcon(liveAgent?.status || "idle")}
-                        <span className={`text-[10px] font-bold uppercase tracking-wider ${isRunning ? "text-primary" : isError ? "text-destructive" : "text-muted-foreground"}`}>
-                          {liveAgent?.status || "idle"}
+                        <span className={`text-[10px] font-bold uppercase tracking-wider ${isRunning || isActiveInCycle ? "text-primary" : isError ? "text-destructive" : "text-muted-foreground"}`}>
+                          {isActiveInCycle ? "active" : liveAgent?.status || "idle"}
                         </span>
                       </div>
                       {liveAgent?.lastRunAt && (
@@ -255,7 +341,7 @@ export default function Brain() {
                       )}
                     </CardContent>
                   </Card>
-                  {i < AGENT_PIPELINE.length - 1 && <ArrowRight className="w-5 h-5 text-white/20 flex-shrink-0" />}
+                  {i < AGENT_PIPELINE.length - 1 && <ArrowRight className={`w-5 h-5 flex-shrink-0 ${isActiveInCycle ? "text-primary/60" : "text-white/20"}`} />}
                 </motion.div>
               );
             })}
@@ -268,12 +354,18 @@ export default function Brain() {
               <div>
                 <h3 className="text-lg font-semibold text-white flex items-center gap-2">
                   <Activity className="w-5 h-5 text-primary" />
-                  Last Cycle Markets
+                  {isCycleLive ? "Live Cycle — Markets Streaming In" : "Last Cycle Markets"}
                   <Badge variant="outline" className="text-[10px] ml-1">{cycleMarkets.length} analyzed</Badge>
+                  {isCycleLive && (
+                    <span className="relative flex h-2 w-2 ml-1">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-primary" />
+                    </span>
+                  )}
                 </h3>
                 {lastCycle?.cycleAt && (
                   <p className="text-[11px] text-muted-foreground mt-0.5">
-                    Cycle completed {formatDistanceToNow(new Date(lastCycle.cycleAt), { addSuffix: true })}
+                    {isCycleLive ? "Cycle running now" : `Cycle completed ${formatDistanceToNow(new Date(lastCycle.cycleAt), { addSuffix: true })}`}
                   </p>
                 )}
               </div>
@@ -289,7 +381,7 @@ export default function Brain() {
                   <CheckCircle2 className="w-3.5 h-3.5" /> Executed Trades
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-                  {executed.map((m, i) => <MarketCard key={m.ticker} market={m} index={i} />)}
+                  {executed.map((m, i) => <MarketCard key={m.ticker} market={m} index={i} isLive={isLive(m.ticker)} />)}
                 </div>
               </div>
             )}
@@ -300,7 +392,7 @@ export default function Brain() {
                   <XCircle className="w-3.5 h-3.5" /> Evaluated but Not Traded
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-                  {filtered.map((m, i) => <MarketCard key={m.ticker} market={m} index={i} />)}
+                  {filtered.map((m, i) => <MarketCard key={m.ticker} market={m} index={i} isLive={isLive(m.ticker)} />)}
                 </div>
               </div>
             )}
@@ -365,13 +457,19 @@ export default function Brain() {
                 <div className="space-y-3">
                   <div className="flex justify-between items-center">
                     <span className="text-xs text-muted-foreground">Current Agent</span>
-                    <span className="text-sm font-semibold text-white">{currentAgent?.name || "None"}</span>
+                    <span className="text-sm font-semibold text-white">{lastCycle?.activeAgent || currentAgent?.name || "None"}</span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-xs text-muted-foreground">Last Cycle</span>
                     <span className="text-xs font-mono text-white">
                       {overview?.lastRunAt ? formatDistanceToNow(new Date(overview.lastRunAt), { addSuffix: true }) : "Never"}
                     </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs text-muted-foreground">Cycle Status</span>
+                    <Badge variant={isCycleLive ? "default" : "outline"} className={`text-[10px] ${isCycleLive ? "bg-primary/20 text-primary border-primary/30 animate-pulse" : "text-muted-foreground"}`}>
+                      {isCycleLive ? "IN PROGRESS" : "IDLE"}
+                    </Badge>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-xs text-muted-foreground">Trading Mode</span>
@@ -422,13 +520,21 @@ export default function Brain() {
                       <div className={`h-full rounded-full transition-all ${costs.monthly.exceeded ? "bg-destructive" : "bg-primary"}`} style={{ width: `${Math.min(100, ((costs.monthly.costUsd || 0) / costs.monthly.budgetUsd) * 100)}%` }} />
                     </div>
                   )}
+                  {costs?.monthly?.projectedUsd > 0 && (
+                    <div className="flex justify-between items-center mt-1.5">
+                      <span className="text-[11px] text-muted-foreground">Projected EOM</span>
+                      <span className={`text-xs font-mono ${costs.monthly.budgetUsd > 0 && costs.monthly.projectedUsd > costs.monthly.budgetUsd ? "text-destructive font-bold" : "text-muted-foreground"}`}>
+                        ${costs.monthly.projectedUsd.toFixed(4)}
+                      </span>
+                    </div>
+                  )}
+                  {costs?.monthly?.budgetUsd > 0 && (
+                    <div className="flex justify-between items-center mt-0.5">
+                      <span className="text-[11px] text-muted-foreground">Remaining</span>
+                      <span className="text-xs font-mono text-white">${Math.max(0, (costs.monthly.budgetUsd || 0) - (costs.monthly.costUsd || 0)).toFixed(4)}</span>
+                    </div>
+                  )}
                 </div>
-                {costs?.monthly?.projectedUsd > 0 && (
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs text-muted-foreground">Projected</span>
-                    <span className="text-sm font-mono text-muted-foreground">${costs.monthly.projectedUsd.toFixed(4)}</span>
-                  </div>
-                )}
                 <div className="flex justify-between items-center">
                   <span className="text-xs text-muted-foreground">All Time</span>
                   <span className="text-sm font-mono font-bold text-white">${costs?.allTime?.costUsd?.toFixed(4) || "0.00"}</span>

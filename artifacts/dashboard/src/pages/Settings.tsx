@@ -566,22 +566,58 @@ export default function Settings() {
                   </div>
                 </div>
                 {costs && (
-                  <div className="grid grid-cols-3 gap-4 pt-2">
-                    <div className="p-3 rounded-lg bg-black/30 border border-white/5 text-center">
-                      <div className="text-xs text-muted-foreground uppercase tracking-wider">Today</div>
-                      <div className="text-lg font-mono font-bold text-white mt-1">${costs.daily?.costUsd?.toFixed(4) || "0.00"}</div>
-                      <div className="text-xs text-muted-foreground">{costs.daily?.calls || 0} calls</div>
+                  <div className="space-y-4 pt-2">
+                    <div className="grid grid-cols-3 gap-4">
+                      <div className="p-3 rounded-lg bg-black/30 border border-white/5 text-center">
+                        <div className="text-xs text-muted-foreground uppercase tracking-wider">Today</div>
+                        <div className="text-lg font-mono font-bold text-white mt-1">${costs.daily?.costUsd?.toFixed(4) || "0.00"}</div>
+                        <div className="text-xs text-muted-foreground">{costs.daily?.calls || 0} calls</div>
+                      </div>
+                      <div className="p-3 rounded-lg bg-black/30 border border-white/5 text-center">
+                        <div className="text-xs text-muted-foreground uppercase tracking-wider">This Month</div>
+                        <div className="text-lg font-mono font-bold text-white mt-1">${costs.monthly?.costUsd?.toFixed(4) || "0.00"}</div>
+                        <div className="text-xs text-muted-foreground">{costs.monthly?.calls || 0} calls</div>
+                      </div>
+                      <div className="p-3 rounded-lg bg-black/30 border border-white/5 text-center">
+                        <div className="text-xs text-muted-foreground uppercase tracking-wider">All Time</div>
+                        <div className="text-lg font-mono font-bold text-white mt-1">${costs.allTime?.costUsd?.toFixed(4) || "0.00"}</div>
+                        <div className="text-xs text-muted-foreground">{costs.allTime?.calls || 0} calls</div>
+                      </div>
                     </div>
-                    <div className="p-3 rounded-lg bg-black/30 border border-white/5 text-center">
-                      <div className="text-xs text-muted-foreground uppercase tracking-wider">This Month</div>
-                      <div className="text-lg font-mono font-bold text-white mt-1">${costs.monthly?.costUsd?.toFixed(4) || "0.00"}</div>
-                      <div className="text-xs text-muted-foreground">{costs.monthly?.calls || 0} calls</div>
-                    </div>
-                    <div className="p-3 rounded-lg bg-black/30 border border-white/5 text-center">
-                      <div className="text-xs text-muted-foreground uppercase tracking-wider">All Time</div>
-                      <div className="text-lg font-mono font-bold text-white mt-1">${costs.allTime?.costUsd?.toFixed(4) || "0.00"}</div>
-                      <div className="text-xs text-muted-foreground">{costs.allTime?.calls || 0} calls</div>
-                    </div>
+                    {(costs.monthly?.budgetUsd > 0 || costs.monthly?.projectedUsd > 0) && (
+                      <div className="p-4 rounded-lg bg-black/30 border border-white/5 space-y-2">
+                        <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Monthly Budget Progress</div>
+                        {costs.monthly?.budgetUsd > 0 && (
+                          <>
+                            <div className="flex justify-between text-xs">
+                              <span className="text-muted-foreground">Spent</span>
+                              <span className="font-mono text-white">${costs.monthly.costUsd?.toFixed(4) || "0.00"} / ${costs.monthly.budgetUsd.toFixed(2)}</span>
+                            </div>
+                            <div className="w-full h-2 bg-white/5 rounded-full overflow-hidden">
+                              <div
+                                className={`h-full rounded-full transition-all ${costs.monthly.exceeded ? "bg-destructive" : (costs.monthly.costUsd / costs.monthly.budgetUsd) > 0.8 ? "bg-yellow-400" : "bg-primary"}`}
+                                style={{ width: `${Math.min(100, ((costs.monthly.costUsd || 0) / costs.monthly.budgetUsd) * 100)}%` }}
+                              />
+                            </div>
+                            <div className="flex justify-between text-[11px] text-muted-foreground">
+                              <span>{(Math.min(100, ((costs.monthly.costUsd || 0) / costs.monthly.budgetUsd) * 100)).toFixed(0)}% used</span>
+                              <span>${Math.max(0, costs.monthly.budgetUsd - (costs.monthly.costUsd || 0)).toFixed(4)} remaining</span>
+                            </div>
+                          </>
+                        )}
+                        {costs.monthly?.projectedUsd > 0 && (
+                          <div className="flex justify-between items-center pt-1 border-t border-white/5">
+                            <span className="text-xs text-muted-foreground">Projected EOM</span>
+                            <span className={`text-sm font-mono font-bold ${costs.monthly.budgetUsd > 0 && costs.monthly.projectedUsd > costs.monthly.budgetUsd ? "text-destructive" : "text-muted-foreground"}`}>
+                              ${costs.monthly.projectedUsd.toFixed(4)}
+                              {costs.monthly.budgetUsd > 0 && costs.monthly.projectedUsd > costs.monthly.budgetUsd && (
+                                <span className="text-[10px] text-destructive ml-1">over budget</span>
+                              )}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
               </CardContent>

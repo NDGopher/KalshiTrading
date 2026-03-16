@@ -133,23 +133,24 @@ function TradeRow({ trade }: { trade: BacktestTrade }) {
           <span className={`px-2 py-0.5 rounded text-xs font-bold uppercase ${trade.side === "yes" ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"}`}>{trade.side}</span>
         </td>
         <td className="p-3 text-right font-mono text-white text-xs">${trade.entryPrice.toFixed(2)}</td>
+        <td className="p-3 text-right font-mono text-muted-foreground text-xs">{trade.exitPrice != null ? `$${trade.exitPrice.toFixed(2)}` : "-"}</td>
         <td className="p-3 text-right font-mono text-white text-xs">{trade.edge.toFixed(1)}%</td>
         <td className={`p-3 text-right font-mono text-xs ${trade.clv != null ? (trade.clv >= 0 ? "text-green-400" : "text-red-400") : "text-muted-foreground"}`}>
           {trade.clv != null ? (trade.clv * 100).toFixed(2) + "c" : "-"}
+        </td>
+        <td className="p-3 text-right font-mono text-xs text-muted-foreground">
+          {trade.dipCatch && trade.distanceFromPeak != null ? `${(Math.abs(trade.distanceFromPeak) * 100).toFixed(1)}%` : "—"}
         </td>
         <td className={`p-3 text-right font-mono font-bold text-xs ${trade.pnl >= 0 ? "text-green-400" : "text-red-400"}`}>${trade.pnl.toFixed(2)}</td>
         <td className="p-3 text-center text-xs text-muted-foreground">{trade.marketResult || "-"}</td>
         <td className="p-3 text-center">
           <span className={`px-2 py-0.5 rounded text-xs font-bold ${trade.outcome === "won" ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"}`}>{trade.outcome}</span>
         </td>
-        <td className="p-3 text-center">
-          {trade.dipCatch ? <span className="text-xs text-success">✓</span> : <span className="text-xs text-muted-foreground">—</span>}
-        </td>
       </tr>
       <AnimatePresence>
         {expanded && trade.reasoning && (
           <tr>
-            <td colSpan={10}>
+            <td colSpan={11}>
               <motion.div
                 initial={{ height: 0, opacity: 0 }}
                 animate={{ height: "auto", opacity: 1 }}
@@ -713,12 +714,13 @@ export default function Backtest() {
                       <th className="text-left p-3 text-muted-foreground font-medium">Strategy</th>
                       <th className="text-center p-3 text-muted-foreground font-medium">Side</th>
                       <th className="text-right p-3 text-muted-foreground font-medium">Entry</th>
+                      <th className="text-right p-3 text-muted-foreground font-medium">Close</th>
                       <th className="text-right p-3 text-muted-foreground font-medium">Edge</th>
                       <th className="text-right p-3 text-muted-foreground font-medium">CLV</th>
+                      <th className="text-right p-3 text-muted-foreground font-medium">Dip Depth</th>
                       <th className="text-right p-3 text-muted-foreground font-medium">P&L</th>
                       <th className="text-center p-3 text-muted-foreground font-medium">Settled</th>
                       <th className="text-center p-3 text-muted-foreground font-medium">Result</th>
-                      <th className="text-center p-3 text-muted-foreground font-medium">Dip</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/5">
