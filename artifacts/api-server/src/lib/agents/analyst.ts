@@ -133,6 +133,7 @@ function getCategoryGuidance(category: string, signals: ReturnType<typeof derive
   switch (category) {
     case "Sports":
       return `Apply these sports-specific lenses:
+0. **YES-Team First**: Before any analysis, re-read the title and identify which team/outcome is on the YES side. Your probability must reflect P(that specific team/outcome succeeds). A strong team on the NO side means a LOW probability, not a high one.
 1. **Matchup & Form**: Consider recent team/player performance, head-to-head history, home/away advantage, injury reports, and travel fatigue.
 2. **Market Microstructure**: High volume/liquidity ratio (${signals.volumeToLiquidity.toFixed(2)}) can signal sharp money. Pre-game betting patterns often reflect insider knowledge.
 3. **Public Bias**: Public bettors overvalue favorites, popular teams, and overs. Fade the public when volume doesn't support the price.
@@ -208,11 +209,25 @@ export async function analyzeMarket(candidate: ScanCandidate): Promise<AnalysisR
 
   const prompt = `You are a quantitative prediction market analyst with expertise in sports, politics, economics, crypto, and current events. Analyze this Kalshi prediction market to find mispricing opportunities.
 
+## ⚠️ CONTRACT DEFINITION — READ FIRST
+The market title IS the YES resolution condition. Read it literally:
+- YES pays $1 if the exact condition stated in the title is TRUE.
+- NO pays $1 if that condition is FALSE.
+- Your "probability" output = P(title condition is TRUE), i.e. P(YES resolves).
+
+For sports markets this means:
+- If the title says "Will [Team A] beat [Team B]?" → YES = Team A wins, NO = Team B wins.
+- If you believe Team B is likely to win, return a LOW probability (below the YES price).
+- NEVER swap teams. The team/outcome named as the subject of the title question is the YES side.
+- Before writing your reasoning, state: "YES resolves if: [exact condition]."
+
 ## Market Data
 - Title: ${market.title || market.ticker}
 - Ticker: ${market.ticker}
 - Category: ${category}
-- Yes Price: $${yesPrice.toFixed(4)} (implied probability: ${signals.impliedProb.toFixed(1)}%)
+- YES Contract: pays $1 if the title condition is TRUE
+- NO Contract: pays $1 if the title condition is FALSE
+- Yes Price: $${yesPrice.toFixed(4)} (market-implied P(YES) = ${signals.impliedProb.toFixed(1)}%)
 - Spread: $${spread.toFixed(4)} (${signals.spreadPct.toFixed(1)}% relative)
 - 24h Volume: ${volume24h} contracts
 - Liquidity: $${liquidity.toFixed(2)}
@@ -229,10 +244,10 @@ ${liveScoreSection}${newsSection}
 ${categoryGuidance}
 
 ## Instructions
-Estimate the true probability of YES resolution. Be specific about what evidence drives your estimate. If you are uncertain, reflect that in a lower confidence score. If you have the live score, use it as the dominant signal for spread markets — the current margin directly tells you how likely each spread outcome is.
+Return the probability that the YES condition (as defined by the title) resolves true. Your reasoning MUST begin by stating "YES resolves if: [condition]" then explain whether you believe that condition is likely or unlikely. If you believe the opposite side is more likely, return a probability BELOW the Yes Price above. Never argue that the favorite/stronger team should win and then return a high probability if that team is on the NO side.
 
 Respond in EXACTLY this JSON format (no other text):
-{"probability": <number 0-100>, "confidence": <number 0-100>, "reasoning": "<2-3 sentence analysis referencing specific signals, category context, and any news>"}`;
+{"probability": <number 0-100>, "confidence": <number 0-100>, "reasoning": "<Start with 'YES resolves if: [condition].' Then 2-3 sentences on whether that condition is likely, referencing team form, live score, or other signals.>"}`;
 
   try {
     const message = await anthropic.messages.create({
