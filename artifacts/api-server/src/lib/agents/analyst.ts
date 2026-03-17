@@ -3,6 +3,7 @@ import { db, apiCostsTable, tradingSettingsTable } from "@workspace/db";
 import { sql, gte } from "drizzle-orm";
 import type { ScanCandidate } from "./scanner.js";
 import { getRelevantNews } from "./news-fetcher.js";
+import { fetchLiveScore } from "../live-scores.js";
 
 export interface AnalysisResult {
   candidate: ScanCandidate;
@@ -189,6 +190,22 @@ export async function analyzeMarket(candidate: ScanCandidate): Promise<AnalysisR
     ? `- Open Price: $${signals.openPrice.toFixed(4)} → Current: $${yesPrice.toFixed(4)} (${signals.priceChange! > 0 ? "+" : ""}${signals.priceChange!.toFixed(1)}% drift)`
     : "";
 
+  // For near-expiry sports markets, attempt to fetch the live game score
+  let liveScoreSection = "";
+  const isNearExpirySports = category === "Sports" && hoursToExpiry < 4;
+  if (isNearExpirySports) {
+    try {
+      const score = await fetchLiveScore(market.ticker);
+      if (score) {
+        liveScoreSection = `\n## Live Game Score (from ESPN)\n${score}\n⚠️ CRITICAL: Use this live score as your PRIMARY input. The market price should reflect current game state. Re-evaluate the spread/total against this real score.`;
+      } else {
+        liveScoreSection = `\n## Live Game Score\n⚠️ CRITICAL: This game is likely in progress (${hoursToExpiry.toFixed(1)}h to expiry) but we could not retrieve the current score. YOU HAVE NO LIVE GAME STATE. Do NOT invent scores or assume game progress. Set confidence ≤ 20% due to missing live context.`;
+      }
+    } catch {
+      liveScoreSection = `\n## Live Game Score\n⚠️ CRITICAL: Score fetch failed. This game may be live. Set confidence ≤ 20%.`;
+    }
+  }
+
   const prompt = `You are a quantitative prediction market analyst with expertise in sports, politics, economics, crypto, and current events. Analyze this Kalshi prediction market to find mispricing opportunities.
 
 ## Market Data
@@ -206,13 +223,13 @@ ${openPriceSection}
 - Price Region: ${signals.priceRegion} (${signals.impliedProb.toFixed(1)}% implied)
 - Volume/Liquidity Ratio: ${signals.volumeToLiquidity.toFixed(2)} (${signals.volumeToLiquidity > 3 ? "⚡ heavy flow — possible informed trading" : signals.volumeToLiquidity > 1 ? "moderate activity" : "light flow"})
 - Market Efficiency: ${signals.marketEfficiency} (${signals.marketEfficiency === "high" ? "tight spread + high volume — edge is rare" : signals.marketEfficiency === "low" ? "wide spread or low volume — mispricing more likely" : "moderate efficiency"})
-${newsSection}
+${liveScoreSection}${newsSection}
 
 ## Analysis Framework (${category})
 ${categoryGuidance}
 
 ## Instructions
-Estimate the true probability of YES resolution. Be specific about what evidence drives your estimate. If you are uncertain, reflect that in a lower confidence score.
+Estimate the true probability of YES resolution. Be specific about what evidence drives your estimate. If you are uncertain, reflect that in a lower confidence score. If you have the live score, use it as the dominant signal for spread markets — the current margin directly tells you how likely each spread outcome is.
 
 Respond in EXACTLY this JSON format (no other text):
 {"probability": <number 0-100>, "confidence": <number 0-100>, "reasoning": "<2-3 sentence analysis referencing specific signals, category context, and any news>"}`;

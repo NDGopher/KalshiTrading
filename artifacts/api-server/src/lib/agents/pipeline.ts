@@ -170,6 +170,22 @@ export async function runTradingCycle(): Promise<CycleResult> {
       };
     }
 
+    // Pre-scan reconcile: close any trades that already resolved so the
+    // balance is accurate before we size new positions this cycle.
+    if (paperMode) {
+      try {
+        await reconcilePaperTrades();
+      } catch {
+        // Non-fatal — log nothing; the main reconciler block will report errors
+      }
+    } else {
+      try {
+        await reconcileOpenTrades();
+      } catch {
+        // Non-fatal
+      }
+    }
+
     let scanStart = Date.now();
     updateAgentStatus("Scanner", "running");
     let scanResult;

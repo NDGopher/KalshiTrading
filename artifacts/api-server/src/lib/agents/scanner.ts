@@ -63,6 +63,11 @@ function buildCandidateFromKalshi(market: KalshiMarket): ScanCandidate | null {
   if (hoursToExpiry < 0.5) return null;
   if (hoursToExpiry > MAX_HOURS_TO_EXPIRY) return null;
 
+  // Hard gate: near-expiry markets with zero liquidity AND zero volume cannot be
+  // meaningfully analyzed — AI has no market-structure signal to work from.
+  // (Live games with real trading ARE fine; this only blocks ghost markets.)
+  if (hoursToExpiry < 4 && volume24h === 0 && liquidity < 5) return null;
+
   return { market, yesPrice, noPrice, spread, volume24h, liquidity, hoursToExpiry };
 }
 
