@@ -57,9 +57,9 @@ export function computeRisk(
       rejectReason: `Position cap: ${context.openPositions} open positions (max ${params.maxSimultaneousPositions})` };
   }
 
-  if (context.correlatedPositions >= 3) {
+  if (context.correlatedPositions >= 1) {
     return { approved: false, positionSize: 0, kellyFraction: 0, riskScore: 0.8,
-      rejectReason: `Correlation cap: ${context.correlatedPositions} positions in same category (max 3)` };
+      rejectReason: `Same-game cap: already have a position in this game/event` };
   }
 
   const rawP = analysis.modelProbability;

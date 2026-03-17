@@ -276,7 +276,18 @@ export async function runTradingCycle(): Promise<CycleResult> {
     let effectiveBankroll = bankroll;
     let approvedThisCycle = 0;
     let strategySkipped = 0;
+    // Track game-keys approved THIS cycle (DB not yet written, so correlation check
+    // won't catch intra-cycle same-game duplicates without this set).
+    const approvedGameKeysThisCycle = new Set<string>();
     for (const audit of approved) {
+      const ticker = audit.analysis.candidate.market.ticker;
+      const gameKey = ticker.split("-").slice(0, 2).join("-");
+
+      // Skip immediately if we already approved a trade in this same game this cycle
+      if (approvedGameKeysThisCycle.has(gameKey)) {
+        continue;
+      }
+
       const strategyMatches = evaluateStrategies(audit.analysis, enabledStrategies);
       if (strategyMatches.length === 0) {
         strategySkipped++;
@@ -297,6 +308,7 @@ export async function runTradingCycle(): Promise<CycleResult> {
           : decision.audit.analysis.candidate.noPrice;
         effectiveBankroll -= decision.positionSize * entryPrice;
         approvedThisCycle++;
+        approvedGameKeysThisCycle.add(gameKey);
       }
     }
     const riskApproved = riskDecisions.filter((d) => d.approved);
