@@ -91,6 +91,34 @@ function deriveMarketSignals(candidate: ScanCandidate) {
 }
 
 /**
+ * Returns true if the market is a soccer/football match — which uses a 3-way
+ * outcome structure (win / draw / loss) rather than a binary market.
+ */
+function isSoccerMarket(candidate: ScanCandidate): boolean {
+  const ticker = candidate.market.ticker.toUpperCase();
+  const cat = (candidate.market.category || "").toLowerCase();
+  const title = (candidate.market.title || "").toLowerCase();
+  return (
+    ticker.startsWith("KXSERIEA") ||
+    ticker.startsWith("KXLALIGA") ||
+    ticker.startsWith("KXUECL") ||
+    ticker.startsWith("KXCHAMPIONS") ||
+    ticker.startsWith("KXNWSL") ||
+    ticker.startsWith("KXEPL") ||
+    ticker.startsWith("KXMLS") ||
+    ticker.startsWith("KXBUNDES") ||
+    ticker.startsWith("KXLIGUE") ||
+    ticker.startsWith("KXWCUP") ||
+    ticker.startsWith("KXEURO") ||
+    ticker.startsWith("KXCOPA") ||
+    ticker.startsWith("KXUCL") ||
+    cat.includes("soccer") ||
+    cat.includes("football") ||
+    !!title.match(/\b(serie a|la liga|premier league|bundesliga|ligue 1|mls|champions league|europa league|world cup|euros|copa america|ucl|epl|nwsl)\b/)
+  );
+}
+
+/**
  * Detect market category for tailored AI analysis.
  */
 function detectCategory(candidate: ScanCandidate): string {
@@ -129,9 +157,30 @@ function detectCategory(candidate: ScanCandidate): string {
 /**
  * Category-specific reasoning guidance for the AI.
  */
-function getCategoryGuidance(category: string, signals: ReturnType<typeof deriveMarketSignals>): string {
+function getCategoryGuidance(category: string, signals: ReturnType<typeof deriveMarketSignals>, soccer = false): string {
   switch (category) {
     case "Sports":
+      if (soccer) {
+        return `⚽ SOCCER / FOOTBALL — CRITICAL: This is a 3-way market (Win / Draw / Loss).
+
+MARKET STRUCTURE:
+- YES pays $1 if the specific condition in the title is TRUE (e.g., one team wins outright).
+- NO pays $1 if FALSE — which includes BOTH a draw AND the other team winning.
+- A YES price of 10% does NOT mean the other team wins with 90% probability. That 90% is split across draw + other team win.
+- Example: "Will Sassuolo beat Juventus?" YES=Sassuolo wins. NO=draw (≈25-30%) + Juventus wins (≈60-70%).
+
+BASE RATES (top European leagues):
+- Strong favorite to win outright: 55-65% | Draw: 20-25% | Underdog outright: 15-25%
+- Medium favorite: 45-55% | Draw: 25-30% | Other: 20-30%
+- True toss-up: ~35% each outcome
+
+Apply these lenses:
+0. **YES-Team First**: Identify exactly which team/outcome is on the YES side from the title. State it before analyzing.
+1. **3-Way Probability**: Estimate P(YES team wins outright), P(draw), P(other team wins). They must sum to 100%. Your output is P(YES outright win).
+2. **Matchup & Form**: Recent league form (last 5 games), head-to-head record, home/away advantage (home teams win ~45% in top leagues), injuries, fatigue.
+3. **Market Microstructure**: ${signals.volumeToLiquidity.toFixed(2)} volume/liquidity ratio. Sharp money in soccer markets often reflects team news (lineup leaks, injury updates).
+4. **Line Movement**: ${signals.priceChange != null ? `Price moved ${signals.priceChange > 0 ? "up" : "down"} ${Math.abs(signals.priceChange).toFixed(1)}% from open.` : "No open price drift data."}`;
+      }
       return `Apply these sports-specific lenses:
 0. **YES-Team First**: Before any analysis, re-read the title and identify which team/outcome is on the YES side. Your probability must reflect P(that specific team/outcome succeeds). A strong team on the NO side means a LOW probability, not a high one.
 1. **Matchup & Form**: Consider recent team/player performance, head-to-head history, home/away advantage, injury reports, and travel fatigue.
@@ -179,7 +228,8 @@ export async function analyzeMarket(candidate: ScanCandidate): Promise<AnalysisR
   const { market, yesPrice, volume24h, liquidity, hoursToExpiry, spread } = candidate;
   const signals = deriveMarketSignals(candidate);
   const category = detectCategory(candidate);
-  const categoryGuidance = getCategoryGuidance(category, signals);
+  const soccer = isSoccerMarket(candidate);
+  const categoryGuidance = getCategoryGuidance(category, signals, soccer);
 
   // Inject relevant breaking news headlines
   const newsContext = getRelevantNews(market.title || market.ticker, 3);
@@ -207,6 +257,15 @@ export async function analyzeMarket(candidate: ScanCandidate): Promise<AnalysisR
     }
   }
 
+  const soccerContractNote = soccer ? `
+⚽ SOCCER 3-WAY MARKET — EXTRA CAUTION:
+Soccer matches have three outcomes: Team A wins, draw, Team B wins.
+- YES pays $1 only if the one specific condition named in the title is TRUE.
+- NO covers ALL other outcomes — including draws AND the other team winning.
+- A YES price of ~10% is REASONABLE for an underdog outright win (draws alone are ~25-30%).
+- Do NOT treat YES price as symmetric: P(YES=10%) ≠ P(other team wins=90%).
+  The correct reading is: P(YES team wins outright) ≈ 10%, P(draw) ≈ 25-30%, P(other team wins) ≈ 60-65%.` : "";
+
   const prompt = `You are a quantitative prediction market analyst with expertise in sports, politics, economics, crypto, and current events. Analyze this Kalshi prediction market to find mispricing opportunities.
 
 ## ⚠️ CONTRACT DEFINITION — READ FIRST
@@ -214,9 +273,9 @@ The market title IS the YES resolution condition. Read it literally:
 - YES pays $1 if the exact condition stated in the title is TRUE.
 - NO pays $1 if that condition is FALSE.
 - Your "probability" output = P(title condition is TRUE), i.e. P(YES resolves).
-
-For sports markets this means:
-- If the title says "Will [Team A] beat [Team B]?" → YES = Team A wins, NO = Team B wins.
+${soccerContractNote}
+For all sports markets:
+- If the title says "Will [Team A] beat [Team B]?" → YES = Team A wins outright, NO = anything else.
 - If you believe Team B is likely to win, return a LOW probability (below the YES price).
 - NEVER swap teams. The team/outcome named as the subject of the title question is the YES side.
 - Before writing your reasoning, state: "YES resolves if: [exact condition]."
@@ -224,9 +283,9 @@ For sports markets this means:
 ## Market Data
 - Title: ${market.title || market.ticker}
 - Ticker: ${market.ticker}
-- Category: ${category}
+- Category: ${category}${soccer ? " (Soccer/Football — 3-way market)" : ""}
 - YES Contract: pays $1 if the title condition is TRUE
-- NO Contract: pays $1 if the title condition is FALSE
+- NO Contract: pays $1 if the title condition is FALSE${soccer ? " (includes draw AND other team winning)" : ""}
 - Yes Price: $${yesPrice.toFixed(4)} (market-implied P(YES) = ${signals.impliedProb.toFixed(1)}%)
 - Spread: $${spread.toFixed(4)} (${signals.spreadPct.toFixed(1)}% relative)
 - 24h Volume: ${volume24h} contracts
