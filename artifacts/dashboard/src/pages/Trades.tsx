@@ -5,8 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency, formatPercent } from "@/lib/utils";
 import { format } from "date-fns";
-import { History, Target, BrainCircuit, BarChart3, TrendingUp, Award } from "lucide-react";
-import { useState, useMemo } from "react";
+import { History, Target, BrainCircuit, BarChart3, TrendingUp, Award, ChevronUp, AlertTriangle } from "lucide-react";
+import { useState, useMemo, Fragment } from "react";
 import { ListTradesStatus } from "@workspace/api-client-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -15,7 +15,8 @@ import {
 
 export default function Trades() {
   const [filter, setFilter] = useState<ListTradesStatus | 'all'>('all');
-  const tradeParams = { limit: 100, status: filter === 'all' ? undefined : filter as ListTradesStatus };
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const tradeParams = { limit: 200, status: filter === 'all' ? undefined : filter as ListTradesStatus };
 
   const { data: tradesData, isLoading: tradesLoading } = useListTrades(
     tradeParams,
@@ -48,6 +49,53 @@ export default function Trades() {
       highEdgeCount: highEdge.length, highEdgeWinRate: highEdge.length > 0 ? highEdgeWins / highEdge.length : 0,
       lowEdgeCount: lowEdge.length, lowEdgeWinRate: lowEdge.length > 0 ? lowEdgeWins / lowEdge.length : 0,
     };
+  }, [tradesData]);
+
+  const strategyStats = useMemo(() => {
+    const trades = tradesData?.trades || [];
+    const map = new Map<string, { name: string; wins: number; losses: number; open: number; pnl: number; clvSum: number; clvCount: number; edgeSum: number }>();
+    for (const t of trades) {
+      const key = t.strategyName || "Unknown";
+      if (!map.has(key)) map.set(key, { name: key, wins: 0, losses: 0, open: 0, pnl: 0, clvSum: 0, clvCount: 0, edgeSum: 0 });
+      const s = map.get(key)!;
+      if (t.status === "won") s.wins++;
+      else if (t.status === "lost") s.losses++;
+      else s.open++;
+      s.pnl += t.pnl || 0;
+      if (t.clv != null) { s.clvSum += t.clv; s.clvCount++; }
+      s.edgeSum += t.edge || 0;
+    }
+    return Array.from(map.values())
+      .map(s => {
+        const resolved = s.wins + s.losses;
+        return { ...s, resolved, winRate: resolved > 0 ? s.wins / resolved : 0, avgClv: s.clvCount > 0 ? s.clvSum / s.clvCount : 0 };
+      })
+      .sort((a, b) => b.pnl - a.pnl);
+  }, [tradesData]);
+
+  const marketTypeStats = useMemo(() => {
+    const trades = tradesData?.trades || [];
+    const map = new Map<string, { name: string; wins: number; losses: number; open: number; pnl: number }>();
+    const typeFromTicker = (ticker: string) => {
+      if (ticker.includes("NBASPREAD") || ticker.includes("NHLTOTAL") || ticker.includes("WBCTOTAL")) return "Spread";
+      if (ticker.includes("NBAGAME") || ticker.includes("NHLGAME") || ticker.includes("LALIGAGAME") || ticker.includes("SERIEAGAME") || ticker.includes("UECLGAME")) return "Game Winner";
+      if (ticker.includes("MVESTARTS") || ticker.includes("MVEPOINTS") || ticker.includes("MVECROSSCATEGORY") || ticker.includes("MVESPORTS")) return "Player Props / Parlay";
+      if (ticker.includes("TRUMP") || ticker.includes("CONGRESS") || ticker.includes("ELECTION") || ticker.includes("VOTE")) return "Politics";
+      if (ticker.includes("BITCOIN") || ticker.includes("ETH") || ticker.includes("CRYPTO")) return "Crypto";
+      if (ticker.includes("NASDAQ") || ticker.includes("SP500") || ticker.includes("FED") || ticker.includes("CPI")) return "Economics";
+      if (ticker.includes("RAIN") || ticker.includes("SNOW") || ticker.includes("TEMP") || ticker.includes("WEATHER")) return "Weather";
+      return "Other";
+    };
+    for (const t of trades) {
+      const key = typeFromTicker(t.kalshiTicker);
+      if (!map.has(key)) map.set(key, { name: key, wins: 0, losses: 0, open: 0, pnl: 0 });
+      const s = map.get(key)!;
+      if (t.status === "won") s.wins++;
+      else if (t.status === "lost") s.losses++;
+      else s.open++;
+      s.pnl += t.pnl || 0;
+    }
+    return Array.from(map.values()).sort((a, b) => (b.wins + b.losses + b.open) - (a.wins + a.losses + a.open));
   }, [tradesData]);
 
   const clvHistogram = useMemo(() => {
@@ -94,12 +142,12 @@ export default function Trades() {
       .slice(0, 10);
   }, [tradesData]);
 
-  function CustomTooltip({ active, payload, label }: any) {
+  function CustomTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ name: string; value: number; color: string; payload: Record<string, unknown> }>; label?: string }) {
     if (!active || !payload?.length) return null;
     return (
       <div className="bg-card/95 border border-white/10 rounded-lg p-3 text-xs shadow-xl backdrop-blur-sm">
-        <div className="font-semibold text-white mb-1">{label ?? payload[0]?.payload?.title}</div>
-        {payload.map((p: any) => <div key={p.name} style={{ color: p.color }} className="font-mono">{p.name}: {typeof p.value === "number" ? p.value.toFixed(2) : p.value}</div>)}
+        <div className="font-semibold text-white mb-1">{label ?? String(payload[0]?.payload?.title ?? "")}</div>
+        {payload.map((p) => <div key={p.name} style={{ color: p.color }} className="font-mono">{p.name}: {typeof p.value === "number" ? p.value.toFixed(2) : p.value}</div>)}
       </div>
     );
   }
@@ -136,14 +184,93 @@ export default function Trades() {
                 <span className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Current Streak</span>
                 <div className="flex items-baseline gap-2">
                   <span className="text-2xl font-bold text-white font-mono">{Math.abs(stats.currentStreak)}</span>
-                  <span className={`text-xs font-bold ${stats.currentStreak > 0 ? 'text-success' : 'text-destructive'}`}>
-                    {stats.currentStreak > 0 ? 'WINS' : 'LOSSES'}
+                  <span className={`text-xs font-bold ${stats.currentStreak > 0 ? 'text-success' : stats.currentStreak < 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
+                    {stats.currentStreak > 0 ? 'WINS' : stats.currentStreak < 0 ? 'LOSSES' : 'NEUTRAL'}
                   </span>
                 </div>
               </CardContent></Card>
             </>
           )}
         </div>
+
+        {/* Strategy Performance Table */}
+        {strategyStats.length > 0 && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card className="glass-panel border-white/10">
+              <CardHeader className="border-b border-white/5 bg-black/20 py-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4 text-primary" />
+                  Strategy Performance
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="divide-y divide-white/5">
+                  {strategyStats.map((s) => (
+                    <div key={s.name} className="flex items-center gap-3 px-4 py-3 hover:bg-white/[0.02]">
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-semibold text-white">{s.name}</div>
+                        <div className="text-[10px] text-muted-foreground">{s.wins}W · {s.losses}L · {s.open} open</div>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <div className="text-right">
+                          <div className="text-[10px] text-muted-foreground">WR</div>
+                          <div className={`text-xs font-mono font-bold ${s.winRate >= 0.5 ? "text-success" : s.resolved === 0 ? "text-muted-foreground" : "text-destructive"}`}>
+                            {s.resolved > 0 ? `${(s.winRate * 100).toFixed(0)}%` : "—"}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-[10px] text-muted-foreground">P&L</div>
+                          <div className={`text-xs font-mono font-bold ${s.pnl >= 0 ? "text-success" : "text-destructive"}`}>
+                            {s.pnl >= 0 ? "+" : ""}{formatCurrency(s.pnl)}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Market Type Breakdown */}
+            <Card className="glass-panel border-white/10">
+              <CardHeader className="border-b border-white/5 bg-black/20 py-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <BarChart3 className="w-4 h-4 text-accent" />
+                  Market Type Breakdown
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="divide-y divide-white/5">
+                  {marketTypeStats.map((s) => {
+                    const resolved = s.wins + s.losses;
+                    return (
+                      <div key={s.name} className="flex items-center gap-3 px-4 py-3 hover:bg-white/[0.02]">
+                        <div className="flex-1 min-w-0">
+                          <div className="text-xs font-semibold text-white">{s.name}</div>
+                          <div className="text-[10px] text-muted-foreground">{s.wins}W · {s.losses}L · {s.open} open</div>
+                        </div>
+                        <div className="flex items-center gap-4">
+                          <div className="text-right">
+                            <div className="text-[10px] text-muted-foreground">WR</div>
+                            <div className={`text-xs font-mono font-bold ${resolved > 0 && s.wins / resolved >= 0.5 ? "text-success" : resolved === 0 ? "text-muted-foreground" : "text-destructive"}`}>
+                              {resolved > 0 ? `${((s.wins / resolved) * 100).toFixed(0)}%` : "—"}
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-[10px] text-muted-foreground">P&L</div>
+                            <div className={`text-xs font-mono font-bold ${s.pnl >= 0 ? "text-success" : "text-destructive"}`}>
+                              {s.pnl >= 0 ? "+" : ""}{formatCurrency(s.pnl)}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
         {clvStats && (
           <div className="space-y-6">
@@ -243,7 +370,7 @@ export default function Trades() {
                           <BarChart data={strategyClv} layout="vertical" margin={{ top: 0, right: 10, left: 0, bottom: 0 }}>
                             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
                             <XAxis type="number" tick={{ fill: "#6b7280", fontSize: 9 }} axisLine={false} tickLine={false} tickFormatter={(v) => `${(v * 100).toFixed(1)}c`} />
-                            <YAxis dataKey="name" type="category" tick={{ fill: "#9ca3af", fontSize: 9 }} axisLine={false} tickLine={false} width={70} tickFormatter={(s) => s.split(" ")[0]} />
+                            <YAxis dataKey="name" type="category" tick={{ fill: "#9ca3af", fontSize: 9 }} axisLine={false} tickLine={false} width={70} tickFormatter={(s) => String(s).split(" ")[0]} />
                             <Tooltip content={<CustomTooltip />} />
                             <ReferenceLine x={0} stroke="rgba(255,255,255,0.2)" strokeDasharray="3 3" />
                             <Bar dataKey="avgClv" name="Avg CLV" radius={[0, 3, 3, 0]} maxBarSize={20}>
@@ -272,10 +399,10 @@ export default function Trades() {
                       <ScatterChart margin={{ top: 5, right: 5, left: 0, bottom: 5 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
                         <XAxis dataKey="clv" name="CLV" tick={{ fill: "#6b7280", fontSize: 10 }} axisLine={false} tickLine={false} label={{ value: "CLV (cents)", position: "insideBottom", offset: -2, fill: "#6b7280", fontSize: 10 }} />
-                        <YAxis dataKey="pnl" name="P&L" tick={{ fill: "#6b7280", fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={(v) => `$${v.toFixed(0)}`} />
+                        <YAxis dataKey="pnl" name="P&L" tick={{ fill: "#6b7280", fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={(v) => `$${Number(v).toFixed(0)}`} />
                         <Tooltip content={({ active, payload }) => {
                           if (!active || !payload?.length) return null;
-                          const d = payload[0].payload;
+                          const d = payload[0].payload as { title: string; clv: number; pnl: number; won: boolean };
                           return (
                             <div className="bg-card/95 border border-white/10 rounded-lg p-3 text-xs shadow-xl backdrop-blur-sm">
                               <div className="font-semibold text-white mb-1 max-w-[200px] truncate">{d.title}</div>
@@ -312,7 +439,7 @@ export default function Trades() {
                         <span className={`text-sm font-bold w-5 text-center ${i === 0 ? "text-yellow-400" : i === 1 ? "text-gray-300" : i === 2 ? "text-amber-600" : "text-muted-foreground"}`}>#{i + 1}</span>
                         <div className="flex-1 min-w-0">
                           <div className="text-xs font-semibold text-white truncate">{t.title}</div>
-                          <div className="text-[10px] text-muted-foreground">{t.kalshiTicker}</div>
+                          <div className="text-[10px] font-mono text-muted-foreground">{t.kalshiTicker}</div>
                         </div>
                         <div className="text-right">
                           <div className={`text-sm font-mono font-bold ${(t.clv || 0) >= 0 ? "text-success" : "text-destructive"}`}>{((t.clv || 0) * 100).toFixed(2)}c</div>
@@ -329,6 +456,7 @@ export default function Trades() {
           </div>
         )}
 
+        {/* Execution Log */}
         <Card className="glass-panel border-white/10">
           <CardHeader className="border-b border-white/5 bg-black/20 flex flex-row items-center justify-between py-4">
             <CardTitle className="text-lg flex items-center gap-2">
@@ -336,7 +464,7 @@ export default function Trades() {
               Execution Log
             </CardTitle>
             <div className="flex bg-black/40 p-1 rounded-lg border border-white/5">
-              {['all', 'open', 'won', 'lost'].map((f) => (
+              {(['all', 'open', 'won', 'lost'] as const).map((f) => (
                 <button key={f} onClick={() => setFilter(f as ListTradesStatus | 'all')} className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${filter === f ? 'bg-white/10 text-white' : 'text-muted-foreground hover:text-white'}`}>
                   {f.toUpperCase()}
                 </button>
@@ -353,51 +481,116 @@ export default function Trades() {
                 <table className="w-full text-sm text-left">
                   <thead className="text-xs text-muted-foreground uppercase bg-white/[0.02]">
                     <tr>
-                      <th className="px-6 py-4 font-semibold">Date</th>
-                      <th className="px-6 py-4 font-semibold">Market</th>
-                      <th className="px-6 py-4 font-semibold">Side / Size</th>
-                      <th className="px-6 py-4 font-semibold text-right">Entry / Exit</th>
-                      <th className="px-6 py-4 font-semibold text-right">CLV</th>
-                      <th className="px-6 py-4 font-semibold text-right">P&L</th>
-                      <th className="px-6 py-4 font-semibold text-center">Status</th>
-                      <th className="px-6 py-4 font-semibold text-center">AI Logic</th>
+                      <th className="px-4 py-4 font-semibold">Date</th>
+                      <th className="px-4 py-4 font-semibold">Market</th>
+                      <th className="px-4 py-4 font-semibold">Side / Size</th>
+                      <th className="px-4 py-4 font-semibold">Strategy</th>
+                      <th className="px-4 py-4 font-semibold text-right">Entry / Exit</th>
+                      <th className="px-4 py-4 font-semibold text-right">Edge</th>
+                      <th className="px-4 py-4 font-semibold text-right">CLV</th>
+                      <th className="px-4 py-4 font-semibold text-right">P&L</th>
+                      <th className="px-4 py-4 font-semibold text-center">Status</th>
+                      <th className="px-4 py-4 font-semibold text-center">AI</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/5">
                     {tradesData.trades.map((trade) => (
-                      <tr key={trade.id} className="hover:bg-white/[0.02] transition-colors group">
-                        <td className="px-6 py-4 whitespace-nowrap text-muted-foreground text-xs">{format(new Date(trade.createdAt), "MMM d, HH:mm")}</td>
-                        <td className="px-6 py-4 max-w-[250px]">
-                          <div className="font-medium text-white mb-1 truncate" title={trade.title}>{trade.title}</div>
-                          <div className="text-[10px] font-mono text-muted-foreground">{trade.kalshiTicker}</div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-2 mb-1">
-                            <Badge variant={trade.side === 'yes' ? 'success' : 'destructive'} className="text-[10px] h-4">{trade.side.toUpperCase()}</Badge>
-                          </div>
-                          <div className="text-xs font-mono text-muted-foreground">{trade.quantity} cont.</div>
-                        </td>
-                        <td className="px-6 py-4 font-mono text-right">
-                          <div className="text-white">{formatCurrency(trade.entryPrice)}</div>
-                          <div className="text-xs text-muted-foreground">{trade.exitPrice ? formatCurrency(trade.exitPrice) : '—'}</div>
-                        </td>
-                        <td className={`px-6 py-4 font-mono text-right text-xs ${trade.clv != null ? (trade.clv >= 0 ? 'text-success' : 'text-destructive') : 'text-muted-foreground/40'}`}>
-                          {trade.clv != null ? `${(trade.clv * 100).toFixed(2)}c` : '—'}
-                        </td>
-                        <td className={`px-6 py-4 font-mono font-bold text-right ${trade.pnl ? (isPositive(trade.pnl) ? 'text-success' : 'text-destructive') : 'text-muted-foreground'}`}>
-                          {trade.pnl ? `${isPositive(trade.pnl) ? '+' : ''}${formatCurrency(trade.pnl)}` : '—'}
-                        </td>
-                        <td className="px-6 py-4 text-center">
-                          <Badge variant={trade.status === 'won' ? 'success' : trade.status === 'lost' ? 'destructive' : trade.status === 'open' ? 'default' : 'outline'}>
-                            {trade.status}
-                          </Badge>
-                        </td>
-                        <td className="px-6 py-4 text-center">
-                          <button className="text-primary hover:text-accent transition-colors" title={trade.analystReasoning || "No reasoning logged"}>
-                            <BrainCircuit className="w-5 h-5 mx-auto" />
-                          </button>
-                        </td>
-                      </tr>
+                      <Fragment key={trade.id}>
+                        <tr className="hover:bg-white/[0.02] transition-colors">
+                          <td className="px-4 py-4 whitespace-nowrap text-muted-foreground text-xs">{format(new Date(trade.createdAt), "MMM d, HH:mm")}</td>
+                          <td className="px-4 py-4 max-w-[200px]">
+                            <div className="font-medium text-white mb-0.5 truncate text-xs" title={trade.title}>{trade.title}</div>
+                            <div className="text-[10px] font-mono text-muted-foreground">{trade.kalshiTicker}</div>
+                          </td>
+                          <td className="px-4 py-4">
+                            <div className="flex items-center gap-1.5 mb-0.5">
+                              <Badge variant={trade.side === 'yes' ? 'success' : 'destructive'} className="text-[10px] h-4">{trade.side.toUpperCase()}</Badge>
+                            </div>
+                            <div className="text-xs font-mono text-muted-foreground">{trade.quantity} cont.</div>
+                          </td>
+                          <td className="px-4 py-4">
+                            <div className="text-xs text-muted-foreground">{trade.strategyName ? trade.strategyName.split(" ")[0] : "—"}</div>
+                            <div className="text-[10px] font-mono text-muted-foreground/60">{(trade.confidence * 100).toFixed(0)}% conf</div>
+                          </td>
+                          <td className="px-4 py-4 font-mono text-right">
+                            <div className="text-white text-xs">{formatCurrency(trade.entryPrice)}</div>
+                            <div className="text-[10px] text-muted-foreground">{trade.exitPrice ? formatCurrency(trade.exitPrice) : '—'}</div>
+                          </td>
+                          <td className="px-4 py-4 font-mono text-right text-xs text-primary">
+                            {formatPercent(trade.edge)}
+                          </td>
+                          <td className={`px-4 py-4 font-mono text-right text-xs ${trade.clv != null ? (trade.clv >= 0 ? 'text-success' : 'text-destructive') : 'text-muted-foreground/40'}`}>
+                            {trade.clv != null ? `${(trade.clv * 100).toFixed(2)}c` : '—'}
+                          </td>
+                          <td className={`px-4 py-4 font-mono font-bold text-right text-xs ${trade.pnl ? (isPositive(trade.pnl) ? 'text-success' : 'text-destructive') : 'text-muted-foreground'}`}>
+                            {trade.pnl ? `${isPositive(trade.pnl) ? '+' : ''}${formatCurrency(trade.pnl)}` : '—'}
+                          </td>
+                          <td className="px-4 py-4 text-center">
+                            <Badge variant={trade.status === 'won' ? 'success' : trade.status === 'lost' ? 'destructive' : trade.status === 'open' ? 'default' : 'outline'} className="text-[10px]">
+                              {trade.status}
+                            </Badge>
+                          </td>
+                          <td className="px-4 py-4 text-center">
+                            <button
+                              onClick={() => setExpandedId(expandedId === trade.id ? null : trade.id)}
+                              className={`transition-colors ${expandedId === trade.id ? 'text-accent' : 'text-primary hover:text-accent'}`}
+                              title={expandedId === trade.id ? "Collapse reasoning" : "Expand AI reasoning"}
+                            >
+                              {expandedId === trade.id
+                                ? <ChevronUp className="w-4 h-4 mx-auto" />
+                                : <BrainCircuit className="w-4 h-4 mx-auto" />
+                              }
+                            </button>
+                          </td>
+                        </tr>
+                        {/* Expandable reasoning panel */}
+                        {expandedId === trade.id && (
+                          <tr className="bg-white/[0.015]">
+                            <td colSpan={10} className="px-6 py-5">
+                              <div className="space-y-4">
+                                {trade.analystReasoning ? (
+                                  <div>
+                                    <div className="flex items-center gap-2 mb-2">
+                                      <BrainCircuit className="w-3.5 h-3.5 text-primary" />
+                                      <span className="text-xs font-semibold text-primary uppercase tracking-wider">Claude Haiku Analysis</span>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap border-l-2 border-primary/30 pl-3">
+                                      {trade.analystReasoning}
+                                    </p>
+                                  </div>
+                                ) : (
+                                  <p className="text-xs text-muted-foreground/50 italic">No reasoning logged for this trade.</p>
+                                )}
+
+                                {trade.auditorFlags && trade.auditorFlags.length > 0 && (
+                                  <div>
+                                    <div className="flex items-center gap-2 mb-2">
+                                      <AlertTriangle className="w-3.5 h-3.5 text-yellow-400" />
+                                      <span className="text-xs font-semibold text-yellow-400 uppercase tracking-wider">Auditor Flags</span>
+                                    </div>
+                                    <div className="flex flex-wrap gap-2">
+                                      {trade.auditorFlags.map((flag, i) => (
+                                        <Badge key={i} variant="outline" className="text-[10px] border-yellow-400/30 text-yellow-400/80">
+                                          {flag}
+                                        </Badge>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+
+                                <div className="flex flex-wrap gap-6 text-[10px] text-muted-foreground font-mono border-t border-white/5 pt-3">
+                                  <span>Model prob: <span className="text-white">{(trade.modelProbability * 100).toFixed(1)}%</span></span>
+                                  <span>Edge: <span className="text-primary">{formatPercent(trade.edge)}</span></span>
+                                  <span>Confidence: <span className="text-white">{(trade.confidence * 100).toFixed(0)}%</span></span>
+                                  <span>Kelly: <span className="text-white">{trade.kellyFraction != null ? `${(trade.kellyFraction * 100).toFixed(2)}%` : "—"}</span></span>
+                                  <span>Risk score: <span className="text-white">{trade.riskScore != null ? trade.riskScore.toFixed(3) : "—"}</span></span>
+                                  {trade.closedAt && <span>Closed: <span className="text-white">{format(new Date(trade.closedAt), "MMM d, HH:mm")}</span></span>}
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
                     ))}
                   </tbody>
                 </table>

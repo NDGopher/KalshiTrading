@@ -1,5 +1,5 @@
 import { db, tradesTable, paperTradesTable } from "@workspace/db";
-import { desc, eq, inArray } from "drizzle-orm";
+import { desc } from "drizzle-orm";
 import type { AuditResult } from "./auditor.js";
 import type { AnalysisResult } from "./analyst.js";
 
@@ -29,6 +29,52 @@ export interface CoreRiskResult {
   rejectReason?: string;
 }
 
+/**
+ * Extracts the outcome team/identifier from a Kalshi spread ticker suffix.
+ * KXNBASPREAD-26MAR16ORLATL-ORL3  → "ORL"
+ * KXLALIGAGAME-26MAR16RVCLEV-TIE  → "TIE"
+ * KXNBA-26-BOS                    → "BOS"
+ * Returns null for unrecognised formats.
+ */
+function extractOutcomeTeam(ticker: string): string | null {
+  const parts = ticker.split("-");
+  if (parts.length < 3) return null;
+  const suffix = parts[parts.length - 1];
+  // Take the leading alpha block: "ORL3"→"ORL", "TIE"→"TIE", "LEV"→"LEV"
+  const match = suffix.match(/^([A-Z]+)/);
+  return match ? match[1] : null;
+}
+
+/**
+ * Returns true when placing a new YES trade on `newTicker` would create a
+ * reverse middle against an existing YES trade on `existingTicker` within
+ * the same game/event.
+ *
+ * A reverse middle = YES on outcome A + YES on outcome B in the same game
+ * where A and B are different teams/results (mutually exclusive winners).
+ *
+ * Safe combinations allowed:
+ *   - Same outcome YES + YES  → doubling down
+ *   - Any outcome YES + NO    → middle / hedge (winning window exists)
+ *   - Different outcome NO+NO → fine (both can be true simultaneously)
+ */
+function isReverseMiddle(
+  existingTicker: string,
+  existingSide: string,
+  newTicker: string,
+  newSide: string,
+): boolean {
+  if (existingSide !== "yes" || newSide !== "yes") return false;
+
+  const existingTeam = extractOutcomeTeam(existingTicker);
+  const newTeam = extractOutcomeTeam(newTicker);
+
+  if (!existingTeam || !newTeam) return false;
+
+  // Different outcome both YES → reverse middle
+  return existingTeam !== newTeam;
+}
+
 export function computeRisk(
   analysis: AnalysisResult,
   params: RiskParams,
@@ -37,29 +83,37 @@ export function computeRisk(
     consecutiveLosses: number;
     drawdownPct: number;
     openPositions: number;
-    correlatedPositions: number;
+    reverseMiddleDetected: boolean;
     adjustedConfidence: number;
     auditApproved: boolean;
   },
 ): CoreRiskResult {
   if (context.consecutiveLosses >= params.maxConsecutiveLosses) {
-    return { approved: false, positionSize: 0, kellyFraction: 0, riskScore: 1,
-      rejectReason: `Streak halt: ${context.consecutiveLosses} consecutive losses (max ${params.maxConsecutiveLosses})` };
+    return {
+      approved: false, positionSize: 0, kellyFraction: 0, riskScore: 1,
+      rejectReason: `Streak halt: ${context.consecutiveLosses} consecutive losses (max ${params.maxConsecutiveLosses})`,
+    };
   }
 
   if (context.drawdownPct >= params.maxDrawdownPct) {
-    return { approved: false, positionSize: 0, kellyFraction: 0, riskScore: 1,
-      rejectReason: `Drawdown halt: ${context.drawdownPct.toFixed(1)}% (max ${params.maxDrawdownPct}%)` };
+    return {
+      approved: false, positionSize: 0, kellyFraction: 0, riskScore: 1,
+      rejectReason: `Drawdown halt: ${context.drawdownPct.toFixed(1)}% (max ${params.maxDrawdownPct}%)`,
+    };
   }
 
   if (params.maxSimultaneousPositions > 0 && context.openPositions >= params.maxSimultaneousPositions) {
-    return { approved: false, positionSize: 0, kellyFraction: 0, riskScore: 0.9,
-      rejectReason: `Position cap: ${context.openPositions} open positions (max ${params.maxSimultaneousPositions})` };
+    return {
+      approved: false, positionSize: 0, kellyFraction: 0, riskScore: 0.9,
+      rejectReason: `Position cap: ${context.openPositions} open positions (max ${params.maxSimultaneousPositions})`,
+    };
   }
 
-  if (context.correlatedPositions >= 1) {
-    return { approved: false, positionSize: 0, kellyFraction: 0, riskScore: 0.8,
-      rejectReason: `Same-game cap: already have a position in this game/event` };
+  if (context.reverseMiddleDetected) {
+    return {
+      approved: false, positionSize: 0, kellyFraction: 0, riskScore: 0.85,
+      rejectReason: `Reverse middle blocked: would bet YES on opposite outcomes in the same game`,
+    };
   }
 
   const rawP = analysis.modelProbability;
@@ -99,7 +153,13 @@ export async function assessRisk(
     maxSimultaneousPositions?: number;
   },
   bankroll: number,
-  options?: { strategyName?: string; paperMode?: boolean; additionalOpenPositions?: number }
+  options?: {
+    strategyName?: string;
+    paperMode?: boolean;
+    additionalOpenPositions?: number;
+    /** Trades approved earlier within the same pipeline cycle (not yet in DB) */
+    intraCycleTrades?: Array<{ kalshiTicker: string; side: string }>;
+  }
 ): Promise<RiskDecision> {
   const tradeSource = options?.paperMode ? paperTradesTable : tradesTable;
 
@@ -125,11 +185,26 @@ export async function assessRisk(
 
   const openTrades = allTrades.filter((t) => t.status === "open");
 
-  const openTickerCategories = new Set(openTrades.map((t) => t.kalshiTicker.split("-").slice(0, 2).join("-")));
-  const candidateCategory = audit.analysis.candidate.market.ticker.split("-").slice(0, 2).join("-");
-  const correlatedPositions = openTickerCategories.has(candidateCategory)
-    ? openTrades.filter((t) => t.kalshiTicker.split("-").slice(0, 2).join("-") === candidateCategory).length
-    : 0;
+  const newTicker = audit.analysis.candidate.market.ticker;
+  const newSide = audit.analysis.side;
+  const newGameKey = newTicker.split("-").slice(0, 2).join("-");
+
+  // Build a combined list of all existing same-game positions:
+  // DB open trades + intra-cycle trades approved this scan cycle
+  const sameGameDbTrades = openTrades
+    .filter((t) => t.kalshiTicker.split("-").slice(0, 2).join("-") === newGameKey)
+    .map((t) => ({ kalshiTicker: t.kalshiTicker, side: t.side }));
+
+  const sameGameCycleTrades = (options?.intraCycleTrades ?? [])
+    .filter((t) => t.kalshiTicker.split("-").slice(0, 2).join("-") === newGameKey);
+
+  const allSameGameTrades = [...sameGameDbTrades, ...sameGameCycleTrades];
+
+  // Detect reverse middle: any existing same-game trade that is YES on a
+  // different outcome compared to the new trade which is also YES
+  const reverseMiddleDetected = allSameGameTrades.some((existing) =>
+    isReverseMiddle(existing.kalshiTicker, existing.side, newTicker, newSide)
+  );
 
   const result = computeRisk(
     audit.analysis,
@@ -145,7 +220,7 @@ export async function assessRisk(
       consecutiveLosses,
       drawdownPct,
       openPositions: openTrades.length + (options?.additionalOpenPositions || 0),
-      correlatedPositions,
+      reverseMiddleDetected,
       adjustedConfidence: audit.adjustedConfidence,
       auditApproved: audit.approved,
     },

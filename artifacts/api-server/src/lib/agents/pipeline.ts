@@ -276,18 +276,10 @@ export async function runTradingCycle(): Promise<CycleResult> {
     let effectiveBankroll = bankroll;
     let approvedThisCycle = 0;
     let strategySkipped = 0;
-    // Track game-keys approved THIS cycle (DB not yet written, so correlation check
-    // won't catch intra-cycle same-game duplicates without this set).
-    const approvedGameKeysThisCycle = new Set<string>();
+    // Tracks trades approved THIS cycle so the reverse middle detector can see
+    // intra-cycle positions before they are written to the DB.
+    const intraCycleTrades: Array<{ kalshiTicker: string; side: string }> = [];
     for (const audit of approved) {
-      const ticker = audit.analysis.candidate.market.ticker;
-      const gameKey = ticker.split("-").slice(0, 2).join("-");
-
-      // Skip immediately if we already approved a trade in this same game this cycle
-      if (approvedGameKeysThisCycle.has(gameKey)) {
-        continue;
-      }
-
       const strategyMatches = evaluateStrategies(audit.analysis, enabledStrategies);
       if (strategyMatches.length === 0) {
         strategySkipped++;
@@ -300,7 +292,7 @@ export async function runTradingCycle(): Promise<CycleResult> {
         maxConsecutiveLosses: settings.maxConsecutiveLosses,
         maxDrawdownPct: settings.maxDrawdownPct,
         maxSimultaneousPositions: settings.maxSimultaneousPositions,
-      }, effectiveBankroll, { strategyName, paperMode, additionalOpenPositions: approvedThisCycle });
+      }, effectiveBankroll, { strategyName, paperMode, additionalOpenPositions: approvedThisCycle, intraCycleTrades });
       riskDecisions.push(decision);
       if (decision.approved) {
         const entryPrice = decision.audit.analysis.side === "yes"
@@ -308,7 +300,10 @@ export async function runTradingCycle(): Promise<CycleResult> {
           : decision.audit.analysis.candidate.noPrice;
         effectiveBankroll -= decision.positionSize * entryPrice;
         approvedThisCycle++;
-        approvedGameKeysThisCycle.add(gameKey);
+        intraCycleTrades.push({
+          kalshiTicker: audit.analysis.candidate.market.ticker,
+          side: audit.analysis.side,
+        });
       }
     }
     const riskApproved = riskDecisions.filter((d) => d.approved);

@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { db, tradesTable } from "@workspace/db";
-import { desc, eq, sql } from "drizzle-orm";
+import { db, tradesTable, paperTradesTable, tradingSettingsTable } from "@workspace/db";
+import { desc } from "drizzle-orm";
 import {
   ListTradesQueryParams,
   ListTradesResponse,
@@ -9,21 +9,23 @@ import {
 
 const router: IRouter = Router();
 
+async function getPaperMode(): Promise<boolean> {
+  const settings = await db.select().from(tradingSettingsTable).limit(1);
+  return settings[0]?.paperTradingMode ?? true;
+}
+
 router.get("/trades", async (req, res): Promise<void> => {
   const params = ListTradesQueryParams.safeParse(req.query);
   const limit = params.success ? params.data.limit || 50 : 50;
   const offset = params.success ? params.data.offset || 0 : 0;
   const statusFilter = params.success ? params.data.status : undefined;
 
-  let query = db.select().from(tradesTable).orderBy(desc(tradesTable.createdAt));
+  const paperMode = await getPaperMode();
+  const source = paperMode ? paperTradesTable : tradesTable;
 
-  const allTrades = await query;
+  const allTrades = await db.select().from(source).orderBy(desc(source.createdAt));
 
-  let filtered = allTrades;
-  if (statusFilter) {
-    filtered = allTrades.filter((t) => t.status === statusFilter);
-  }
-
+  const filtered = statusFilter ? allTrades.filter((t) => t.status === statusFilter) : allTrades;
   const total = filtered.length;
   const paginated = filtered.slice(offset, offset + limit);
 
@@ -57,12 +59,16 @@ router.get("/trades", async (req, res): Promise<void> => {
 });
 
 router.get("/trades/stats", async (_req, res): Promise<void> => {
-  const trades = await db.select().from(tradesTable);
+  const paperMode = await getPaperMode();
+  const source = paperMode ? paperTradesTable : tradesTable;
 
-  const completedTrades = trades.filter((t) => t.status !== "cancelled" && t.status !== "pending" && t.status !== "failed");
-  const totalTrades = completedTrades.length;
-  const wins = completedTrades.filter((t) => t.status === "won").length;
-  const losses = completedTrades.filter((t) => t.status === "lost").length;
+  const trades = await db.select().from(source);
+
+  // Win rate only counts resolved trades (not open/pending/cancelled)
+  const resolvedTrades = trades.filter((t) => t.status === "won" || t.status === "lost");
+  const totalTrades = resolvedTrades.length;
+  const wins = resolvedTrades.filter((t) => t.status === "won").length;
+  const losses = resolvedTrades.filter((t) => t.status === "lost").length;
   const winRate = totalTrades > 0 ? (wins / totalTrades) * 100 : 0;
   const totalPnl = trades.reduce((sum, t) => sum + (t.pnl || 0), 0);
 
@@ -75,9 +81,12 @@ router.get("/trades/stats", async (_req, res): Promise<void> => {
   const edgeValues = trades.map((t) => t.edge);
   const avgEdge = edgeValues.length > 0 ? edgeValues.reduce((a, b) => a + b, 0) / edgeValues.length : 0;
   const confValues = trades.map((t) => t.confidence);
-  const avgConfidence = confValues.length > 0 ? confValues.reduce((a, b) => a + b, 0) / confValues.length : 0;
+  const avgConfidence =
+    confValues.length > 0 ? confValues.reduce((a, b) => a + b, 0) / confValues.length : 0;
 
-  const sortedTrades = [...trades].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  const sortedTrades = [...trades].sort(
+    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+  );
   let currentStreak = 0;
   let bestStreak = 0;
   let worstStreak = 0;
@@ -102,7 +111,7 @@ router.get("/trades/stats", async (_req, res): Promise<void> => {
 
   const totalRisked = trades.reduce((sum, t) => {
     if (t.status === "won" || t.status === "lost") {
-      return sum + (t.quantity * t.entryPrice);
+      return sum + t.quantity * t.entryPrice;
     }
     return sum;
   }, 0);
