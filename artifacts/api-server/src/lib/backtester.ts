@@ -51,7 +51,7 @@ function marketToCandidate(market: KalshiMarket, simulatedTimeBeforeClose?: numb
   const hoursToExpiry = simulatedTimeBeforeClose ??
     Math.max(0.5, (new Date(market.expected_expiration_time || market.expiration_time || market.close_time).getTime() - Date.now()) / (1000 * 60 * 60));
 
-  return { market, yesPrice, noPrice, spread, volume24h, liquidity, hoursToExpiry };
+  return { market, yesPrice, noPrice, noAsk: noPrice, spread, volume24h, liquidity, hoursToExpiry };
 }
 
 function simulateHoursBeforeClose(market: KalshiMarket): number {
@@ -368,6 +368,7 @@ export async function runBacktest(config: BacktestConfig, existingRunId?: number
           market,
           yesPrice: snapshot.yesPrice,
           noPrice: snapshot.noPrice,
+          noAsk: snapshot.noPrice,
           spread,
           volume24h: getMarketVolume24h(market),
           liquidity: getMarketLiquidity(market),

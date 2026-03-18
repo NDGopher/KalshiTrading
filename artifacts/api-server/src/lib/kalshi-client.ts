@@ -116,12 +116,6 @@ export interface KalshiMarket {
   price_level_structure?: string;
 }
 
-export function getMarketYesPrice(m: KalshiMarket): number {
-  if (m.last_price != null && m.last_price > 0) return m.last_price / 100;
-  if (m.last_price_dollars != null) return parseFloat(String(m.last_price_dollars));
-  return 0;
-}
-
 export function getMarketYesAsk(m: KalshiMarket): number {
   if (m.yes_ask != null && m.yes_ask > 0) return m.yes_ask / 100;
   if (m.yes_ask_dollars != null) return parseFloat(String(m.yes_ask_dollars));
@@ -131,6 +125,30 @@ export function getMarketYesAsk(m: KalshiMarket): number {
 export function getMarketYesBid(m: KalshiMarket): number {
   if (m.yes_bid != null && m.yes_bid > 0) return m.yes_bid / 100;
   if (m.yes_bid_dollars != null) return parseFloat(String(m.yes_bid_dollars));
+  return 0;
+}
+
+export function getMarketNoAsk(m: KalshiMarket): number {
+  if (m.no_ask != null && m.no_ask > 0) return m.no_ask / 100;
+  if (m.no_ask_dollars != null) return parseFloat(String(m.no_ask_dollars));
+  // Derive from yes bid: NO ask = 1 - YES bid
+  const yesBid = getMarketYesBid(m);
+  if (yesBid > 0 && yesBid < 1) return parseFloat((1 - yesBid).toFixed(4));
+  return 0;
+}
+
+export function getMarketYesPrice(m: KalshiMarket): number {
+  // Live order book midpoint takes priority over stale last_price.
+  // last_price is the most-recent TRADE price, which can be hours or days
+  // old and will wildly misprice markets with no recent activity.
+  const ask = getMarketYesAsk(m);
+  const bid = getMarketYesBid(m);
+  if (ask > 0 && bid > 0) return parseFloat(((ask + bid) / 2).toFixed(4));
+  if (ask > 0) return ask;
+  if (bid > 0) return bid;
+  // Fall back to last traded price only when order book is empty
+  if (m.last_price != null && m.last_price > 0) return m.last_price / 100;
+  if (m.last_price_dollars != null) return parseFloat(String(m.last_price_dollars));
   return 0;
 }
 

@@ -3,6 +3,8 @@ import {
   getSportsMarkets,
   getMarketYesAsk,
   getMarketYesBid,
+  getMarketNoAsk,
+  getMarketYesPrice,
   getMarketVolume24h,
   getMarketLiquidity,
   type KalshiMarket,
@@ -16,6 +18,8 @@ export interface ScanCandidate {
   market: KalshiMarket;
   yesPrice: number;
   noPrice: number;
+  /** Live NO ask price from order book (used as execution price for NO trades) */
+  noAsk: number;
   spread: number;
   volume24h: number;
   liquidity: number;
@@ -90,14 +94,13 @@ function buildCandidateFromKalshi(market: KalshiMarket): ScanCandidate | null {
   const now = new Date();
   const rawAsk = getMarketYesAsk(market);
   const rawBid = getMarketYesBid(market);
-  const midFromBook = rawAsk > 0 && rawBid > 0 ? (rawAsk + rawBid) / 2 : 0;
-  const yesPrice =
-    parseFloat(String(market.last_price_dollars || "0")) ||
-    rawAsk ||
-    midFromBook;
+  // Use live order book midpoint (via getMarketYesPrice) — NOT last_price which is stale
+  const yesPrice = getMarketYesPrice(market);
   if (!yesPrice || yesPrice < 0.02 || yesPrice > 0.98) return null;
 
   const noPrice = 1 - yesPrice;
+  // Live NO ask price from order book for accurate execution pricing
+  const noAsk = getMarketNoAsk(market) || noPrice;
   const rawSpread = rawAsk > 0 && rawBid > 0 ? Math.abs(rawAsk - rawBid) : 0;
   const spread = rawSpread > 0 && rawSpread < 0.5 ? rawSpread : Math.min(0.05, yesPrice * 0.05);
   const volume24h = getMarketVolume24h(market);
@@ -117,7 +120,7 @@ function buildCandidateFromKalshi(market: KalshiMarket): ScanCandidate | null {
   // Secondary gate: near-expiry illiquid markets are ghost markets
   if (hoursToExpiry < 4 && volume24h < 10 && liquidity < 50) return null;
 
-  return { market, yesPrice, noPrice, spread, volume24h, liquidity, hoursToExpiry };
+  return { market, yesPrice, noPrice, noAsk, spread, volume24h, liquidity, hoursToExpiry };
 }
 
 async function scanFromCachedDb(): Promise<{ candidates: ScanCandidate[]; totalScanned: number }> {
@@ -174,6 +177,7 @@ async function scanFromCachedDb(): Promise<{ candidates: ScanCandidate[]; totalS
       market,
       yesPrice: price,
       noPrice: 1 - price,
+      noAsk: 1 - (row.yesBid || price - 0.02),
       spread,
       volume24h: row.volume24h || typicalVolume,
       liquidity: typicalLiquidity,

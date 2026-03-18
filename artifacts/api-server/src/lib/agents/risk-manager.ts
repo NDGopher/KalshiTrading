@@ -118,7 +118,10 @@ export function computeRisk(
 
   const rawP = analysis.modelProbability;
   const p = analysis.side === "yes" ? rawP : 1 - rawP;
-  const marketPrice = analysis.side === "yes" ? analysis.candidate.yesPrice : analysis.candidate.noPrice;
+  // Use live ask price for accurate Kelly computation — noAsk is the actual cost of a NO contract
+  const marketPrice = analysis.side === "yes"
+    ? analysis.candidate.yesPrice
+    : (analysis.candidate.noAsk || analysis.candidate.noPrice);
   const b = (1 / marketPrice) - 1;
   const q = 1 - p;
   const fullKelly = b > 0 ? (b * p - q) / b : 0;

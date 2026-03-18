@@ -26,7 +26,9 @@ async function executePaperTrade(decision: RiskDecision): Promise<ExecutionResul
 
   const [settings] = await db.select().from(tradingSettingsTable).limit(1);
   const currentBalance = settings?.paperBalance || 5000;
-  const entryPrice = analysis.side === "yes" ? candidate.yesPrice : candidate.noPrice;
+  // Use live ask prices for accurate execution cost simulation:
+  // YES buy costs the YES ask; NO buy costs the live NO ask (not just 1 - yesPrice)
+  const entryPrice = analysis.side === "yes" ? candidate.yesPrice : (candidate.noAsk || candidate.noPrice);
   const cost = decision.positionSize * entryPrice;
 
   const [existingOpen] = await db
@@ -110,7 +112,7 @@ export async function executeTrade(decision: RiskDecision, paperMode?: boolean):
       kalshiTicker: candidate.market.ticker,
       title: candidate.market.title || candidate.market.ticker,
       side: analysis.side,
-      entryPrice: analysis.side === "yes" ? candidate.yesPrice : candidate.noPrice,
+      entryPrice: analysis.side === "yes" ? candidate.yesPrice : (candidate.noAsk || candidate.noPrice),
       quantity: decision.positionSize,
       status: "pending",
       strategyName: decision.strategyName || null,
@@ -129,7 +131,7 @@ export async function executeTrade(decision: RiskDecision, paperMode?: boolean):
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
       const priceInCents = Math.round(
-        (analysis.side === "yes" ? candidate.yesPrice : candidate.noPrice) * 100
+        (analysis.side === "yes" ? candidate.yesPrice : (candidate.noAsk || candidate.noPrice)) * 100
       );
 
       const orderParams: Parameters<typeof createOrder>[0] = {
