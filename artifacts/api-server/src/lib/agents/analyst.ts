@@ -4,6 +4,7 @@ import { sql, gte } from "drizzle-orm";
 import type { ScanCandidate } from "./scanner.js";
 import { getRelevantNews } from "./news-fetcher.js";
 import { fetchLiveScore } from "../live-scores.js";
+import { getLatestAnalystInjection } from "./learner.js";
 
 export interface AnalysisResult {
   candidate: ScanCandidate;
@@ -231,6 +232,10 @@ export async function analyzeMarket(candidate: ScanCandidate): Promise<AnalysisR
   const soccer = isSoccerMarket(candidate);
   const categoryGuidance = getCategoryGuidance(category, signals, soccer);
 
+  // Fetch the most recent empirical learnings from the Learner agent — these are
+  // injected before the analysis prompt so the AI calibrates on actual track record
+  const learningsInjection = await getLatestAnalystInjection().catch(() => null);
+
   // Inject relevant breaking news headlines
   const newsContext = getRelevantNews(market.title || market.ticker, 3);
   const newsSection = newsContext
@@ -266,8 +271,12 @@ Soccer matches have three outcomes: Team A wins, draw, Team B wins.
 - Do NOT treat YES price as symmetric: P(YES=10%) ≠ P(other team wins=90%).
   The correct reading is: P(YES team wins outright) ≈ 10%, P(draw) ≈ 25-30%, P(other team wins) ≈ 60-65%.` : "";
 
-  const prompt = `You are a quantitative prediction market analyst with expertise in sports, politics, economics, crypto, and current events. Analyze this Kalshi prediction market to find mispricing opportunities.
+  const learningsSection = learningsInjection
+    ? `\n## Prior System Learnings\n${learningsInjection}\n`
+    : "";
 
+  const prompt = `You are a quantitative prediction market analyst with expertise in sports, politics, economics, crypto, and current events. Analyze this Kalshi prediction market to find mispricing opportunities.
+${learningsSection}
 ## ⚠️ CONTRACT DEFINITION — READ FIRST
 The market title IS the YES resolution condition. Read it literally:
 - YES pays $1 if the exact condition stated in the title is TRUE.

@@ -10,6 +10,7 @@ import {
   getLastCycleSummary,
   getNewsFetcherInfo,
 } from "../lib/agents/pipeline.js";
+import { runLearner, getLatestLearnings, getLearningHistory } from "../lib/agents/learner.js";
 import {
   GetAgentStatusResponse,
   ListAgentRunsQueryParams,
@@ -110,6 +111,22 @@ router.get("/agents/last-cycle", (_req, res): void => {
 
 router.get("/agents/news-status", (_req, res): void => {
   res.json(getNewsFetcherInfo());
+});
+
+router.get("/agents/learnings", async (_req, res): Promise<void> => {
+  const latest = await getLatestLearnings();
+  const history = await getLearningHistory();
+  res.json({ latest, history });
+});
+
+router.post("/agents/learnings/run", async (_req, res): Promise<void> => {
+  try {
+    const result = await runLearner();
+    res.json(result);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    res.status(500).json({ error: msg });
+  }
 });
 
 export default router;

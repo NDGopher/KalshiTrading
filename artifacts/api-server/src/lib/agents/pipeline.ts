@@ -10,6 +10,7 @@ import { checkBudget } from "./analyst.js";
 import { getBalance } from "../kalshi-client.js";
 import { evaluateStrategies } from "../strategies/index.js";
 import { startNewsFetcher, getNewsFetcherStatus } from "./news-fetcher.js";
+import { runLearner } from "./learner.js";
 
 interface AgentRunLog {
   agentName: string;
@@ -80,7 +81,12 @@ const agentStatuses: Record<string, {
   "Risk Manager": { status: "idle", lastRunAt: null, lastResult: null, errorMessage: null },
   Executor: { status: "idle", lastRunAt: null, lastResult: null, errorMessage: null },
   Reconciler: { status: "idle", lastRunAt: null, lastResult: null, errorMessage: null },
+  Learner: { status: "idle", lastRunAt: null, lastResult: null, errorMessage: null },
 };
+
+// Learner runs every LEARNER_CYCLE_INTERVAL cycles (or when enough trades close)
+const LEARNER_CYCLE_INTERVAL = 10;
+let pipelineCycleCount = 0;
 
 export function getAgentStatuses() {
   return Object.entries(agentStatuses).map(([name, s]) => ({
@@ -419,6 +425,27 @@ export async function runTradingCycle(): Promise<CycleResult> {
         const reconMsg = reconErr instanceof Error ? reconErr.message : "Unknown error";
         updateAgentStatus("Reconciler", "error", undefined, reconMsg);
         agentResults.push({ agentName: "Reconciler", status: "error", duration: (Date.now() - reconStart) / 1000, details: reconMsg });
+      }
+    }
+
+    // Learner: run every LEARNER_CYCLE_INTERVAL cycles to distill empirical insights
+    pipelineCycleCount++;
+    if (pipelineCycleCount % LEARNER_CYCLE_INTERVAL === 0) {
+      updateAgentStatus("Learner", "running");
+      try {
+        const learnResult = await runLearner();
+        if (learnResult.skipped) {
+          updateAgentStatus("Learner", "idle", learnResult.reason ?? "Skipped");
+          agentResults.push({ agentName: "Learner", status: "skipped", duration: 0, details: learnResult.reason ?? "Skipped" });
+        } else {
+          const summary = `${learnResult.insights?.length ?? 0} insights from ${learnResult.totalClosedTrades} closed trades`;
+          updateAgentStatus("Learner", "idle", summary);
+          agentResults.push({ agentName: "Learner", status: "success", duration: 0, details: summary });
+        }
+      } catch (learnErr: unknown) {
+        const msg = learnErr instanceof Error ? learnErr.message : "Unknown error";
+        updateAgentStatus("Learner", "error", undefined, msg);
+        agentResults.push({ agentName: "Learner", status: "error", duration: 0, details: msg });
       }
     }
 

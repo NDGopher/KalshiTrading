@@ -9,3 +9,4 @@ export * from "./backtest-trades";
 export * from "./paper-trades";
 export * from "./historical-markets";
 export * from "./market-snapshots";
+export * from "./agent-learnings";
