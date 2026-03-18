@@ -126,7 +126,13 @@ export function computeRisk(
 
   const maxPositionDollars = bankroll * (params.maxPositionPct / 100);
   const kellyPositionDollars = bankroll * quarterKelly;
-  const positionDollars = Math.min(kellyPositionDollars, maxPositionDollars);
+  // Hard cap: never risk more than $30 in a single paper trade.
+  // Kelly on a miscalibrated model can produce catastrophically large positions
+  // (e.g. 1,000+ contracts at $0.12 = $120 on a wrong-side call).
+  // $30 is enough to generate meaningful P&L signal while keeping drawdowns bounded
+  // until the model's calibration has been validated over ≥200 closed trades.
+  const HARD_MAX_TRADE_DOLLARS = 30;
+  const positionDollars = Math.min(kellyPositionDollars, maxPositionDollars, HARD_MAX_TRADE_DOLLARS);
   const costPerContract = Math.max(0.01, marketPrice);
   const positionSize = Math.max(1, Math.floor(positionDollars / costPerContract));
 
