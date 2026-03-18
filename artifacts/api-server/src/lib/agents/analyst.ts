@@ -250,25 +250,43 @@ export async function analyzeMarket(candidate: ScanCandidate): Promise<AnalysisR
   let priceHistorySection = "";
   if (candidate.priceHistory) {
     const ph = candidate.priceHistory;
+    // Build a mini chart of recent prices (last 8 snapshots, oldest→newest)
+    const chartStr = ph.series.length > 0
+      ? ph.series.slice(0, 8).reverse().map((s) => `${(s.price * 100).toFixed(0)}¢`).join(" → ")
+      : "";
+    const chartLine = chartStr ? `\n- Price chart (oldest→newest): ${chartStr}` : "";
+
     if (ph.isDip) {
+      const flushLabel = ph.isLiquidityFlush
+        ? `\n- ✅ LIQUIDITY FLUSH SIGNATURE: spread widened ${(ph.spreadWidening * 100).toFixed(0)}% during drop (bid retreated, not a wave of sellers) | volume trend: ${ph.volumeTrend}`
+        : `\n- ⚠️ No flush signature — volume trend: ${ph.volumeTrend} (rising volume = possible informed selling, be cautious)`;
+      const peakLine = ph.hoursSincePeak != null
+        ? `\n- Last at pre-dip level: ${ph.hoursSincePeak.toFixed(1)}h ago`
+        : "";
       priceHistorySection = `
-## ⚠️ PRICE DIP DETECTED (Mean Reversion Signal)
-The YES price has fallen ${Math.abs(ph.currentVsMeanPct).toFixed(1)}% below its ${ph.snapshots}-snapshot rolling mean.
-- Recent mean: $${ph.recentMean.toFixed(4)} | Range: $${ph.recentMin.toFixed(4)} – $${ph.recentMax.toFixed(4)}
-- Current price: $${yesPrice.toFixed(4)} (${Math.abs(ph.currentVsMeanPct).toFixed(1)}% below mean)
-- Std deviation: $${ph.stdDev.toFixed(4)}
-INTERPRETATION: This pregame price drop may reflect temporary order imbalance, a thin sell order, or stale arbitrage — NOT necessarily new information. Ask yourself: Is there a news catalyst (injury, lineup change, weather event) that justifies this drop? If not, this is a potential dip-buy opportunity. If yes, incorporate it into your probability estimate and do NOT treat this as a dip.`;
+## ⚠️ PRICE DIP DETECTED — Mean Reversion Signal
+Price dropped ${Math.abs(ph.currentVsMeanPct).toFixed(1)}% below its ${ph.snapshots}-snapshot rolling mean.
+- Mean: ${(ph.recentMean * 100).toFixed(1)}¢ | Range: ${(ph.recentMin * 100).toFixed(1)}¢–${(ph.recentMax * 100).toFixed(1)}¢ | StdDev: ${(ph.stdDev * 100).toFixed(1)}¢
+- Current YES price: ${(yesPrice * 100).toFixed(1)}¢ (${Math.abs(ph.currentVsMeanPct).toFixed(1)}% below mean)${flushLabel}${peakLine}${chartLine}
+
+INTERPRETATION:
+- LIQUIDITY FLUSH (spread widens, volume flat/falling): A single large seller dumped contracts with no new information. The bid retreats, spread widens, then recovers once absorbed. HIGH-CONFIDENCE BUY YES opportunity.
+- INFORMED SELLING (volume rising, tight spread stays low): New information pushed fair value down. DO NOT treat as a dip — update your probability estimate downward.
+- If you cannot identify a news catalyst for the drop, default to treating it as a liquidity flush.`;
     } else if (ph.isSurge) {
+      const surgeLabel = ph.volumeTrend === "rising"
+        ? "Volume is RISING → likely informed buying (momentum, not a fade)"
+        : `Volume is ${ph.volumeTrend} → may be a single large buyer (potential fade — NO is underpriced)`;
       priceHistorySection = `
-## ⚠️ PRICE SURGE DETECTED (Potential Fade Signal)
-The YES price has risen ${ph.currentVsMeanPct.toFixed(1)}% above its ${ph.snapshots}-snapshot rolling mean.
-- Recent mean: $${ph.recentMean.toFixed(4)} | Range: $${ph.recentMin.toFixed(4)} – $${ph.recentMax.toFixed(4)}
-- Current price: $${yesPrice.toFixed(4)} (${ph.currentVsMeanPct.toFixed(1)}% above mean)
-INTERPRETATION: Sudden price surge without news may be temporary. Consider whether NO is now underpriced.`;
+## ⚠️ PRICE SURGE DETECTED — Potential Fade Signal
+Price is ${ph.currentVsMeanPct.toFixed(1)}% above its ${ph.snapshots}-snapshot rolling mean.
+- Mean: ${(ph.recentMean * 100).toFixed(1)}¢ | Range: ${(ph.recentMin * 100).toFixed(1)}¢–${(ph.recentMax * 100).toFixed(1)}¢${chartLine}
+- ${surgeLabel}
+INTERPRETATION: Rising volume + sustained price = informed momentum, follow it. Spike without volume = single buyer, consider NO.`;
     } else {
       priceHistorySection = `
-## Price History (${ph.snapshots} snapshots, 24h lookback)
-- Rolling mean: $${ph.recentMean.toFixed(4)} | Range: $${ph.recentMin.toFixed(4)} – $${ph.recentMax.toFixed(4)} | Current deviation: ${ph.currentVsMeanPct > 0 ? "+" : ""}${ph.currentVsMeanPct.toFixed(1)}% from mean`;
+## Price History (${ph.snapshots} snapshots)
+- Mean: ${(ph.recentMean * 100).toFixed(1)}¢ | Range: ${(ph.recentMin * 100).toFixed(1)}¢–${(ph.recentMax * 100).toFixed(1)}¢ | Deviation: ${ph.currentVsMeanPct > 0 ? "+" : ""}${ph.currentVsMeanPct.toFixed(1)}% | Volume: ${ph.volumeTrend}${chartLine}`;
     }
   }
 

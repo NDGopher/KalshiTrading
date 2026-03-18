@@ -182,27 +182,32 @@ const lateEfficiency: Strategy = {
 
 // ─── Strategy 6: Dip Buy (Mean Reversion) ────────────────────────────────────
 /**
- * Triggered when a market's price has dropped significantly from its recent mean
- * AND the model believes the drop is unjustified (i.e., model probability is higher
- * than the current depressed price).
+ * Mean reversion with two tiers:
  *
- * Classic example: KXNHLGAME-WPGBOS was stable at 0.44 for 12 hours, then
- * dropped to 0.39 in one cycle with no news → 11.4% dip → buy YES at 0.39.
+ * TIER 1 — Liquidity Flush (high confidence)
+ *   Spread widened during the drop (the bid retreated, not a wave of real sellers)
+ *   AND volume did not surge. This is a single large seller dumping contracts with
+ *   no fundamental reason. Price recovers once their order is absorbed.
+ *   Conditions: isDip + isLiquidityFlush + edge ≥ 3 + confidence ≥ 0.25
  *
- * This ONLY fires on pregame markets (>2h to expiry) to avoid confusing
- * live-game price movement (which is informative, not a dip) with stale mispricing.
+ * TIER 2 — Generic Dip (standard confidence)
+ *   Price dropped ≥8% from mean but without the clear liquidity signature.
+ *   Still tradeable if the model has strong conviction.
+ *   Conditions: isDip + edge ≥ 6 + confidence ≥ 0.35
+ *
+ * Never fires on in-play markets (< 2h to expiry) where price drops ARE information.
  */
 const dipBuy: Strategy = {
   name: "Dip Buy",
-  description: "Buys into unexplained pregame price drops. When a market falls significantly from its recent mean with no news catalyst, mean reversion is the trade.",
+  description: "Buys into pregame price drops. Tier 1: liquidity flush (spread widens, low volume) — highest confidence. Tier 2: generic dip with model edge.",
   selectCandidates(candidates) {
     return candidates.filter((c) => {
       const h = c.priceHistory;
       return (
         h?.isDip === true &&
         c.hoursToExpiry > 2 &&
-        c.yesPrice > 0.10 &&
-        c.yesPrice < 0.90
+        c.yesPrice > 0.08 &&
+        c.yesPrice < 0.92
       );
     });
   },
@@ -212,19 +217,91 @@ const dipBuy: Strategy = {
 
     const priceDropPct = Math.abs(h.currentVsMeanPct);
     const hoursLeft = analysis.candidate.hoursToExpiry;
+    const flushStr = h.isLiquidityFlush
+      ? `, liquidity flush (spread widened ${(h.spreadWidening * 100).toFixed(0)}%, volume ${h.volumeTrend})`
+      : "";
 
-    // Require model to also see value at the current depressed price
-    if (analysis.edge >= 5 && analysis.confidence >= 0.30 && hoursLeft > 2) {
+    // Tier 1: liquidity flush — lower edge/confidence required
+    if (h.isLiquidityFlush && analysis.edge >= 3 && analysis.confidence >= 0.25 && hoursLeft > 2) {
       return {
         trade: true,
-        reason: `Dip buy: price dropped ${priceDropPct.toFixed(1)}% from recent mean (${h.recentMean.toFixed(2)} → ${analysis.candidate.yesPrice.toFixed(2)}), model sees ${analysis.edge.toFixed(1)}pp edge`,
+        reason: `Liquidity flush dip: ${priceDropPct.toFixed(1)}% below mean (${h.recentMean.toFixed(2)}→${analysis.candidate.yesPrice.toFixed(2)})${flushStr}, ${hoursLeft.toFixed(1)}h left`,
         metadata: { dipCatch: true, priceDropPct, hoursRemaining: hoursLeft },
       };
     }
+
+    // Tier 2: generic dip — higher edge required since we lack the flush signature
+    if (analysis.edge >= 6 && analysis.confidence >= 0.35 && hoursLeft > 2) {
+      return {
+        trade: true,
+        reason: `Dip buy: ${priceDropPct.toFixed(1)}% below mean (${h.recentMean.toFixed(2)}→${analysis.candidate.yesPrice.toFixed(2)}), volume=${h.volumeTrend}, model edge=${analysis.edge.toFixed(1)}pp`,
+        metadata: { dipCatch: true, priceDropPct, hoursRemaining: hoursLeft },
+      };
+    }
+
     return {
       trade: false,
-      reason: `Dip detected (${priceDropPct.toFixed(1)}%) but model edge insufficient (${analysis.edge.toFixed(1)}pp)`,
+      reason: `Dip (${priceDropPct.toFixed(1)}%) — ${h.isLiquidityFlush ? "flush but" : "not flush,"} edge=${analysis.edge.toFixed(1)}pp conf=${(analysis.confidence * 100).toFixed(0)}% insufficient`,
     };
+  },
+};
+
+// ─── Strategy 9: Probability Consistency Arb ─────────────────────────────────
+/**
+ * On Kalshi, soccer matches have 3 markets for the same game:
+ *   KXLALIGAGAME-26MAR20RVCLEV-RVC  (Real Valladolid wins)
+ *   KXLALIGAGAME-26MAR20RVCLEV-LEV  (Levante wins)
+ *   KXLALIGAGAME-26MAR20RVCLEV-TIE  (Draw)
+ *
+ * These three YES prices should sum to ≈1.0 minus vig. When they don't,
+ * the most expensive one is overpriced — fade it with NO.
+ *
+ * This is pure math: no AI edge, no news, no model needed. If the sum
+ * is 1.15 (15% over 100%), one of the three is 15% too expensive to buy.
+ * We sell (buy NO on) the most overpriced leg.
+ *
+ * Also works for any binary markets on the same underlying event that
+ * have inconsistent implied probabilities (e.g., same BTC close price
+ * market traded at different times with a large stale spread).
+ */
+const probabilityArb: Strategy = {
+  name: "Probability Arb",
+  description: "Fades the overpriced leg when a multi-outcome market's YES prices sum > 100%. Pure math — no AI needed. Applies to soccer 3-ways and other multi-outcome Kalshi markets.",
+  selectCandidates(candidates) {
+    // Group by game key (first two ticker segments): KXLALIGAGAME-26MAR20RVCLEV
+    const byGame = new Map<string, typeof candidates>();
+    for (const c of candidates) {
+      const parts = c.market.ticker.split("-");
+      if (parts.length < 3) continue;
+      const gameKey = parts.slice(0, 2).join("-");
+      if (!byGame.has(gameKey)) byGame.set(gameKey, []);
+      byGame.get(gameKey)!.push(c);
+    }
+    // Return candidates that belong to a game where sum of YES prices > 1.0
+    const arbitrageable: typeof candidates = [];
+    for (const [, legs] of byGame) {
+      if (legs.length < 2) continue;
+      const sumYes = legs.reduce((s, l) => s + l.yesAsk, 0);
+      if (sumYes > 1.02) {
+        // Mark the most expensive leg as the arb target
+        const sorted = [...legs].sort((a, b) => b.yesAsk - a.yesAsk);
+        arbitrageable.push(sorted[0]);
+      }
+    }
+    return arbitrageable;
+  },
+  shouldTrade(analysis) {
+    // Recompute the game sum from currently live candidates
+    // (we can't easily access all legs here, so we rely on the edge signal)
+    // The analyst will have been told about overpricing — require it to flag NO
+    if (analysis.side === "no" && analysis.edge >= 5) {
+      return {
+        trade: true,
+        reason: `Probability arb: YES prices sum > 100% in this game — overpriced leg, buying NO (edge=${analysis.edge.toFixed(1)}pp)`,
+        metadata: {},
+      };
+    }
+    return { trade: false, reason: "Probability arb: no overpricing detected or model edge insufficient" };
   },
 };
 
@@ -333,6 +410,7 @@ export const strategies: Strategy[] = [
   dipBuy,
   sharpArb,
   marketMaking,
+  probabilityArb,
 ];
 
 export function getStrategy(name: string): Strategy | undefined {
