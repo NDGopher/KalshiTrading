@@ -109,6 +109,11 @@ export interface KalshiMarket {
   volume_24h_fp?: string | number;
   volume_fp?: string | number;
   open_interest_fp?: string | number;
+  rules_primary?: string;
+  rules_secondary?: string;
+  early_close_condition?: string;
+  price_ranges?: unknown;
+  price_level_structure?: string;
 }
 
 export function getMarketYesPrice(m: KalshiMarket): number {
@@ -140,7 +145,8 @@ export function getMarketVolume24h(m: KalshiMarket): number {
 export function getMarketLiquidity(m: KalshiMarket): number {
   if (m.liquidity != null && m.liquidity > 0) return m.liquidity;
   if (m.liquidity_dollars != null && parseFloat(String(m.liquidity_dollars)) > 0) return parseFloat(String(m.liquidity_dollars));
-  if (m.open_interest_fp != null && parseFloat(String(m.open_interest_fp)) > 0) return parseFloat(String(m.open_interest_fp)) / 100;
+  // open_interest_fp is already in dollar terms — use as liquidity proxy
+  if (m.open_interest_fp != null && parseFloat(String(m.open_interest_fp)) > 0) return parseFloat(String(m.open_interest_fp));
   return 0;
 }
 

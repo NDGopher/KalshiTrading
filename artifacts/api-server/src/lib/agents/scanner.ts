@@ -3,6 +3,8 @@ import {
   getSportsMarkets,
   getMarketYesAsk,
   getMarketYesBid,
+  getMarketVolume24h,
+  getMarketLiquidity,
   type KalshiMarket,
 } from "../kalshi-client.js";
 import { db, historicalMarketsTable } from "@workspace/db";
@@ -86,19 +88,20 @@ function buildCandidateFromKalshi(market: KalshiMarket): ScanCandidate | null {
   if (isBlockedTicker(market.ticker)) return null;
 
   const now = new Date();
-  const yesPrice =
-    parseFloat(String(market.last_price_dollars || "0")) ||
-    getMarketYesAsk(market) ||
-    (market.yes_bid + market.yes_ask) / 2 / 100;
-  if (!yesPrice || yesPrice <= 0.01 || yesPrice >= 0.99) return null;
-
-  const noPrice = 1 - yesPrice;
   const rawAsk = getMarketYesAsk(market);
   const rawBid = getMarketYesBid(market);
+  const midFromBook = rawAsk > 0 && rawBid > 0 ? (rawAsk + rawBid) / 2 : 0;
+  const yesPrice =
+    parseFloat(String(market.last_price_dollars || "0")) ||
+    rawAsk ||
+    midFromBook;
+  if (!yesPrice || yesPrice < 0.02 || yesPrice > 0.98) return null;
+
+  const noPrice = 1 - yesPrice;
   const rawSpread = rawAsk > 0 && rawBid > 0 ? Math.abs(rawAsk - rawBid) : 0;
   const spread = rawSpread > 0 && rawSpread < 0.5 ? rawSpread : Math.min(0.05, yesPrice * 0.05);
-  const volume24h = market.volume_24h || 0;
-  const liquidity = parseFloat(String(market.liquidity_dollars || "0")) || market.liquidity || 0;
+  const volume24h = getMarketVolume24h(market);
+  const liquidity = getMarketLiquidity(market);
   const expiresAt = new Date(
     market.expected_expiration_time || market.expiration_time || market.close_time
   );
@@ -226,6 +229,8 @@ export async function scanMarkets(_sportFilters?: string[]): Promise<{
       if (candidate) candidates.push(candidate);
     }
 
+    console.info(`[Scanner] buildCandidateFromKalshi: ${candidates.length} candidates from ${markets.length} markets`);
+
     candidates.sort((a, b) => compositeScore(b) - compositeScore(a));
     const topCandidates = candidates.slice(0, 100);
 
@@ -236,29 +241,49 @@ export async function scanMarkets(_sportFilters?: string[]): Promise<{
       return { ...cached, source: "cached" };
     }
 
-    // Persist snapshots to DB (best-effort, so we have a warm cache for future fallbacks)
+    console.info(`[Scanner] Top ${topCandidates.length} candidates selected. Enriching top 40...`);
+
+    // Persist snapshots to DB in small batches (best-effort warm cache)
+    console.info(`[Scanner] Persisting ${topCandidates.length} snapshots to DB...`);
     try {
-      const snapshots = topCandidates.map((c) => ({
-        kalshiTicker: c.market.ticker,
-        title: c.market.title || c.market.ticker,
-        category: c.market.category || null,
-        openPrice: null as number | null,
-        lastPrice: c.yesPrice,
-        yesAsk: getMarketYesAsk(c.market) || c.yesPrice + 0.02,
-        yesBid: getMarketYesBid(c.market) || c.yesPrice - 0.02,
-        volume24h: c.volume24h,
-        liquidity: c.liquidity,
-        status: c.market.status || "active",
-        result: c.market.result || null,
-        closeTime: c.market.close_time ? new Date(c.market.close_time) : null,
-        expirationTime: c.market.expiration_time ? new Date(c.market.expiration_time) : null,
-        rawData: c.market as unknown as Record<string, unknown>,
-      }));
-      await db.insert(historicalMarketsTable).values(snapshots);
-    } catch (_e) {}
+      const snapshots = topCandidates.map((c) => {
+        // Store only compact metadata in rawData — omit large text fields (rules, descriptions)
+        const { rules_primary: _r1, rules_secondary: _r2, ...compactMarket } =
+          c.market as Record<string, unknown>;
+        return {
+          kalshiTicker: c.market.ticker,
+          title: (c.market.title || c.market.ticker).slice(0, 200),
+          category: c.market.category || null,
+          openPrice: null as number | null,
+          lastPrice: c.yesPrice,
+          yesAsk: getMarketYesAsk(c.market) || c.yesPrice + 0.02,
+          yesBid: getMarketYesBid(c.market) || c.yesPrice - 0.02,
+          volume24h: Math.round(c.volume24h),
+          liquidity: c.liquidity,
+          status: c.market.status || "active",
+          result: c.market.result || null,
+          closeTime: c.market.close_time ? new Date(c.market.close_time) : null,
+          expirationTime: c.market.expiration_time ? new Date(c.market.expiration_time) : null,
+          rawData: compactMarket,
+        };
+      });
+      // Insert in batches of 10 to stay within driver limits
+      const BATCH = 10;
+      for (let i = 0; i < snapshots.length; i += BATCH) {
+        await db.insert(historicalMarketsTable).values(snapshots.slice(i, i + BATCH));
+      }
+      console.info(`[Scanner] DB persist complete (${snapshots.length} rows).`);
+    } catch (_e) {
+      const msg = (_e as Error).message || String(_e);
+      console.warn(`[Scanner] DB persist failed (non-fatal):`, msg.slice(0, 200));
+    }
 
     // Enrich with price history and sharp odds (best-effort, non-blocking)
-    await enrichCandidates(topCandidates).catch(() => {});
+    console.info(`[Scanner] Enriching candidates...`);
+    await enrichCandidates(topCandidates).catch((e) => {
+      console.warn(`[Scanner] Enrichment failed (non-fatal):`, (e as Error).message?.slice(0, 80));
+    });
+    console.info(`[Scanner] Enrichment done.`);
 
     // Re-sort after enrichment so dip/sharp signals bubble up
     topCandidates.sort((a, b) => compositeScore(b) - compositeScore(a));

@@ -1,30 +1,30 @@
 /**
  * Sharp Book Odds Comparison
  *
- * Fetches Pinnacle / NoVig lines from The Odds API (the-odds-api.com) and
- * compares them to Kalshi's implied probabilities. When Kalshi misprices a
- * market vs. the sharpest books in the world, it's a near-certain edge.
+ * Fetches Pinnacle lines via The Odds API (the-odds-api.com) and compares
+ * them to Kalshi's implied probabilities. When Kalshi misprices a market vs
+ * the sharpest books in the world, it's a near-certain edge.
  *
  * Requires: ODDS_API_KEY environment variable (free tier = 500 req/month)
- * Get a key at: https://the-odds-api.com
+ * Cache: 30 min per sport to conserve quota
  *
- * Usage:
- *   - Returns null gracefully when no key is set (non-fatal)
- *   - Caches results for 30 min to avoid burning free quota
- *   - Maps Kalshi ticker patterns to Odds API sport keys + team names
+ * Matching strategy:
+ *   - Parse BOTH team codes from the Kalshi game slug (e.g. VILRSO → VIL + RSO)
+ *   - Require BOTH teams present in the same Pinnacle game
+ *   - Match game date within ±2 days (handles timezone differences)
+ *   - Handles TIE markets (soccer draws) explicitly
  */
 
 export interface SharpLine {
   sport: string;
   homeTeam: string;
   awayTeam: string;
-  /** Pinnacle's implied probability for YES (home/team referenced in the Kalshi ticker) */
+  /** Pinnacle's raw implied probability for YES */
   pinnacleYesProb: number;
   /** No-vig (true fair) probability for YES */
   noVigYesProb: number;
-  /** How far Kalshi's YES price deviates from the no-vig probability (pp) */
+  /** Kalshi YES price minus no-vig probability, in pp. Negative = Kalshi underpriced (buy YES). */
   kalshiEdgeVsSharp: number;
-  /** Which side has the edge: "YES" | "NO" | "NONE" */
   edgeSide: "YES" | "NO" | "NONE";
   bookmaker: string;
   updatedAt: number;
@@ -33,59 +33,103 @@ export interface SharpLine {
 // ─── Sport prefix → Odds API sport key ───────────────────────────────────────
 
 const SPORT_MAP: Record<string, string> = {
-  KXNHLGAME: "icehockey_nhl",
-  KXNHLTOTAL: "icehockey_nhl",
-  KXNBAGAME: "basketball_nba",
-  KXNBATOTAL: "basketball_nba",
-  KXMLBGAME: "baseball_mlb",
-  KXLALIGAGAME: "soccer_spain_la_liga",
-  KXSERIEAGAME: "soccer_italy_serie_a",
-  KXUECLGAME: "soccer_uefa_europa_league",
-  KXMLS: "soccer_usa_mls",
+  KXNHLGAME:      "icehockey_nhl",
+  KXNHLTOTAL:     "icehockey_nhl",
+  KXNBAGAME:      "basketball_nba",
+  KXNBATOTAL:     "basketball_nba",
+  KXMLBGAME:      "baseball_mlb",
+  KXLALIGAGAME:   "soccer_spain_la_liga",
+  KXSERIEAGAME:   "soccer_italy_serie_a",
+  KXUECLGAME:     "soccer_uefa_europa_league",
+  KXUCLGAME:      "soccer_uefa_champions_league",
+  KXMLS:          "soccer_usa_mls",
   KXBUNDESLIGAGAME: "soccer_germany_bundesliga",
-  KXPREMGAME: "soccer_epl",
+  KXPREMGAME:     "soccer_epl",
 };
 
-// ─── 3-letter team code → full name (major NA sports) ────────────────────────
+// ─── Team code → full name ───────────────────────────────────────────────────
 
 const NHL_TEAMS: Record<string, string> = {
-  ANA: "Anaheim Ducks", ARI: "Arizona Coyotes", BOS: "Boston Bruins",
-  BUF: "Buffalo Sabres", CAR: "Carolina Hurricanes", CBJ: "Columbus Blue Jackets",
-  CGY: "Calgary Flames", CHI: "Chicago Blackhawks", COL: "Colorado Avalanche",
-  DAL: "Dallas Stars", DET: "Detroit Red Wings", EDM: "Edmonton Oilers",
-  FLA: "Florida Panthers", LAK: "Los Angeles Kings", MIN: "Minnesota Wild",
-  MTL: "Montreal Canadiens", NJD: "New Jersey Devils", NSH: "Nashville Predators",
-  NYI: "New York Islanders", NYR: "New York Rangers", OTT: "Ottawa Senators",
-  PHI: "Philadelphia Flyers", PIT: "Pittsburgh Penguins", SEA: "Seattle Kraken",
-  SJS: "San Jose Sharks", STL: "St. Louis Blues", TB: "Tampa Bay Lightning",
-  TOR: "Toronto Maple Leafs", UTA: "Utah Hockey Club", VAN: "Vancouver Canucks",
-  VGK: "Vegas Golden Knights", WPG: "Winnipeg Jets", WSH: "Washington Capitals",
+  ANA:"Anaheim Ducks",ARI:"Arizona Coyotes",BOS:"Boston Bruins",BUF:"Buffalo Sabres",
+  CAR:"Carolina Hurricanes",CBJ:"Columbus Blue Jackets",CGY:"Calgary Flames",
+  CHI:"Chicago Blackhawks",COL:"Colorado Avalanche",DAL:"Dallas Stars",
+  DET:"Detroit Red Wings",EDM:"Edmonton Oilers",FLA:"Florida Panthers",
+  LAK:"Los Angeles Kings",MIN:"Minnesota Wild",MTL:"Montreal Canadiens",
+  NJD:"New Jersey Devils",NSH:"Nashville Predators",NYI:"New York Islanders",
+  NYR:"New York Rangers",OTT:"Ottawa Senators",PHI:"Philadelphia Flyers",
+  PIT:"Pittsburgh Penguins",SEA:"Seattle Kraken",SJS:"San Jose Sharks",
+  STL:"St. Louis Blues",TB:"Tampa Bay Lightning",TOR:"Toronto Maple Leafs",
+  UTA:"Utah Hockey Club",VAN:"Vancouver Canucks",VGK:"Vegas Golden Knights",
+  WPG:"Winnipeg Jets",WSH:"Washington Capitals",
 };
 
 const NBA_TEAMS: Record<string, string> = {
-  ATL: "Atlanta Hawks", BKN: "Brooklyn Nets", BOS: "Boston Celtics",
-  CHA: "Charlotte Hornets", CHI: "Chicago Bulls", CLE: "Cleveland Cavaliers",
-  DAL: "Dallas Mavericks", DEN: "Denver Nuggets", DET: "Detroit Pistons",
-  GSW: "Golden State Warriors", HOU: "Houston Rockets", IND: "Indiana Pacers",
-  LAC: "Los Angeles Clippers", LAL: "Los Angeles Lakers", MEM: "Memphis Grizzlies",
-  MIA: "Miami Heat", MIL: "Milwaukee Bucks", MIN: "Minnesota Timberwolves",
-  NOP: "New Orleans Pelicans", NYK: "New York Knicks", OKC: "Oklahoma City Thunder",
-  ORL: "Orlando Magic", PHI: "Philadelphia 76ers", PHX: "Phoenix Suns",
-  POR: "Portland Trail Blazers", SAC: "Sacramento Kings", SAS: "San Antonio Spurs",
-  TOR: "Toronto Raptors", UTA: "Utah Jazz", WAS: "Washington Wizards",
+  ATL:"Atlanta Hawks",BKN:"Brooklyn Nets",BOS:"Boston Celtics",CHA:"Charlotte Hornets",
+  CHI:"Chicago Bulls",CLE:"Cleveland Cavaliers",DAL:"Dallas Mavericks",DEN:"Denver Nuggets",
+  DET:"Detroit Pistons",GSW:"Golden State Warriors",HOU:"Houston Rockets",IND:"Indiana Pacers",
+  LAC:"Los Angeles Clippers",LAL:"Los Angeles Lakers",MEM:"Memphis Grizzlies",
+  MIA:"Miami Heat",MIL:"Milwaukee Bucks",MIN:"Minnesota Timberwolves",
+  NOP:"New Orleans Pelicans",NYK:"New York Knicks",OKC:"Oklahoma City Thunder",
+  ORL:"Orlando Magic",PHI:"Philadelphia 76ers",PHX:"Phoenix Suns",
+  POR:"Portland Trail Blazers",SAC:"Sacramento Kings",SAS:"San Antonio Spurs",
+  TOR:"Toronto Raptors",UTA:"Utah Jazz",WAS:"Washington Wizards",
 };
 
 const MLB_TEAMS: Record<string, string> = {
-  ARI: "Arizona Diamondbacks", ATL: "Atlanta Braves", BAL: "Baltimore Orioles",
-  BOS: "Boston Red Sox", CHC: "Chicago Cubs", CHW: "Chicago White Sox",
-  CIN: "Cincinnati Reds", CLE: "Cleveland Guardians", COL: "Colorado Rockies",
-  DET: "Detroit Tigers", HOU: "Houston Astros", KCR: "Kansas City Royals",
-  LAA: "Los Angeles Angels", LAD: "Los Angeles Dodgers", MIA: "Miami Marlins",
-  MIL: "Milwaukee Brewers", MIN: "Minnesota Twins", NYM: "New York Mets",
-  NYY: "New York Yankees", OAK: "Oakland Athletics", PHI: "Philadelphia Phillies",
-  PIT: "Pittsburgh Pirates", SDP: "San Diego Padres", SEA: "Seattle Mariners",
-  SFG: "San Francisco Giants", STL: "St. Louis Cardinals", TB: "Tampa Bay Rays",
-  TEX: "Texas Rangers", TOR: "Toronto Blue Jays", WSN: "Washington Nationals",
+  ARI:"Arizona Diamondbacks",ATL:"Atlanta Braves",BAL:"Baltimore Orioles",
+  BOS:"Boston Red Sox",CHC:"Chicago Cubs",CHW:"Chicago White Sox",
+  CIN:"Cincinnati Reds",CLE:"Cleveland Guardians",COL:"Colorado Rockies",
+  DET:"Detroit Tigers",HOU:"Houston Astros",KCR:"Kansas City Royals",
+  LAA:"Los Angeles Angels",LAD:"Los Angeles Dodgers",MIA:"Miami Marlins",
+  MIL:"Milwaukee Brewers",MIN:"Minnesota Twins",NYM:"New York Mets",
+  NYY:"New York Yankees",OAK:"Oakland Athletics",PHI:"Philadelphia Phillies",
+  PIT:"Pittsburgh Pirates",SDP:"San Diego Padres",SEA:"Seattle Mariners",
+  SFG:"San Francisco Giants",STL:"St. Louis Cardinals",TB:"Tampa Bay Rays",
+  TEX:"Texas Rangers",TOR:"Toronto Blue Jays",WSN:"Washington Nationals",
+};
+
+// Soccer: Kalshi uses custom 2-3 letter abbreviations per league
+// La Liga
+const LALIGA_TEAMS: Record<string, string> = {
+  BAR:"Barcelona",REA:"Real Madrid",ATM:"Atletico Madrid",SEV:"Sevilla",
+  VIL:"Villarreal",RSO:"Real Sociedad",BET:"Real Betis",VAL:"Valencia",
+  CEL:"Celta Vigo",ATH:"Athletic Bilbao",OSA:"Osasuna",RMA:"Real Madrid",
+  GIR:"Girona",MAL:"Mallorca",LAP:"Las Palmas",LPA:"Las Palmas",
+  ALA:"Alaves",LEV:"Levante",ESP:"Espanyol",GET:"Getafe",
+  RAY:"Rayo Vallecano",RET:"Rayo Vallecano",ELC:"Elche",OVI:"Oviedo",
+  MIR:"Mirandes",VAD:"Valladolid",DEP:"Deportivo",GRA:"Granada",
+  ALM:"Almeria",CAD:"Cadiz",VDA:"Valladolid",EIB:"Eibar",HUE:"Huesca",
+  COR:"Cordoba",CAR:"Cartagena",ALC:"Alcorcon",MUR:"Murcia",
+};
+
+// Serie A
+const SERIEA_TEAMS: Record<string, string> = {
+  INT:"Inter Milan",JUV:"Juventus",MIL:"AC Milan",NAP:"Napoli",
+  FIO:"Fiorentina",ROM:"Roma",LAZ:"Lazio",ATA:"Atalanta",
+  BOL:"Bologna",TOR:"Torino",EMP:"Empoli",UDI:"Udinese",
+  PAR:"Parma",COM:"Como",MON:"Monza",CAG:"Cagliari",
+  VEN:"Venezia",GEN:"Genoa",LEC:"Lecce",CRE:"Cremonese",
+  SAL:"Salernitana",HEL:"Hellas Verona",VER:"Hellas Verona",
+  SPE:"Spezia",SAM:"Sampdoria",SAS:"Sassuolo",
+};
+
+// Europa/Champions League: mixture of clubs from all countries
+const UCL_TEAMS: Record<string, string> = {
+  MCI:"Manchester City",LIV:"Liverpool",ARS:"Arsenal",CHE:"Chelsea",
+  MUN:"Manchester United",TOT:"Tottenham",NEW:"Newcastle",
+  BAR:"Barcelona",REA:"Real Madrid",ATM:"Atletico Madrid",
+  VIL:"Villarreal",RSO:"Real Sociedad",SEV:"Sevilla",
+  BAY:"Bayern Munich",BVB:"Borussia Dortmund",FRA:"Eintracht Frankfurt",
+  LEV:"Bayer Leverkusen",RBL:"RB Leipzig",STU:"Stuttgart",
+  PSG:"Paris Saint-Germain",LYO:"Lyon",OLY:"Olympique Marseille",
+  INT:"Inter Milan",JUV:"Juventus",MIL:"AC Milan",NAP:"Napoli",
+  FIO:"Fiorentina",ROM:"Roma",ATA:"Atalanta",
+  AJA:"Ajax",PSV:"PSV Eindhoven",FEY:"Feyenoord",
+  BEN:"Benfica",SPO:"Sporting CP",POR:"Porto",
+  CEL:"Celtic",RAN:"Rangers",
+  GAL:"Galatasaray",FEN:"Fenerbahce",BES:"Besiktas",
+  ZEN:"Zenit",SHA:"Shakhtar Donetsk",DYN:"Dynamo Kyiv",
+  SHE:"Shakhtar",MAC:"PAOK",OLM:"Olympiakos",
 };
 
 function getTeamName(code: string, sport: string): string | null {
@@ -93,7 +137,11 @@ function getTeamName(code: string, sport: string): string | null {
   if (sport.includes("nhl")) return NHL_TEAMS[c] ?? null;
   if (sport.includes("nba")) return NBA_TEAMS[c] ?? null;
   if (sport.includes("mlb")) return MLB_TEAMS[c] ?? null;
-  return null;
+  if (sport.includes("la_liga")) return LALIGA_TEAMS[c] ?? null;
+  if (sport.includes("serie_a")) return SERIEA_TEAMS[c] ?? null;
+  if (sport.includes("europa") || sport.includes("champions")) return UCL_TEAMS[c] ?? LALIGA_TEAMS[c] ?? SERIEA_TEAMS[c] ?? null;
+  // Fallback: try all soccer maps
+  return LALIGA_TEAMS[c] ?? SERIEA_TEAMS[c] ?? UCL_TEAMS[c] ?? null;
 }
 
 // ─── Parse Kalshi game ticker ─────────────────────────────────────────────────
@@ -101,19 +149,20 @@ function getTeamName(code: string, sport: string): string | null {
 interface ParsedGameTicker {
   prefix: string;
   sport: string;
-  /** 3-letter code of the team this specific market represents ("YES wins") */
+  isTie: boolean;       // TIE market (soccer draw)
   targetTeamCode: string;
-  /** The other team in the matchup */
   opponentTeamCode: string;
   targetTeamName: string | null;
   opponentTeamName: string | null;
-  gameSlug: string; // e.g. "WPGBOS"
+  gameDate: Date | null; // parsed game date for matching
+  gameSlug: string;
 }
 
-/**
- * Parse a Kalshi game ticker like KXNHLGAME-26MAR19WPGBOS-WPG or
- * KXLALIGAGAME-26MAR16RVCLEV-LEV into its components.
- */
+// Months: Kalshi uses uppercase abbreviations (MAR, APR, etc.)
+const MONTHS: Record<string, number> = {
+  JAN:0,FEB:1,MAR:2,APR:3,MAY:4,JUN:5,JUL:6,AUG:7,SEP:8,OCT:9,NOV:10,DEC:11,
+};
+
 function parseGameTicker(ticker: string): ParsedGameTicker | null {
   const parts = ticker.split("-");
   if (parts.length < 3) return null;
@@ -122,31 +171,58 @@ function parseGameTicker(ticker: string): ParsedGameTicker | null {
   const sport = SPORT_MAP[prefix];
   if (!sport) return null;
 
-  // Last segment = the team this market is for (YES = this team wins)
-  const targetTeamCode = parts[parts.length - 1].toUpperCase();
+  const lastPart = parts[parts.length - 1].toUpperCase();
+  const isTie = lastPart === "TIE";
+  const targetTeamCode = isTie ? "TIE" : lastPart;
 
-  // Middle segments contain date + game slug, e.g. "26MAR19WPGBOS"
-  // Extract by removing date prefix (6-9 chars: YYMMMdd)
+  // Middle segment = date + game slug, e.g. "26MAR21VILRSO"
   const gamePart = parts.slice(1, -1).join("-");
-  const dateMatch = gamePart.match(/^\d{2}[A-Z]{3}\d{2}(.+)$/);
+  const dateMatch = gamePart.match(/^(\d{2})([A-Z]{3})(\d{2})(.+)$/);
   if (!dateMatch) return null;
 
-  const gameSlug = dateMatch[1]; // e.g. "WPGBOS" or "RVCLEV"
-  // Opponent = the other team codes in the slug (remove our target from it)
-  const opponentCode = gameSlug.replace(targetTeamCode, "");
+  const [, yy, mon, dd, gameSlug] = dateMatch;
+  const monthNum = MONTHS[mon];
+  const gameDate = monthNum !== undefined
+    ? new Date(2000 + parseInt(yy), monthNum, parseInt(dd))
+    : null;
+
+  // Split game slug into two team codes — usually 3+3 chars
+  // For soccer: VILRSO → VIL + RSO; ESPGET → ESP + GET
+  // For NA sports: WPGBOS → WPG + BOS; NJRNY → NJD + NYR (doesn't split cleanly)
+  let code1 = "", code2 = "";
+  if (isTie) {
+    // For TIE markets we know: slug = team1 + team2
+    code1 = gameSlug.slice(0, Math.ceil(gameSlug.length / 2));
+    code2 = gameSlug.slice(Math.ceil(gameSlug.length / 2));
+  } else {
+    // Non-TIE: one team IS targetTeamCode, the other is the remainder
+    if (gameSlug.startsWith(targetTeamCode)) {
+      code1 = targetTeamCode;
+      code2 = gameSlug.slice(targetTeamCode.length);
+    } else if (gameSlug.endsWith(targetTeamCode)) {
+      code1 = gameSlug.slice(0, gameSlug.length - targetTeamCode.length);
+      code2 = targetTeamCode;
+    } else {
+      // Fallback: split at midpoint
+      code1 = gameSlug.slice(0, Math.ceil(gameSlug.length / 2));
+      code2 = gameSlug.slice(Math.ceil(gameSlug.length / 2));
+    }
+  }
+
+  const opponentTeamCode = isTie
+    ? code1 // doesn't matter which we call target vs opponent for TIE
+    : (code1 === targetTeamCode ? code2 : code1);
 
   return {
-    prefix,
-    sport,
-    targetTeamCode,
-    opponentTeamCode: opponentCode,
-    targetTeamName: getTeamName(targetTeamCode, sport),
-    opponentTeamName: getTeamName(opponentCode, sport),
+    prefix, sport, isTie, targetTeamCode, opponentTeamCode,
+    targetTeamName: isTie ? null : getTeamName(targetTeamCode, sport),
+    opponentTeamName: getTeamName(opponentTeamCode, sport),
+    gameDate,
     gameSlug,
   };
 }
 
-// ─── Cache ────────────────────────────────────────────────────────────────────
+// ─── Odds API fetch + cache ───────────────────────────────────────────────────
 
 const cache = new Map<string, { data: OddsApiGame[]; fetchedAt: number }>();
 const CACHE_TTL_MS = 30 * 60 * 1000; // 30 min
@@ -179,14 +255,16 @@ async function fetchOddsForSport(sport: string): Promise<OddsApiGame[]> {
   }
 
   try {
+    // Soccer markets need eu region for Pinnacle to have lines
+    const isSoccer = sport.startsWith("soccer_");
     const url = new URL(`https://api.the-odds-api.com/v4/sports/${sport}/odds/`);
     url.searchParams.set("apiKey", apiKey);
-    url.searchParams.set("regions", "us");
+    url.searchParams.set("regions", isSoccer ? "eu" : "us");
     url.searchParams.set("markets", "h2h");
     url.searchParams.set("bookmakers", "pinnacle");
     url.searchParams.set("oddsFormat", "decimal");
 
-    const res = await fetch(url.toString(), { signal: AbortSignal.timeout(5000) });
+    const res = await fetch(url.toString(), { signal: AbortSignal.timeout(8000) });
     if (!res.ok) {
       console.warn(`[sharp-odds] Odds API ${sport} returned ${res.status}`);
       return [];
@@ -201,15 +279,58 @@ async function fetchOddsForSport(sport: string): Promise<OddsApiGame[]> {
   }
 }
 
-// ─── Main export ──────────────────────────────────────────────────────────────
+// ─── Game matching ─────────────────────────────────────────────────────────────
 
-/**
- * Look up sharp book odds for a Kalshi game ticker.
- * Returns null if:
- *   - No ODDS_API_KEY env var is set
- *   - Ticker doesn't match a supported sport/game format
- *   - No matching game found in Pinnacle's feed
- */
+function nameContains(fullName: string, fragment: string | null): boolean {
+  if (!fragment) return false;
+  const f = fullName.toLowerCase();
+  const words = fragment.toLowerCase().split(" ");
+  // Match if ANY word of the team name is found in the Pinnacle name
+  return words.some((w) => w.length > 3 && f.includes(w));
+}
+
+function findMatchingGame(
+  parsed: ParsedGameTicker,
+  games: OddsApiGame[]
+): OddsApiGame | null {
+  const { targetTeamName, opponentTeamName, gameDate, isTie, gameSlug } = parsed;
+
+  // For TIE markets, we need to find the game using the slug codes
+  // We split the slug in half and look up both team names
+  const sportMap = parsed.sport;
+  let name1: string | null = targetTeamName;
+  let name2: string | null = opponentTeamName;
+
+  if (isTie) {
+    const half = Math.ceil(gameSlug.length / 2);
+    const c1 = gameSlug.slice(0, half);
+    const c2 = gameSlug.slice(half);
+    name1 = getTeamName(c1, sportMap);
+    name2 = getTeamName(c2, sportMap);
+  }
+
+  if (!name1 && !name2) return null;
+
+  return games.find((g) => {
+    // Both teams must be present in the game (home or away)
+    const teams = [g.home_team, g.away_team];
+    const matchTarget = name1 ? teams.some((t) => nameContains(t, name1)) : true;
+    const matchOpponent = name2 ? teams.some((t) => nameContains(t, name2)) : true;
+    if (!matchTarget || !matchOpponent) return false;
+
+    // Date check: game must be within ±3 days of Kalshi game date
+    if (gameDate) {
+      const pinnDate = new Date(g.commence_time);
+      const diffDays = Math.abs(pinnDate.getTime() - gameDate.getTime()) / (1000 * 60 * 60 * 24);
+      if (diffDays > 3) return false;
+    }
+
+    return true;
+  }) ?? null;
+}
+
+// ─── Main exports ──────────────────────────────────────────────────────────────
+
 export async function getSharpLine(
   ticker: string,
   kalshiYesPrice: number
@@ -217,48 +338,50 @@ export async function getSharpLine(
   if (!process.env.ODDS_API_KEY) return null;
 
   const parsed = parseGameTicker(ticker);
-  if (!parsed || !parsed.targetTeamName) return null;
+  if (!parsed) return null;
+
+  // For non-TIE markets we need at least the target team name
+  if (!parsed.isTie && !parsed.targetTeamName && !parsed.opponentTeamName) return null;
 
   const games = await fetchOddsForSport(parsed.sport);
   if (!games.length) return null;
 
-  // Find the game that mentions our target team
-  const targetName = parsed.targetTeamName.toLowerCase();
-  const game = games.find((g) => {
-    const home = g.home_team.toLowerCase();
-    const away = g.away_team.toLowerCase();
-    return home.includes(targetName.split(" ").pop()!) || away.includes(targetName.split(" ").pop()!);
-  });
-
+  const game = findMatchingGame(parsed, games);
   if (!game) return null;
 
-  // Find Pinnacle's h2h market
   const bookmaker = game.bookmakers.find((b) => b.key === "pinnacle") ?? game.bookmakers[0];
   if (!bookmaker) return null;
 
   const h2h = bookmaker.markets.find((m) => m.key === "h2h");
   if (!h2h || h2h.outcomes.length < 2) return null;
 
-  // Determine which outcome corresponds to our target team
-  const targetOutcome = h2h.outcomes.find((o) =>
-    o.name.toLowerCase().includes(targetName.split(" ").pop()!)
-  );
+  // Compute no-vig probabilities
+  const implied = h2h.outcomes.map((o) => ({ name: o.name, imp: 1 / o.price }));
+  const totalImplied = implied.reduce((s, p) => s + p.imp, 0);
+  const noVigProbs = implied.map((o) => ({ name: o.name, noVig: o.imp / totalImplied, raw: o.imp }));
+
+  let targetOutcome: { name: string; noVig: number; raw: number } | undefined;
+
+  if (parsed.isTie) {
+    // Soccer draw market — look for "Draw" outcome
+    targetOutcome = noVigProbs.find((o) => o.name.toLowerCase().includes("draw"));
+  } else {
+    // Team win market — match by team name
+    const tName = parsed.targetTeamName!;
+    targetOutcome = noVigProbs.find((o) => nameContains(o.name, tName));
+  }
+
   if (!targetOutcome) return null;
 
-  // Convert decimal odds to implied probabilities, then remove vig
-  const implied = h2h.outcomes.map((o) => 1 / o.price);
-  const totalImplied = implied.reduce((s, p) => s + p, 0);
-  const targetImplied = 1 / targetOutcome.price;
-  const noVigYesProb = totalImplied > 0 ? targetImplied / totalImplied : targetImplied;
-  const pinnacleYesProb = targetImplied;
-
-  // Edge = how far Kalshi is from the no-vig fair probability
-  const kalshiEdgeVsSharp = (kalshiYesPrice - noVigYesProb) * 100; // in pp
+  const noVigYesProb = targetOutcome.noVig;
+  const pinnacleYesProb = targetOutcome.raw;
+  const kalshiEdgeVsSharp = (kalshiYesPrice - noVigYesProb) * 100;
   const MIN_EDGE_PP = 3;
+
   const edgeSide: "YES" | "NO" | "NONE" =
-    kalshiEdgeVsSharp <= -MIN_EDGE_PP ? "YES"  // Kalshi is CHEAPER than fair → buy YES
-      : kalshiEdgeVsSharp >= MIN_EDGE_PP ? "NO"  // Kalshi is MORE EXPENSIVE than fair → buy NO
-        : "NONE";
+    kalshiEdgeVsSharp <= -MIN_EDGE_PP ? "YES"
+    : kalshiEdgeVsSharp >= MIN_EDGE_PP ? "NO"
+    : "NONE";
 
   return {
     sport: parsed.sport,
@@ -273,9 +396,6 @@ export async function getSharpLine(
   };
 }
 
-/**
- * Batch sharp line lookup for an array of scan candidates.
- */
 export async function batchGetSharpLines(
   candidates: Array<{ ticker: string; yesPrice: number }>
 ): Promise<Map<string, SharpLine>> {
