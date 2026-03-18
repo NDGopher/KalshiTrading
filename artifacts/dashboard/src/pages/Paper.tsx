@@ -105,6 +105,10 @@ const STRATEGY_COLORS: Record<string, string> = {
   "Contrarian Reversal": "#f59e0b",
   "Momentum": "#60a5fa",
   "Late Efficiency": "#f87171",
+  "Dip Buy": "#22d3ee",
+  "Sharp Arb": "#fb923c",
+  "Market Making": "#e879f9",
+  "Probability Arb": "#4ade80",
 };
 
 function usePaperTrades() {
@@ -474,63 +478,108 @@ export default function Paper() {
         )}
 
         {/* Strategy Performance table */}
-        {equity && equity.strategyStats.length > 0 && (
-          <Card className="glass-panel border-white/10">
-            <CardHeader className="border-b border-white/5 bg-black/20 py-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <BarChart3 className="w-4 h-4 text-primary" />
-                Strategy Performance
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead className="text-[10px] text-muted-foreground uppercase bg-white/[0.02]">
-                    <tr>
-                      <th className="px-4 py-3 text-left font-semibold">Strategy</th>
-                      <th className="px-4 py-3 text-right font-semibold">Trades</th>
-                      <th className="px-4 py-3 text-right font-semibold">Win Rate</th>
-                      <th className="px-4 py-3 text-right font-semibold">Avg Edge</th>
-                      <th className="px-4 py-3 text-right font-semibold">Invested</th>
-                      <th className="px-4 py-3 text-right font-semibold">Realized P&L</th>
-                      <th className="px-4 py-3 text-right font-semibold">ROI</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-white/5">
-                    {equity.strategyStats.map((s) => (
-                      <tr key={s.name} className="hover:bg-white/[0.02]">
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: STRATEGY_COLORS[s.name] || "#6b7280" }} />
-                            <span className="font-medium text-white">{s.name}</span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 font-mono text-right text-muted-foreground">{s.trades}</td>
-                        <td className="px-4 py-3 font-mono text-right">
-                          {s.wins + (s.trades - s.wins) > 0
-                            ? <span className={s.winRate >= 0.5 ? "text-success" : s.winRate === 0 ? "text-muted-foreground" : "text-destructive"}>
-                              {(s.winRate * 100).toFixed(0)}%
-                              <span className="text-muted-foreground ml-1 text-[10px]">({s.wins}W)</span>
-                            </span>
-                            : <span className="text-muted-foreground">—</span>
-                          }
-                        </td>
-                        <td className="px-4 py-3 font-mono text-right text-primary">{s.avgEdge.toFixed(1)}%</td>
-                        <td className="px-4 py-3 font-mono text-right text-muted-foreground">{formatCurrency(s.invested)}</td>
-                        <td className={`px-4 py-3 font-mono font-bold text-right ${s.totalPnl >= 0 ? "text-success" : "text-destructive"}`}>
-                          {s.totalPnl >= 0 ? "+" : ""}{formatCurrency(s.totalPnl)}
-                        </td>
-                        <td className={`px-4 py-3 font-mono font-bold text-right ${s.roi >= 0 ? "text-success" : "text-destructive"}`}>
-                          {s.roi >= 0 ? "+" : ""}{(s.roi * 100).toFixed(1)}%
-                        </td>
+        {equity && equity.strategyStats.length > 0 && (() => {
+          // Compute open position counts per strategy from live trades data
+          const openByStrategy: Record<string, { count: number; deployed: number }> = {};
+          if (allTrades) {
+            for (const t of allTrades) {
+              if (t.status !== "open") continue;
+              const k = t.strategyName || "Unknown";
+              if (!openByStrategy[k]) openByStrategy[k] = { count: 0, deployed: 0 };
+              openByStrategy[k].count++;
+              openByStrategy[k].deployed += t.entryPrice * t.quantity;
+            }
+          }
+          // Merge all known strategy names (from closed trades + open positions)
+          const allStrategyNames = new Set([
+            ...equity.strategyStats.map(s => s.name),
+            ...Object.keys(openByStrategy),
+          ]);
+          const mergedRows = Array.from(allStrategyNames).map(name => {
+            const closed = equity.strategyStats.find(s => s.name === name);
+            const open = openByStrategy[name] || { count: 0, deployed: 0 };
+            return { name, closed, open };
+          }).sort((a, b) => {
+            const aTotal = (a.closed?.trades || 0) + a.open.count;
+            const bTotal = (b.closed?.trades || 0) + b.open.count;
+            return bTotal - aTotal;
+          });
+
+          return (
+            <Card className="glass-panel border-white/10">
+              <CardHeader className="border-b border-white/5 bg-black/20 py-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <BarChart3 className="w-4 h-4 text-primary" />
+                  Strategy Performance
+                  <span className="text-[10px] text-muted-foreground font-normal ml-1">— each trade tagged with the most specific matching strategy</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead className="text-[10px] text-muted-foreground uppercase bg-white/[0.02]">
+                      <tr>
+                        <th className="px-4 py-3 text-left font-semibold">Strategy</th>
+                        <th className="px-4 py-3 text-right font-semibold">Open</th>
+                        <th className="px-4 py-3 text-right font-semibold">Deployed</th>
+                        <th className="px-4 py-3 text-right font-semibold">Closed</th>
+                        <th className="px-4 py-3 text-right font-semibold">Win Rate</th>
+                        <th className="px-4 py-3 text-right font-semibold">Avg Edge</th>
+                        <th className="px-4 py-3 text-right font-semibold">Realized P&L</th>
+                        <th className="px-4 py-3 text-right font-semibold">ROI</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+                    </thead>
+                    <tbody className="divide-y divide-white/5">
+                      {mergedRows.map(({ name, closed, open }) => (
+                        <tr key={name} className="hover:bg-white/[0.02]">
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: STRATEGY_COLORS[name] || "#6b7280" }} />
+                              <span className="font-medium text-white">{name}</span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 font-mono text-right">
+                            {open.count > 0
+                              ? <span className="text-yellow-400 font-bold">{open.count}</span>
+                              : <span className="text-muted-foreground">—</span>}
+                          </td>
+                          <td className="px-4 py-3 font-mono text-right text-muted-foreground">
+                            {open.deployed > 0 ? formatCurrency(open.deployed) : "—"}
+                          </td>
+                          <td className="px-4 py-3 font-mono text-right text-muted-foreground">
+                            {closed ? Math.max(0, closed.trades - open.count) : 0}
+                          </td>
+                          <td className="px-4 py-3 font-mono text-right">
+                            {closed && Math.max(0, closed.trades - open.count) > 0
+                              ? <span className={closed.winRate >= 0.5 ? "text-success" : "text-destructive"}>
+                                {(closed.winRate * 100).toFixed(0)}%
+                                <span className="text-muted-foreground ml-1 text-[10px]">({closed.wins}W)</span>
+                              </span>
+                              : <span className="text-muted-foreground text-[10px]">pending</span>
+                            }
+                          </td>
+                          <td className="px-4 py-3 font-mono text-right text-primary">
+                            {closed ? `${closed.avgEdge.toFixed(1)}%` : "—"}
+                          </td>
+                          <td className={`px-4 py-3 font-mono font-bold text-right ${!closed || closed.totalPnl >= 0 ? "text-success" : "text-destructive"}`}>
+                            {closed && closed.totalPnl !== 0
+                              ? `${closed.totalPnl >= 0 ? "+" : ""}${formatCurrency(closed.totalPnl)}`
+                              : <span className="text-muted-foreground">—</span>}
+                          </td>
+                          <td className={`px-4 py-3 font-mono font-bold text-right ${!closed || closed.roi >= 0 ? "text-success" : "text-destructive"}`}>
+                            {closed && closed.roi !== 0
+                              ? `${closed.roi >= 0 ? "+" : ""}${(closed.roi * 100).toFixed(1)}%`
+                              : <span className="text-muted-foreground">—</span>}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })()}
 
         {/* Open Positions */}
         {openTrades.length > 0 && (

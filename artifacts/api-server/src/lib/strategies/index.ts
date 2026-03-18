@@ -401,16 +401,23 @@ const marketMaking: Strategy = {
   },
 };
 
+/**
+ * Strategy priority order matters: the pipeline tags each trade with the FIRST
+ * matching strategy. Specialized strategies must come before broad catch-alls so
+ * a Dip Buy trade is tagged "Dip Buy" (not "Pure Value").
+ *
+ * Order: most selective (requires specific market conditions) → least selective (catch-all)
+ */
 export const strategies: Strategy[] = [
-  pureValue,
-  sharpMoney,
-  contrarianReversal,
-  momentum,
-  lateEfficiency,
-  dipBuy,
-  sharpArb,
-  marketMaking,
-  probabilityArb,
+  sharpArb,          // Requires ODDS_API_KEY + Pinnacle line — most specific
+  probabilityArb,    // Requires multi-leg YES sum > 100% — pure math
+  dipBuy,            // Requires isDip = true in price history — specific
+  marketMaking,      // Requires spread ≥ 5¢ + liquidity > $1000 — specific
+  contrarianReversal, // Requires >8% price move from open vs model — specific
+  lateEfficiency,    // Requires hoursToExpiry ≤ 36 + wide spread — fairly specific
+  sharpMoney,        // Requires high vol/liquidity ratio — medium
+  momentum,          // Requires directional price movement — medium
+  pureValue,         // Catch-all: any market with edge ≥ 4pp — always last
 ];
 
 export function getStrategy(name: string): Strategy | undefined {
