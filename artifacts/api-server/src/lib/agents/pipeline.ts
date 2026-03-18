@@ -318,7 +318,7 @@ export async function runTradingCycle(): Promise<CycleResult> {
       riskDecisions.push(decision);
       if (decision.approved) {
         const entryPrice = decision.audit.analysis.side === "yes"
-          ? decision.audit.analysis.candidate.yesPrice
+          ? (decision.audit.analysis.candidate.yesAsk || decision.audit.analysis.candidate.yesPrice)
           : (decision.audit.analysis.candidate.noAsk || decision.audit.analysis.candidate.noPrice);
         effectiveBankroll -= decision.positionSize * entryPrice;
         approvedThisCycle++;

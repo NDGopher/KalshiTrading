@@ -18,7 +18,9 @@ export interface ScanCandidate {
   market: KalshiMarket;
   yesPrice: number;
   noPrice: number;
-  /** Live NO ask price from order book (used as execution price for NO trades) */
+  /** Live YES ask price from order book (actual cost when buying YES) */
+  yesAsk: number;
+  /** Live NO ask price from order book (actual cost when buying NO) */
   noAsk: number;
   spread: number;
   volume24h: number;
@@ -32,37 +34,6 @@ export interface ScanCandidate {
 
 // Kalshi KXMVE markets typically close 1-2 weeks out; keep window at 2 weeks (336 h)
 const MAX_HOURS_TO_EXPIRY = 336;
-
-/**
- * Ticker prefixes that are structurally un-analyzable and will always lose:
- *
- * KXMVECROSSCATEGORY / KXMVESPORTSMULTIGAMEEXTENDED
- *   Multi-leg AND-condition parlays (e.g. "NYK wins AND OKC wins AND player scores 30+").
- *   The AI cannot compute conjunction probabilities without per-game outcomes and
- *   consistently misprices these — confirmed by empirical loss data.
- *
- * KXWBCTOTAL
- *   World Baseball Classic total-runs markets where the resolution threshold is absent
- *   from the title, making the contract uninterpretable.
- *
- * KXNBASPREAD / KXNHLSPREAD / KXNFLSPREAD / KXMLBSPREAD
- *   Sports point-spread markets priced by sharp, high-volume orderbooks.
- *   The AI has no live scores, injury data, or line-movement signal to justify
- *   disagreeing with these prices — empirical win rate: 29% at −$1,887 net.
- */
-const BLOCKED_TICKER_PREFIXES = [
-  "KXMVECROSSCATEGORY",
-  "KXMVESPORTSMULTIGAMEEXTENDED",
-  "KXWBCTOTAL",
-  "KXNBASPREAD",
-  "KXNHLSPREAD",
-  "KXNFLSPREAD",
-  "KXMLBSPREAD",
-];
-
-function isBlockedTicker(ticker: string): boolean {
-  return BLOCKED_TICKER_PREFIXES.some((prefix) => ticker.startsWith(prefix));
-}
 
 function proximityScore(hoursToExpiry: number): number {
   if (hoursToExpiry <= 6) return 5.0;
@@ -88,18 +59,16 @@ function compositeScore(candidate: ScanCandidate): number {
 }
 
 function buildCandidateFromKalshi(market: KalshiMarket): ScanCandidate | null {
-  // Structurally un-analyzable market families — block unconditionally
-  if (isBlockedTicker(market.ticker)) return null;
-
   const now = new Date();
   const rawAsk = getMarketYesAsk(market);
   const rawBid = getMarketYesBid(market);
-  // Use live order book midpoint (via getMarketYesPrice) — NOT last_price which is stale
+  // Live order book midpoint — NOT stale last_price
   const yesPrice = getMarketYesPrice(market);
   if (!yesPrice || yesPrice < 0.02 || yesPrice > 0.98) return null;
 
   const noPrice = 1 - yesPrice;
-  // Live NO ask price from order book for accurate execution pricing
+  // Actual ask prices for execution — what you pay when you buy YES or NO
+  const yesAsk = rawAsk > 0 ? rawAsk : yesPrice;
   const noAsk = getMarketNoAsk(market) || noPrice;
   const rawSpread = rawAsk > 0 && rawBid > 0 ? Math.abs(rawAsk - rawBid) : 0;
   const spread = rawSpread > 0 && rawSpread < 0.5 ? rawSpread : Math.min(0.05, yesPrice * 0.05);
@@ -113,14 +82,14 @@ function buildCandidateFromKalshi(market: KalshiMarket): ScanCandidate | null {
   if (hoursToExpiry < 0.5) return null;
   if (hoursToExpiry > MAX_HOURS_TO_EXPIRY) return null;
 
-  // Global liquidity floor: any market with no volume AND under $20 liquidity
-  // is untradeable — the AI has no price discovery signal to anchor on.
-  if (volume24h === 0 && liquidity < 20) return null;
+  // Liquidity floor: markets with zero volume AND under $50 liquidity have no
+  // real price discovery signal — skip them regardless of category.
+  if (volume24h === 0 && liquidity < 50) return null;
 
-  // Secondary gate: near-expiry illiquid markets are ghost markets
-  if (hoursToExpiry < 4 && volume24h < 10 && liquidity < 50) return null;
+  // Near-expiry illiquid ghost markets — spread is meaningless and fills are impossible
+  if (hoursToExpiry < 4 && volume24h < 10 && liquidity < 100) return null;
 
-  return { market, yesPrice, noPrice, noAsk, spread, volume24h, liquidity, hoursToExpiry };
+  return { market, yesPrice, noPrice, yesAsk, noAsk, spread, volume24h, liquidity, hoursToExpiry };
 }
 
 async function scanFromCachedDb(): Promise<{ candidates: ScanCandidate[]; totalScanned: number }> {
@@ -177,6 +146,7 @@ async function scanFromCachedDb(): Promise<{ candidates: ScanCandidate[]; totalS
       market,
       yesPrice: price,
       noPrice: 1 - price,
+      yesAsk: row.yesAsk || price + 0.02,
       noAsk: 1 - (row.yesBid || price - 0.02),
       spread,
       volume24h: row.volume24h || typicalVolume,

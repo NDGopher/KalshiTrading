@@ -118,9 +118,9 @@ export function computeRisk(
 
   const rawP = analysis.modelProbability;
   const p = analysis.side === "yes" ? rawP : 1 - rawP;
-  // Use live ask price for accurate Kelly computation — noAsk is the actual cost of a NO contract
+  // Kelly uses actual ask prices — what you pay per contract at the order book
   const marketPrice = analysis.side === "yes"
-    ? analysis.candidate.yesPrice
+    ? (analysis.candidate.yesAsk || analysis.candidate.yesPrice)
     : (analysis.candidate.noAsk || analysis.candidate.noPrice);
   const b = (1 / marketPrice) - 1;
   const q = 1 - p;
