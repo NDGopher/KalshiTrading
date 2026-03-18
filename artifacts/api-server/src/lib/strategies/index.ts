@@ -10,6 +10,9 @@ export interface StrategyMetadata {
   publicBiasScore?: number;
   reversalMagnitude?: number;
   sharpScore?: number;
+  priceDropPct?: number;
+  sharpEdgePp?: number;
+  bidAskSpread?: number;
 }
 
 export interface Strategy {
@@ -42,9 +45,7 @@ function resolveOpenPrice(candidate: ScanCandidate): number | null {
   return null;
 }
 
-// Strategy 1: Pure Value
-// Trades when the model finds a meaningful probability divergence from market price.
-// No directional bias — model decides YES or NO based on true probability estimate.
+// ─── Strategy 1: Pure Value ───────────────────────────────────────────────────
 const pureValue: Strategy = {
   name: "Pure Value",
   description: "Trades when model probability diverges significantly from market price, regardless of direction.",
@@ -52,8 +53,6 @@ const pureValue: Strategy = {
     return candidates.filter((c) => c.yesPrice > 0.05 && c.yesPrice < 0.95);
   },
   shouldTrade(analysis) {
-    // 25% confidence floor: game-day sports markets (NBA spreads, soccer) naturally land
-    // at 25-30% with Claude without real-time injury data — this is honest uncertainty.
     if (analysis.edge >= 4 && analysis.confidence >= 0.25) {
       return { trade: true, reason: `Pure value: ${analysis.edge.toFixed(1)}pp edge, ${(analysis.confidence * 100).toFixed(0)}% confidence` };
     }
@@ -61,9 +60,7 @@ const pureValue: Strategy = {
   },
 };
 
-// Strategy 2: Sharp Money
-// Follows volume surges on liquid markets — elevated volume/liquidity ratio indicates informed
-// traders ("sharps") are moving the market. Model still decides bet direction.
+// ─── Strategy 2: Sharp Money ──────────────────────────────────────────────────
 const sharpMoney: Strategy = {
   name: "Sharp Money",
   description: "Trades markets with elevated informed volume flow (high volume/liquidity ratio). Sharps are active — follow the AI's probability edge.",
@@ -77,7 +74,6 @@ const sharpMoney: Strategy = {
     const volume = analysis.candidate.volume24h;
     const liquidity = Math.max(1, analysis.candidate.liquidity);
     const volumeToLiquidity = Math.min(volume / liquidity, 10);
-
     const sharpScore = volumeToLiquidity * analysis.edge;
 
     if (analysis.edge >= 5 && analysis.confidence >= 0.40 && volumeToLiquidity >= 0.5) {
@@ -91,9 +87,7 @@ const sharpMoney: Strategy = {
   },
 };
 
-// Strategy 3: Contrarian Reversal
-// When a market has moved sharply away from its opening price AND the model thinks it has
-// overshot, bet the reversal. Works for all market types (elections, sports, etc.).
+// ─── Strategy 3: Contrarian Reversal ─────────────────────────────────────────
 const contrarianReversal: Strategy = {
   name: "Contrarian Reversal",
   description: "Bets against sharp price overreactions when the AI model identifies the market has overshot fair value.",
@@ -101,7 +95,6 @@ const contrarianReversal: Strategy = {
     return candidates.filter((c) => {
       const openPrice = resolveOpenPrice(c);
       if (!openPrice) return false;
-
       const priceMoveAbsolute = Math.abs(c.yesPrice - openPrice);
       const priceMoveRelative = openPrice > 0 ? priceMoveAbsolute / openPrice : 0;
       return priceMoveRelative > 0.08 && c.yesPrice > 0.05 && c.yesPrice < 0.95;
@@ -110,11 +103,8 @@ const contrarianReversal: Strategy = {
   shouldTrade(analysis) {
     const currentPrice = analysis.candidate.yesPrice;
     const openPrice = resolveOpenPrice(analysis.candidate) ?? currentPrice;
-
     const priceMove = currentPrice - openPrice;
     const modelMove = analysis.modelProbability - openPrice;
-
-    // Reversal signal: price moved one direction, model points the other way
     const isContrarian = (priceMove > 0 && modelMove < 0) || (priceMove < 0 && modelMove > 0);
     const reversalMagnitude = Math.abs(priceMove / Math.max(0.01, openPrice)) * 100;
 
@@ -129,8 +119,7 @@ const contrarianReversal: Strategy = {
   },
 };
 
-// Strategy 4: Momentum
-// Follows strong directional price moves backed by model confidence.
+// ─── Strategy 4: Momentum ─────────────────────────────────────────────────────
 const momentum: Strategy = {
   name: "Momentum",
   description: "Follows strong price movements backed by model confidence in high-activity periods.",
@@ -152,7 +141,6 @@ const momentum: Strategy = {
       ? Math.abs(currentPrice - referencePrice) / referencePrice * 100
       : 0;
     const trendDirection = currentPrice > referencePrice ? "up" : "down";
-
     const volume = analysis.candidate.volume24h;
     const liquidity = Math.max(1, analysis.candidate.liquidity);
     const volumeSurge = volume > 0 ? Math.min(volume / liquidity, 10) : 1.0;
@@ -168,8 +156,7 @@ const momentum: Strategy = {
   },
 };
 
-// Strategy 5: Late Efficiency
-// Exploits spread inefficiencies in markets approaching expiry.
+// ─── Strategy 5: Late Efficiency ──────────────────────────────────────────────
 const lateEfficiency: Strategy = {
   name: "Late Efficiency",
   description: "Exploits spread inefficiencies across all pre-game and near-expiry windows where pricing hasn't converged.",
@@ -193,7 +180,160 @@ const lateEfficiency: Strategy = {
   },
 };
 
-export const strategies: Strategy[] = [pureValue, sharpMoney, contrarianReversal, momentum, lateEfficiency];
+// ─── Strategy 6: Dip Buy (Mean Reversion) ────────────────────────────────────
+/**
+ * Triggered when a market's price has dropped significantly from its recent mean
+ * AND the model believes the drop is unjustified (i.e., model probability is higher
+ * than the current depressed price).
+ *
+ * Classic example: KXNHLGAME-WPGBOS was stable at 0.44 for 12 hours, then
+ * dropped to 0.39 in one cycle with no news → 11.4% dip → buy YES at 0.39.
+ *
+ * This ONLY fires on pregame markets (>2h to expiry) to avoid confusing
+ * live-game price movement (which is informative, not a dip) with stale mispricing.
+ */
+const dipBuy: Strategy = {
+  name: "Dip Buy",
+  description: "Buys into unexplained pregame price drops. When a market falls significantly from its recent mean with no news catalyst, mean reversion is the trade.",
+  selectCandidates(candidates) {
+    return candidates.filter((c) => {
+      const h = c.priceHistory;
+      return (
+        h?.isDip === true &&
+        c.hoursToExpiry > 2 &&
+        c.yesPrice > 0.10 &&
+        c.yesPrice < 0.90
+      );
+    });
+  },
+  shouldTrade(analysis) {
+    const h = analysis.candidate.priceHistory;
+    if (!h?.isDip) return { trade: false, reason: "No price dip detected" };
+
+    const priceDropPct = Math.abs(h.currentVsMeanPct);
+    const hoursLeft = analysis.candidate.hoursToExpiry;
+
+    // Require model to also see value at the current depressed price
+    if (analysis.edge >= 5 && analysis.confidence >= 0.30 && hoursLeft > 2) {
+      return {
+        trade: true,
+        reason: `Dip buy: price dropped ${priceDropPct.toFixed(1)}% from recent mean (${h.recentMean.toFixed(2)} → ${analysis.candidate.yesPrice.toFixed(2)}), model sees ${analysis.edge.toFixed(1)}pp edge`,
+        metadata: { dipCatch: true, priceDropPct, hoursRemaining: hoursLeft },
+      };
+    }
+    return {
+      trade: false,
+      reason: `Dip detected (${priceDropPct.toFixed(1)}%) but model edge insufficient (${analysis.edge.toFixed(1)}pp)`,
+    };
+  },
+};
+
+// ─── Strategy 7: Sharp Arb ────────────────────────────────────────────────────
+/**
+ * Fires when Kalshi's implied probability deviates materially from Pinnacle's
+ * no-vig fair line. Pinnacle is the sharpest book in the world — when Kalshi
+ * is cheaper than Pinnacle's fair probability, it's near-certain positive EV.
+ *
+ * Requires: ODDS_API_KEY environment variable pointing to the-odds-api.com.
+ * Without the key, this strategy never fires (gracefully skipped).
+ *
+ * Edge direction:
+ *   kalshiEdgeVsSharp < 0 → Kalshi YES is underpriced → BUY YES
+ *   kalshiEdgeVsSharp > 0 → Kalshi YES is overpriced  → BUY NO
+ */
+const sharpArb: Strategy = {
+  name: "Sharp Arb",
+  description: "Trades when Kalshi's price deviates from Pinnacle's no-vig fair line by ≥3pp. Requires ODDS_API_KEY.",
+  selectCandidates(candidates) {
+    return candidates.filter((c) => {
+      const sl = c.sharpLine;
+      return sl !== null && sl !== undefined && sl.edgeSide !== "NONE";
+    });
+  },
+  shouldTrade(analysis) {
+    const sl = analysis.candidate.sharpLine;
+    if (!sl || sl.edgeSide === "NONE") {
+      return { trade: false, reason: "No sharp book line available or no material edge" };
+    }
+
+    const edgePp = Math.abs(sl.kalshiEdgeVsSharp);
+    const MIN_EDGE_PP = 3;
+
+    if (edgePp >= MIN_EDGE_PP) {
+      const side = sl.edgeSide;
+      const pinnacleStr = (sl.noVigYesProb * 100).toFixed(1);
+      const kalshiStr = (analysis.candidate.yesPrice * 100).toFixed(1);
+      return {
+        trade: true,
+        reason: `Sharp arb: buy ${side} — Pinnacle fair=${pinnacleStr}¢, Kalshi=${kalshiStr}¢, edge=${edgePp.toFixed(1)}pp vs ${sl.bookmaker}`,
+        metadata: { sharpEdgePp: edgePp },
+      };
+    }
+
+    return { trade: false, reason: `Sharp edge too small: ${edgePp.toFixed(1)}pp (need ≥${MIN_EDGE_PP}pp)` };
+  },
+};
+
+// ─── Strategy 8: Market Making ────────────────────────────────────────────────
+/**
+ * Identifies markets where the bid-ask spread is wide enough to profitably
+ * post limit orders on both sides and earn the spread as a liquidity provider.
+ *
+ * In paper mode: flags markets as MM candidates and simulates quoting both sides.
+ * To collect the spread you need both sides to fill — adverse selection is the risk.
+ *
+ * Only fires on markets with:
+ *   - Spread ≥ 5¢ (enough margin after Kalshi's 7¢/contract fee on the winning side)
+ *   - Sufficient liquidity to suggest regular order flow
+ *   - Not near expiry (live game price movement destroys MM positions)
+ */
+const marketMaking: Strategy = {
+  name: "Market Making",
+  description: "Posts limit orders on both sides of wide-spread markets to earn the bid-ask as a liquidity provider. Requires flat markets with no directional signal.",
+  selectCandidates(candidates) {
+    return candidates.filter((c) => {
+      return (
+        c.spread >= 0.05 &&
+        c.liquidity > 1000 &&
+        c.hoursToExpiry > 4 &&
+        c.yesPrice > 0.15 &&
+        c.yesPrice < 0.85
+      );
+    });
+  },
+  shouldTrade(analysis) {
+    const spread = analysis.candidate.spread;
+    const liquidity = analysis.candidate.liquidity;
+    const hoursLeft = analysis.candidate.hoursToExpiry;
+
+    // Only make markets when the AI does NOT have a strong directional view
+    // (a directional conviction is better served by the other strategies)
+    if (Math.abs(analysis.edge) > 8) {
+      return { trade: false, reason: `Strong directional signal (edge=${analysis.edge.toFixed(1)}pp) — use directional strategy instead` };
+    }
+
+    if (spread >= 0.05 && liquidity > 1000 && hoursLeft > 4) {
+      const spreadPct = (spread * 100).toFixed(1);
+      return {
+        trade: true,
+        reason: `Market making: ${spreadPct}¢ spread, $${liquidity.toFixed(0)} liquidity, ${hoursLeft.toFixed(1)}h to expiry — post both sides to earn spread`,
+        metadata: { bidAskSpread: spread, hoursRemaining: hoursLeft },
+      };
+    }
+    return { trade: false, reason: `Spread too tight or market too illiquid (spread=${(spread * 100).toFixed(1)}¢, liq=$${liquidity.toFixed(0)})` };
+  },
+};
+
+export const strategies: Strategy[] = [
+  pureValue,
+  sharpMoney,
+  contrarianReversal,
+  momentum,
+  lateEfficiency,
+  dipBuy,
+  sharpArb,
+  marketMaking,
+];
 
 export function getStrategy(name: string): Strategy | undefined {
   return strategies.find((s) => s.name === name);

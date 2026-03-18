@@ -7,6 +7,8 @@ import {
 } from "../kalshi-client.js";
 import { db, historicalMarketsTable } from "@workspace/db";
 import { ne, desc } from "drizzle-orm";
+import { batchGetPriceHistory, type PriceHistory } from "../price-history.js";
+import { batchGetSharpLines, type SharpLine } from "../sharp-odds.js";
 
 export interface ScanCandidate {
   market: KalshiMarket;
@@ -16,6 +18,10 @@ export interface ScanCandidate {
   volume24h: number;
   liquidity: number;
   hoursToExpiry: number;
+  /** Price dip/surge signal from recent snapshot history (null if insufficient data) */
+  priceHistory?: PriceHistory | null;
+  /** Sharp book comparison vs Pinnacle (null if no API key or not a game market) */
+  sharpLine?: SharpLine | null;
 }
 
 // Kalshi KXMVE markets typically close 1-2 weeks out; keep window at 2 weeks (336 h)
@@ -68,7 +74,11 @@ function compositeScore(candidate: ScanCandidate): number {
   const proximity = proximityScore(candidate.hoursToExpiry);
   // Spread quality: tighter spreads = more efficient market = better execution
   const spreadQuality = Math.max(0, 1 - candidate.spread / 0.2);
-  return proximity * 3 + volNorm * 1.5 + liqNorm * 0.5 + spreadQuality * 0.5;
+  // Bonus for dip/surge signals — bump these up in priority
+  const dipBonus = candidate.priceHistory?.isDip || candidate.priceHistory?.isSurge ? 0.8 : 0;
+  // Bonus when sharp book comparison shows an edge
+  const sharpBonus = candidate.sharpLine && candidate.sharpLine.edgeSide !== "NONE" ? 1.5 : 0;
+  return proximity * 3 + volNorm * 1.5 + liqNorm * 0.5 + spreadQuality * 0.5 + dipBonus + sharpBonus;
 }
 
 function buildCandidateFromKalshi(market: KalshiMarket): ScanCandidate | null {
@@ -173,6 +183,29 @@ async function scanFromCachedDb(): Promise<{ candidates: ScanCandidate[]; totalS
 }
 
 /**
+ * Enrich top candidates with price history (dip detection) and sharp book lines.
+ * Only applied to top N candidates to avoid excessive DB load on each scan cycle.
+ */
+async function enrichCandidates(candidates: ScanCandidate[]): Promise<void> {
+  const TOP_N = 40;
+  const toEnrich = candidates.slice(0, TOP_N);
+  const tickers = toEnrich.map((c) => c.market.ticker);
+
+  const [priceHistories, sharpLines] = await Promise.all([
+    batchGetPriceHistory(tickers, 24).catch(() => new Map<string, PriceHistory>()),
+    batchGetSharpLines(tickers.map((t) => ({
+      ticker: t,
+      yesPrice: toEnrich.find((c) => c.market.ticker === t)?.yesPrice ?? 0.5,
+    }))).catch(() => new Map<string, SharpLine>()),
+  ]);
+
+  for (const candidate of toEnrich) {
+    candidate.priceHistory = priceHistories.get(candidate.market.ticker) ?? null;
+    candidate.sharpLine = sharpLines.get(candidate.market.ticker) ?? null;
+  }
+}
+
+/**
  * Scan markets from Kalshi.
  * By default fetches ALL liquid markets across every category (sports, politics, crypto, etc.).
  * If sportFilters is provided and non-empty, it is logged but does not restrict the universe —
@@ -223,6 +256,12 @@ export async function scanMarkets(_sportFilters?: string[]): Promise<{
       }));
       await db.insert(historicalMarketsTable).values(snapshots);
     } catch (_e) {}
+
+    // Enrich with price history and sharp odds (best-effort, non-blocking)
+    await enrichCandidates(topCandidates).catch(() => {});
+
+    // Re-sort after enrichment so dip/sharp signals bubble up
+    topCandidates.sort((a, b) => compositeScore(b) - compositeScore(a));
 
     return { candidates: topCandidates, totalScanned: markets.length, source: "live" };
   } catch (err: unknown) {

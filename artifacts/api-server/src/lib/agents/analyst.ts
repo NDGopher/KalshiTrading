@@ -246,6 +246,46 @@ export async function analyzeMarket(candidate: ScanCandidate): Promise<AnalysisR
     ? `- Open Price: $${signals.openPrice.toFixed(4)} → Current: $${yesPrice.toFixed(4)} (${signals.priceChange! > 0 ? "+" : ""}${signals.priceChange!.toFixed(1)}% drift)`
     : "";
 
+  // ── Price dip/surge signal ────────────────────────────────────────────────
+  let priceHistorySection = "";
+  if (candidate.priceHistory) {
+    const ph = candidate.priceHistory;
+    if (ph.isDip) {
+      priceHistorySection = `
+## ⚠️ PRICE DIP DETECTED (Mean Reversion Signal)
+The YES price has fallen ${Math.abs(ph.currentVsMeanPct).toFixed(1)}% below its ${ph.snapshots}-snapshot rolling mean.
+- Recent mean: $${ph.recentMean.toFixed(4)} | Range: $${ph.recentMin.toFixed(4)} – $${ph.recentMax.toFixed(4)}
+- Current price: $${yesPrice.toFixed(4)} (${Math.abs(ph.currentVsMeanPct).toFixed(1)}% below mean)
+- Std deviation: $${ph.stdDev.toFixed(4)}
+INTERPRETATION: This pregame price drop may reflect temporary order imbalance, a thin sell order, or stale arbitrage — NOT necessarily new information. Ask yourself: Is there a news catalyst (injury, lineup change, weather event) that justifies this drop? If not, this is a potential dip-buy opportunity. If yes, incorporate it into your probability estimate and do NOT treat this as a dip.`;
+    } else if (ph.isSurge) {
+      priceHistorySection = `
+## ⚠️ PRICE SURGE DETECTED (Potential Fade Signal)
+The YES price has risen ${ph.currentVsMeanPct.toFixed(1)}% above its ${ph.snapshots}-snapshot rolling mean.
+- Recent mean: $${ph.recentMean.toFixed(4)} | Range: $${ph.recentMin.toFixed(4)} – $${ph.recentMax.toFixed(4)}
+- Current price: $${yesPrice.toFixed(4)} (${ph.currentVsMeanPct.toFixed(1)}% above mean)
+INTERPRETATION: Sudden price surge without news may be temporary. Consider whether NO is now underpriced.`;
+    } else {
+      priceHistorySection = `
+## Price History (${ph.snapshots} snapshots, 24h lookback)
+- Rolling mean: $${ph.recentMean.toFixed(4)} | Range: $${ph.recentMin.toFixed(4)} – $${ph.recentMax.toFixed(4)} | Current deviation: ${ph.currentVsMeanPct > 0 ? "+" : ""}${ph.currentVsMeanPct.toFixed(1)}% from mean`;
+    }
+  }
+
+  // ── Sharp book comparison ─────────────────────────────────────────────────
+  let sharpOddsSection = "";
+  if (candidate.sharpLine) {
+    const sl = candidate.sharpLine;
+    const edgeDir = sl.kalshiEdgeVsSharp < 0 ? "Kalshi UNDERPRICED vs sharp → BUY YES" : "Kalshi OVERPRICED vs sharp → BUY NO";
+    sharpOddsSection = `
+## Sharp Book Comparison (${sl.bookmaker})
+- Pinnacle implied YES probability: ${(sl.pinnacleYesProb * 100).toFixed(1)}%
+- No-vig fair probability (YES): ${(sl.noVigYesProb * 100).toFixed(1)}%
+- Kalshi YES price: ${(yesPrice * 100).toFixed(1)}%
+- Edge vs sharp: ${sl.kalshiEdgeVsSharp > 0 ? "+" : ""}${sl.kalshiEdgeVsSharp.toFixed(1)}pp (${edgeDir})
+⚡ Pinnacle is one of the sharpest books globally. When Kalshi deviates ≥3pp from Pinnacle's no-vig line, it is near-certainly mispriced. Weight this heavily in your analysis.`;
+  }
+
   // For near-expiry sports markets, attempt to fetch the live game score
   let liveScoreSection = "";
   const isNearExpirySports = category === "Sports" && hoursToExpiry < 4;
@@ -306,7 +346,7 @@ ${openPriceSection}
 - Price Region: ${signals.priceRegion} (${signals.impliedProb.toFixed(1)}% implied)
 - Volume/Liquidity Ratio: ${signals.volumeToLiquidity.toFixed(2)} (${signals.volumeToLiquidity > 3 ? "⚡ heavy flow — possible informed trading" : signals.volumeToLiquidity > 1 ? "moderate activity" : "light flow"})
 - Market Efficiency: ${signals.marketEfficiency} (${signals.marketEfficiency === "high" ? "tight spread + high volume — edge is rare" : signals.marketEfficiency === "low" ? "wide spread or low volume — mispricing more likely" : "moderate efficiency"})
-${liveScoreSection}${newsSection}
+${priceHistorySection}${sharpOddsSection}${liveScoreSection}${newsSection}
 
 ## Analysis Framework (${category})
 ${categoryGuidance}

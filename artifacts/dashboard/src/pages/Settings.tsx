@@ -16,6 +16,9 @@ const ALL_STRATEGIES = [
   { name: "Contrarian Reversal", description: "Bets against sharp price overreactions when the AI model identifies the market has overshot fair value.", color: "#f59e0b" },
   { name: "Momentum", description: "Follows strong directional price moves backed by model confidence in high-activity periods.", color: "#60a5fa" },
   { name: "Late Efficiency", description: "Exploits spread inefficiencies in the final 36 hours before settlement when pricing hasn't converged.", color: "#f87171" },
+  { name: "Dip Buy", description: "Buys when a pregame market drops ≥8% below its 24h rolling mean with no news catalyst — mean reversion back to fair value.", color: "#22d3ee" },
+  { name: "Sharp Arb", description: "Trades when Kalshi's price deviates ≥3pp from Pinnacle's no-vig fair line. Requires ODDS_API_KEY. Near-certain +EV when it fires.", color: "#fb923c" },
+  { name: "Market Making", description: "Posts limit orders on both sides of wide-spread markets (≥5¢ spread) to earn the bid-ask as a liquidity provider. Best for flat markets with no directional signal.", color: "#e879f9" },
 ];
 
 interface SettingsData {
