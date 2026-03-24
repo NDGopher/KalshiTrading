@@ -50,9 +50,16 @@ const pureValue: Strategy = {
   name: "Pure Value",
   description: "Trades when model probability diverges significantly from market price, regardless of direction.",
   selectCandidates(candidates) {
-    return candidates.filter((c) => c.yesPrice > 0.05 && c.yesPrice < 0.95);
+    // 12–88¢: same uncertainty band as the scanner. Extreme prices are already
+    // correctly priced by the market — we have no information advantage there.
+    return candidates.filter((c) => c.yesPrice >= 0.12 && c.yesPrice <= 0.88);
   },
   shouldTrade(analysis) {
+    // Edge sanity cap: anything > 50pp means the AI is hallucinating a fake edge
+    // (e.g., claiming 200pp edge on a market priced at 8¢). Cap and reject.
+    if (analysis.edge > 50) {
+      return { trade: false, reason: `Edge claim ${analysis.edge.toFixed(0)}pp exceeds sanity cap — model hallucination, skip` };
+    }
     if (analysis.edge >= 4 && analysis.confidence >= 0.25) {
       return { trade: true, reason: `Pure value: ${analysis.edge.toFixed(1)}pp edge, ${(analysis.confidence * 100).toFixed(0)}% confidence` };
     }
@@ -67,10 +74,11 @@ const sharpMoney: Strategy = {
   selectCandidates(candidates) {
     return candidates.filter((c) => {
       const hasVolume = c.volume24h > 100 || c.liquidity > 5000;
-      return hasVolume && c.yesPrice > 0.05 && c.yesPrice < 0.95;
+      return hasVolume && c.yesPrice >= 0.12 && c.yesPrice <= 0.88;
     });
   },
   shouldTrade(analysis) {
+    if (analysis.edge > 50) return { trade: false, reason: `Edge ${analysis.edge.toFixed(0)}pp exceeds sanity cap` };
     const volume = analysis.candidate.volume24h;
     const liquidity = Math.max(1, analysis.candidate.liquidity);
     const volumeToLiquidity = Math.min(volume / liquidity, 10);
@@ -101,6 +109,7 @@ const contrarianReversal: Strategy = {
     });
   },
   shouldTrade(analysis) {
+    if (analysis.edge > 50) return { trade: false, reason: `Edge ${analysis.edge.toFixed(0)}pp exceeds sanity cap` };
     const currentPrice = analysis.candidate.yesPrice;
     const openPrice = resolveOpenPrice(analysis.candidate) ?? currentPrice;
     const priceMove = currentPrice - openPrice;
@@ -127,6 +136,7 @@ const momentum: Strategy = {
     return candidates.filter((c) => c.yesPrice > 0.08 && c.yesPrice < 0.92);
   },
   shouldTrade(analysis) {
+    if (analysis.edge > 50) return { trade: false, reason: `Edge ${analysis.edge.toFixed(0)}pp exceeds sanity cap` };
     const hoursLeft = analysis.candidate.hoursToExpiry;
     const currentPrice = analysis.candidate.yesPrice;
     const market = analysis.candidate.market;
@@ -159,11 +169,23 @@ const momentum: Strategy = {
 // ─── Strategy 5: Late Efficiency ──────────────────────────────────────────────
 const lateEfficiency: Strategy = {
   name: "Late Efficiency",
-  description: "Exploits spread inefficiencies across all pre-game and near-expiry windows where pricing hasn't converged.",
+  description: "Exploits spread inefficiencies in pre-game and near-expiry windows. Only operates in 12–88¢ uncertainty zone — no bets on near-certain outcomes.",
   selectCandidates(candidates) {
-    return candidates.filter((c) => c.hoursToExpiry > 0.25 && c.hoursToExpiry <= 36 && c.spread > 0.01);
+    return candidates.filter((c) =>
+      c.hoursToExpiry > 0.25 &&
+      c.hoursToExpiry <= 36 &&
+      c.spread > 0.01 &&
+      // Must be in genuine uncertainty zone — extreme prices = post-game or certainty
+      c.yesPrice >= 0.12 &&
+      c.yesPrice <= 0.88
+    );
   },
   shouldTrade(analysis) {
+    // Reject inflated edge claims — these always come from extreme-price markets
+    // that slipped through or AI hallucinations. A real inefficiency edge is 5-25pp.
+    if (analysis.edge > 50) {
+      return { trade: false, reason: `Edge ${analysis.edge.toFixed(0)}pp exceeds sanity cap — likely extreme-price market or hallucination` };
+    }
     const hoursLeft = analysis.candidate.hoursToExpiry;
     const spread = analysis.candidate.spread;
     const yesPrice = Math.max(0.01, analysis.candidate.yesPrice);

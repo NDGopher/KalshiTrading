@@ -398,9 +398,11 @@ Respond in EXACTLY this JSON format (no other text):
 
     const yesSide = modelProb > yesPrice;
     const side: "yes" | "no" = yesSide ? "yes" : "no";
-    const edge = yesSide
-      ? (modelProb - yesPrice) / yesPrice * 100
-      : ((1 - modelProb) - (1 - yesPrice)) / (1 - yesPrice) * 100;
+    // Edge in PROBABILITY POINTS (pp): simple absolute difference between
+    // model's estimate and market price. Old formula divided by market price,
+    // which caused 625pp claims on 8¢ markets that had only a 50pp real edge.
+    // Max possible is 100pp (model says 99%, market says 1%).
+    const edge = Math.abs(modelProb - yesPrice) * 100;
 
     return {
       candidate,

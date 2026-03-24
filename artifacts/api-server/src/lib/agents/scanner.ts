@@ -64,7 +64,10 @@ function buildCandidateFromKalshi(market: KalshiMarket): ScanCandidate | null {
   const rawBid = getMarketYesBid(market);
   // Live order book midpoint — NOT stale last_price
   const yesPrice = getMarketYesPrice(market);
-  if (!yesPrice || yesPrice < 0.02 || yesPrice > 0.98) return null;
+  // Hard floor: < 10¢ or > 90¢ means the market has already priced in the outcome
+  // (or the game is over and we'd be betting into near-certain settled contracts).
+  // We have zero information advantage at the extremes — skip entirely.
+  if (!yesPrice || yesPrice < 0.10 || yesPrice > 0.90) return null;
 
   const noPrice = 1 - yesPrice;
   // Actual ask prices for execution — what you pay when you buy YES or NO
@@ -111,7 +114,8 @@ async function scanFromCachedDb(): Promise<{ candidates: ScanCandidate[]; totalS
     seen.add(row.kalshiTicker);
 
     const price = row.lastPrice || 0;
-    if (price <= 0.01 || price >= 0.99) continue;
+    // Same 10–90¢ hard floor as live path: skip near-certain / post-game markets
+    if (price < 0.10 || price > 0.90) continue;
 
     const expiresAt = new Date(row.closeTime || row.expirationTime || now);
     const hoursToExpiry = (expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60);
