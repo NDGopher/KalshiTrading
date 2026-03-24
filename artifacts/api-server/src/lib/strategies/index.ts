@@ -60,7 +60,7 @@ const pureValue: Strategy = {
     if (analysis.edge > 50) {
       return { trade: false, reason: `Edge claim ${analysis.edge.toFixed(0)}pp exceeds sanity cap — model hallucination, skip` };
     }
-    if (analysis.edge >= 4 && analysis.confidence >= 0.25) {
+    if (analysis.edge >= 4 && analysis.confidence >= 0.35) {
       return { trade: true, reason: `Pure value: ${analysis.edge.toFixed(1)}pp edge, ${(analysis.confidence * 100).toFixed(0)}% confidence` };
     }
     return { trade: false, reason: `Insufficient value: edge=${analysis.edge.toFixed(1)}pp, conf=${(analysis.confidence * 100).toFixed(0)}%` };
@@ -70,11 +70,16 @@ const pureValue: Strategy = {
 // ─── Strategy 2: Sharp Money ──────────────────────────────────────────────────
 const sharpMoney: Strategy = {
   name: "Sharp Money",
-  description: "Trades markets with elevated informed volume flow (high volume/liquidity ratio). Sharps are active — follow the AI's probability edge.",
+  description: "Trades markets with elevated informed volume flow vs liquidity. Only fires on live Kalshi API data — DB-cache candidates have synthetic volume numbers that produce direction-blind noise.",
   selectCandidates(candidates) {
     return candidates.filter((c) => {
-      const hasVolume = c.volume24h > 100 || c.liquidity > 5000;
-      return hasVolume && c.yesPrice >= 0.12 && c.yesPrice <= 0.88;
+      // Reject if volume/liquidity came from our synthetic estimates in the DB cache.
+      // Sharp Money is meaningless without real order-book numbers — a fabricated
+      // vol/liq ratio tells us nothing about actual informed activity.
+      if (!c.hasLiveData) return false;
+      const hasRealVolume = c.volume24h > 100;
+      const hasRealLiquidity = c.liquidity > 5000;
+      return (hasRealVolume || hasRealLiquidity) && c.yesPrice >= 0.12 && c.yesPrice <= 0.88;
     });
   },
   shouldTrade(analysis) {
@@ -84,47 +89,98 @@ const sharpMoney: Strategy = {
     const volumeToLiquidity = Math.min(volume / liquidity, 10);
     const sharpScore = volumeToLiquidity * analysis.edge;
 
-    if (analysis.edge >= 5 && analysis.confidence >= 0.40 && volumeToLiquidity >= 0.5) {
+    // Require a meaningful vol/liq ratio — 0.5x is trivially easy to hit.
+    // At 1.5x, someone is actually trading hard relative to available liquidity.
+    if (analysis.edge >= 5 && analysis.confidence >= 0.40 && volumeToLiquidity >= 1.5) {
       return {
         trade: true,
-        reason: `Sharp money: ${analysis.edge.toFixed(1)}pp edge, vol/liq=${volumeToLiquidity.toFixed(2)}, sharp score=${sharpScore.toFixed(1)}`,
+        reason: `Sharp money: ${analysis.edge.toFixed(1)}pp edge, vol/liq=${volumeToLiquidity.toFixed(2)}x (live), sharp score=${sharpScore.toFixed(1)}`,
         metadata: { sharpScore, volumeSurge: volumeToLiquidity },
       };
     }
-    return { trade: false, reason: `No sharp signal (edge=${analysis.edge.toFixed(1)}pp, vol/liq=${volumeToLiquidity.toFixed(2)})` };
+    return { trade: false, reason: `No sharp signal (edge=${analysis.edge.toFixed(1)}pp, vol/liq=${volumeToLiquidity.toFixed(2)}, liveData=${analysis.candidate.hasLiveData})` };
   },
 };
 
 // ─── Strategy 3: Contrarian Reversal ─────────────────────────────────────────
+/**
+ * Fades sudden price spikes (surges) in markets that were previously stable.
+ *
+ * The setup we're looking for:
+ *   1. Market was STEADY — low stdDev relative to mean over the lookback window
+ *   2. Price SPIKED recently — currently ≥10% above the recent mean (isSurge)
+ *   3. The surge happened recently (within ~3 hours) but not too recently (<15 min)
+ *      — too fresh might be real news, confirmed over a few cycles is safer
+ *   4. Volume did NOT surge alongside the price — a low-volume spike is a liquidity
+ *      buy that overshoots; a high-volume spike is informed buying (don't fade)
+ *   5. Model probability < current price (model says the spike overshot fair value)
+ *
+ * This is the mirror of Dip Buy (which fades drops). Together they form a
+ * mean-reversion pair: Dip Buy catches oversold, Contrarian catches overbought.
+ *
+ * We do NOT compare to open_price anymore — that field is often null in the DB
+ * and says nothing about whether the CURRENT market is stable or volatile.
+ */
 const contrarianReversal: Strategy = {
   name: "Contrarian Reversal",
-  description: "Bets against sharp price overreactions when the AI model identifies the market has overshot fair value.",
+  description: "Fades sudden price surges in stable markets. Requires price history showing a spike above the recent mean with low volume — classic liquidity overshoot that reverts.",
   selectCandidates(candidates) {
     return candidates.filter((c) => {
-      const openPrice = resolveOpenPrice(c);
-      if (!openPrice) return false;
-      const priceMoveAbsolute = Math.abs(c.yesPrice - openPrice);
-      const priceMoveRelative = openPrice > 0 ? priceMoveAbsolute / openPrice : 0;
-      return priceMoveRelative > 0.08 && c.yesPrice > 0.05 && c.yesPrice < 0.95;
+      const h = c.priceHistory;
+      if (!h?.isSurge) return false;
+      // Need enough history to confirm the market was stable before the spike
+      if (h.snapshots < 10) return false;
+      // Low volatility pre-surge = the market was in equilibrium, not already chaotic
+      const coefficientOfVariation = h.recentMean > 0 ? h.stdDev / h.recentMean : 1;
+      if (coefficientOfVariation > 0.15) return false; // >15% CV = market was already volatile, not a clean spike
+      // Must be in the uncertainty zone — no bets on extreme prices
+      return c.yesPrice >= 0.12 && c.yesPrice <= 0.88 && c.hoursToExpiry > 2;
     });
   },
   shouldTrade(analysis) {
     if (analysis.edge > 50) return { trade: false, reason: `Edge ${analysis.edge.toFixed(0)}pp exceeds sanity cap` };
-    const currentPrice = analysis.candidate.yesPrice;
-    const openPrice = resolveOpenPrice(analysis.candidate) ?? currentPrice;
-    const priceMove = currentPrice - openPrice;
-    const modelMove = analysis.modelProbability - openPrice;
-    const isContrarian = (priceMove > 0 && modelMove < 0) || (priceMove < 0 && modelMove > 0);
-    const reversalMagnitude = Math.abs(priceMove / Math.max(0.01, openPrice)) * 100;
 
-    if (isContrarian && analysis.edge >= 5 && analysis.confidence >= 0.38 && reversalMagnitude > 8) {
+    const h = analysis.candidate.priceHistory;
+    if (!h?.isSurge) return { trade: false, reason: "No surge detected in price history" };
+
+    // Find how long ago the surge started by scanning the series for when price
+    // crossed above the mean — oldest snapshot still above mean = surge start
+    const series = h.series;
+    const mean = h.recentMean;
+    const surgeStartIdx = series.findIndex((s) => s.price <= mean * 1.03);
+    const hoursSinceSurge = surgeStartIdx >= 0
+      ? (Date.now() - series[surgeStartIdx].snapshotAt.getTime()) / (1000 * 60 * 60)
+      : null;
+
+    // Too fresh (< 15 min = 3 scan cycles): could be real breaking news — wait for confirmation
+    if (hoursSinceSurge !== null && hoursSinceSurge < 0.25) {
+      return { trade: false, reason: `Surge too fresh (${(hoursSinceSurge * 60).toFixed(0)} min) — waiting for confirmation cycle` };
+    }
+    // Too old (> 4 hours): the market had time to absorb real information — don't fade
+    if (hoursSinceSurge !== null && hoursSinceSurge > 4) {
+      return { trade: false, reason: `Surge is ${hoursSinceSurge.toFixed(1)}h old — too stale to fade, market likely absorbed real info` };
+    }
+
+    // Volume must NOT have surged with price — if volume is rising, it's informed buying
+    if (h.volumeTrend === "rising") {
+      return { trade: false, reason: `Surge has rising volume — likely informed buying, not a liquidity overshoot. Do not fade.` };
+    }
+
+    // Model must disagree with the spike — we want model probability < current price (buy NO)
+    const modelDisagreesWithSurge = analysis.side === "no";
+    if (!modelDisagreesWithSurge) {
+      return { trade: false, reason: `Model agrees with surge direction (side=${analysis.side}) — not a fade setup` };
+    }
+
+    const surgePct = h.currentVsMeanPct.toFixed(1);
+    if (analysis.edge >= 5 && analysis.confidence >= 0.40) {
       return {
         trade: true,
-        reason: `Contrarian reversal: ${reversalMagnitude.toFixed(1)}% move from open, model disagrees by ${analysis.edge.toFixed(1)}pp`,
-        metadata: { reversalMagnitude },
+        reason: `Contrarian fade: price is ${surgePct}% above ${h.snapshots}-snapshot mean (${h.recentMean.toFixed(2)}→${analysis.candidate.yesPrice.toFixed(2)}), surge is ${hoursSinceSurge?.toFixed(1) ?? "?"}h old, volume=${h.volumeTrend}, model edge=${analysis.edge.toFixed(1)}pp`,
+        metadata: { reversalMagnitude: Math.abs(h.currentVsMeanPct) },
       };
     }
-    return { trade: false, reason: `No reversal signal (move=${reversalMagnitude.toFixed(1)}%, contrarian=${isContrarian}, edge=${analysis.edge.toFixed(1)}pp)` };
+    return { trade: false, reason: `Surge present but edge=${analysis.edge.toFixed(1)}pp or conf=${(analysis.confidence * 100).toFixed(0)}% insufficient` };
   },
 };
 
@@ -155,50 +211,57 @@ const momentum: Strategy = {
     const liquidity = Math.max(1, analysis.candidate.liquidity);
     const volumeSurge = volume > 0 ? Math.min(volume / liquidity, 10) : 1.0;
 
-    if (analysis.edge >= 5 && analysis.confidence >= 0.40 && hoursLeft > 0.25) {
+    // Volume surge ≥ 2× is the actual momentum confirmation signal.
+    // Defaulting to 1.0 when there's no volume data means Momentum was firing
+    // on flat markets with zero real activity — pure luck, not momentum.
+    if (analysis.edge >= 5 && analysis.confidence >= 0.40 && hoursLeft > 0.25 && volumeSurge >= 2.0) {
       return {
         trade: true,
         reason: `Momentum (${trendDirection}): ${analysis.edge.toFixed(1)}pp edge, ${priceMovement.toFixed(1)}% from ref, surge ${volumeSurge.toFixed(1)}x`,
         metadata: { volumeSurge, hoursRemaining: hoursLeft },
       };
     }
-    return { trade: false, reason: `Insufficient momentum (edge=${analysis.edge.toFixed(1)}pp, surge=${volumeSurge.toFixed(1)}x)` };
+    return { trade: false, reason: `Insufficient momentum (edge=${analysis.edge.toFixed(1)}pp, surge=${volumeSurge.toFixed(1)}x — need ≥2.0x)` };
   },
 };
 
 // ─── Strategy 5: Late Efficiency ──────────────────────────────────────────────
 const lateEfficiency: Strategy = {
   name: "Late Efficiency",
-  description: "Exploits spread inefficiencies in pre-game and near-expiry windows. Only operates in 12–88¢ uncertainty zone — no bets on near-certain outcomes.",
+  description: "Exploits spread inefficiencies in the pre-game window (≤36h). Requires live spread data (not DB estimates) and a strong AI edge — wide spreads on synthetic data are meaningless.",
   selectCandidates(candidates) {
     return candidates.filter((c) =>
       c.hoursToExpiry > 0.25 &&
       c.hoursToExpiry <= 36 &&
       c.spread > 0.01 &&
-      // Must be in genuine uncertainty zone — extreme prices = post-game or certainty
+      // Live spread data only — the DB cache synthesizes spread from estimated ask/bid,
+      // which tells us nothing about real market inefficiency.
+      c.hasLiveData &&
+      // Must be in genuine uncertainty zone
       c.yesPrice >= 0.12 &&
       c.yesPrice <= 0.88
     );
   },
   shouldTrade(analysis) {
-    // Reject inflated edge claims — these always come from extreme-price markets
-    // that slipped through or AI hallucinations. A real inefficiency edge is 5-25pp.
     if (analysis.edge > 50) {
-      return { trade: false, reason: `Edge ${analysis.edge.toFixed(0)}pp exceeds sanity cap — likely extreme-price market or hallucination` };
+      return { trade: false, reason: `Edge ${analysis.edge.toFixed(0)}pp exceeds sanity cap` };
     }
     const hoursLeft = analysis.candidate.hoursToExpiry;
     const spread = analysis.candidate.spread;
     const yesPrice = Math.max(0.01, analysis.candidate.yesPrice);
     const spreadPct = (spread / yesPrice) * 100;
 
-    if (analysis.edge >= 8 && analysis.confidence >= 0.25 && spreadPct > 2) {
+    // Raised from 8pp to 12pp: Late Efficiency was over-firing on NBA spreads at 8pp.
+    // A real spread inefficiency needs strong model conviction on top of the spread signal.
+    // Confidence raised from 0.25 to 0.35 for the same reason.
+    if (analysis.edge >= 12 && analysis.confidence >= 0.35 && spreadPct > 2) {
       return {
         trade: true,
-        reason: `Late efficiency: ${hoursLeft.toFixed(1)}h to expiry, ${spreadPct.toFixed(1)}% spread, ${analysis.edge.toFixed(1)}pp edge`,
+        reason: `Late efficiency: ${hoursLeft.toFixed(1)}h to expiry, ${spreadPct.toFixed(1)}% spread (live), ${analysis.edge.toFixed(1)}pp edge`,
         metadata: { hoursRemaining: hoursLeft },
       };
     }
-    return { trade: false, reason: `No inefficiency (${hoursLeft.toFixed(1)}h, ${spreadPct.toFixed(1)}% spread, ${analysis.edge.toFixed(1)}pp edge)` };
+    return { trade: false, reason: `No inefficiency (${hoursLeft.toFixed(1)}h, ${spreadPct.toFixed(1)}% spread, edge=${analysis.edge.toFixed(1)}pp — need ≥12pp)` };
   },
 };
 
@@ -221,16 +284,15 @@ const lateEfficiency: Strategy = {
  */
 const dipBuy: Strategy = {
   name: "Dip Buy",
-  description: "Buys into pregame price drops. Tier 1: liquidity flush (spread widens, low volume) — highest confidence. Tier 2: generic dip with model edge.",
+  description: "Buys into pregame price drops. Tier 1: liquidity flush (spread widens, low volume) — highest confidence. Tier 2: generic dip confirmed over ≥2 scan cycles.",
   selectCandidates(candidates) {
     return candidates.filter((c) => {
       const h = c.priceHistory;
-      return (
-        h?.isDip === true &&
-        c.hoursToExpiry > 2 &&
-        c.yesPrice > 0.08 &&
-        c.yesPrice < 0.92
-      );
+      if (!h?.isDip) return false;
+      // Require ≥10 snapshots (50 min at 5-min cadence) to trust the mean.
+      // With fewer snapshots the "mean" is just the last few prices — not a real baseline.
+      if (h.snapshots < 10) return false;
+      return c.hoursToExpiry > 2 && c.yesPrice > 0.10 && c.yesPrice < 0.90;
     });
   },
   shouldTrade(analysis) {
@@ -239,11 +301,13 @@ const dipBuy: Strategy = {
 
     const priceDropPct = Math.abs(h.currentVsMeanPct);
     const hoursLeft = analysis.candidate.hoursToExpiry;
+    const hoursSinceDrop = h.hoursSincePeak;
     const flushStr = h.isLiquidityFlush
       ? `, liquidity flush (spread widened ${(h.spreadWidening * 100).toFixed(0)}%, volume ${h.volumeTrend})`
       : "";
 
-    // Tier 1: liquidity flush — lower edge/confidence required
+    // Tier 1: liquidity flush — spread widening is the confirmation signal.
+    // Can fire on fresh dips because the spread-widening IS the confirmation.
     if (h.isLiquidityFlush && analysis.edge >= 3 && analysis.confidence >= 0.25 && hoursLeft > 2) {
       return {
         trade: true,
@@ -252,18 +316,27 @@ const dipBuy: Strategy = {
       };
     }
 
-    // Tier 2: generic dip — higher edge required since we lack the flush signature
+    // Tier 2: generic dip — require the drop to be at least 15 minutes old.
+    // A dip that just happened (< 15 min = 3 cycles) could be breaking news.
+    // We wait to see if it stays depressed — if it does, it's likely noise not info.
+    if (hoursSinceDrop !== null && hoursSinceDrop < 0.25) {
+      return {
+        trade: false,
+        reason: `Dip is only ${(hoursSinceDrop * 60).toFixed(0)} min old — waiting for confirmation (need ≥15 min). Will re-evaluate next cycle.`,
+      };
+    }
+
     if (analysis.edge >= 6 && analysis.confidence >= 0.35 && hoursLeft > 2) {
       return {
         trade: true,
-        reason: `Dip buy: ${priceDropPct.toFixed(1)}% below mean (${h.recentMean.toFixed(2)}→${analysis.candidate.yesPrice.toFixed(2)}), volume=${h.volumeTrend}, model edge=${analysis.edge.toFixed(1)}pp`,
+        reason: `Dip buy: ${priceDropPct.toFixed(1)}% below ${h.snapshots}-snapshot mean (${h.recentMean.toFixed(2)}→${analysis.candidate.yesPrice.toFixed(2)}), dip age=${hoursSinceDrop?.toFixed(1) ?? "?"}h, volume=${h.volumeTrend}, edge=${analysis.edge.toFixed(1)}pp`,
         metadata: { dipCatch: true, priceDropPct, hoursRemaining: hoursLeft },
       };
     }
 
     return {
       trade: false,
-      reason: `Dip (${priceDropPct.toFixed(1)}%) — ${h.isLiquidityFlush ? "flush but" : "not flush,"} edge=${analysis.edge.toFixed(1)}pp conf=${(analysis.confidence * 100).toFixed(0)}% insufficient`,
+      reason: `Dip (${priceDropPct.toFixed(1)}%, ${hoursSinceDrop?.toFixed(1) ?? "?"}h old) — ${h.isLiquidityFlush ? "flush but" : "not flush,"} edge=${analysis.edge.toFixed(1)}pp conf=${(analysis.confidence * 100).toFixed(0)}% insufficient`,
     };
   },
 };
@@ -431,15 +504,18 @@ const marketMaking: Strategy = {
  * Order: most selective (requires specific market conditions) → least selective (catch-all)
  */
 export const strategies: Strategy[] = [
-  sharpArb,          // Requires ODDS_API_KEY + Pinnacle line — most specific
-  probabilityArb,    // Requires multi-leg YES sum > 100% — pure math
-  dipBuy,            // Requires isDip = true in price history — specific
-  marketMaking,      // Requires spread ≥ 5¢ + liquidity > $1000 — specific
-  contrarianReversal, // Requires >8% price move from open vs model — specific
-  lateEfficiency,    // Requires hoursToExpiry ≤ 36 + wide spread — fairly specific
-  sharpMoney,        // Requires high vol/liquidity ratio — medium
-  momentum,          // Requires directional price movement — medium
-  pureValue,         // Catch-all: any market with edge ≥ 4pp — always last
+  sharpArb,           // Requires ODDS_API_KEY + Pinnacle line — most specific
+  probabilityArb,     // Requires multi-leg YES sum > 100% — pure math
+  dipBuy,             // Requires isDip + ≥10 snapshots + dip-age confirmation
+  contrarianReversal, // Requires isSurge + stable market + low volume — specific
+  lateEfficiency,     // Requires live spread + hoursToExpiry ≤ 36 + 12pp edge
+  sharpMoney,         // Requires live vol/liq data + vol/liq ≥ 1.5×
+  momentum,           // Requires volume surge ≥ 2× confirmation
+  pureValue,          // Catch-all: any market with edge ≥ 4pp, conf ≥ 35% — always last
+  // marketMaking removed: paper trade simulation only executes taker trades (market
+  // orders), so Market Making was silently mislabeling directional bets as spread-
+  // capture trades. P&L numbers were meaningless. Re-add when live limit-order
+  // execution and fill simulation are implemented.
 ];
 
 export function getStrategy(name: string): Strategy | undefined {
