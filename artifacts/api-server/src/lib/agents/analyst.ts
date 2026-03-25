@@ -95,6 +95,23 @@ function deriveMarketSignals(candidate: ScanCandidate) {
  * Returns true if the market is a soccer/football match — which uses a 3-way
  * outcome structure (win / draw / loss) rather than a binary market.
  */
+function isMLBMarket(candidate: ScanCandidate): boolean {
+  const ticker = candidate.market.ticker.toUpperCase();
+  const title = (candidate.market.title || "").toLowerCase();
+  return (
+    ticker.startsWith("KXMLB") ||
+    !!title.match(/\b(mlb|baseball|yankees|red sox|dodgers|giants|cubs|mets|braves|astros|phillies|padres|rangers|mariners|tigers|cardinals|brewers|reds|pirates|rockies|diamondbacks|angels|athletics|white sox|blue jays|rays|orioles|nationals|marlins|twins|royals)\b/)
+  );
+}
+
+function getMLBMarketType(candidate: ScanCandidate): "total" | "spread" | "moneyline" {
+  const ticker = candidate.market.ticker.toUpperCase();
+  const title = (candidate.market.title || "").toLowerCase();
+  if (ticker.includes("TOTAL") || title.includes("over") || title.includes("under") || title.includes("runs scored")) return "total";
+  if (ticker.includes("SPREAD") || title.includes("run line") || title.includes("-1.5") || title.includes("+1.5")) return "spread";
+  return "moneyline";
+}
+
 function isSoccerMarket(candidate: ScanCandidate): boolean {
   const ticker = candidate.market.ticker.toUpperCase();
   const cat = (candidate.market.category || "").toLowerCase();
@@ -158,9 +175,66 @@ function detectCategory(candidate: ScanCandidate): string {
 /**
  * Category-specific reasoning guidance for the AI.
  */
-function getCategoryGuidance(category: string, signals: ReturnType<typeof deriveMarketSignals>, soccer = false): string {
+function getCategoryGuidance(category: string, signals: ReturnType<typeof deriveMarketSignals>, soccer = false, mlb = false, mlbType: "total" | "spread" | "moneyline" = "moneyline"): string {
   switch (category) {
     case "Sports":
+      if (mlb) {
+        if (mlbType === "total") {
+          return `⚾ MLB TOTALS — STARTING PITCHERS ARE THE #1 FACTOR. Without knowing tonight's pitching matchup you cannot analyze this market.
+
+ANALYSIS HIERARCHY FOR MLB OVER/UNDER:
+1. **Starting Pitchers** (50% of your estimate):
+   - Identify the probable starters from the market title or ticker if possible.
+   - Ace starters (sub-3.00 ERA, 200+ innings) suppress scoring by 1-2 runs vs average.
+   - High walk rate (BB/9 > 4) pitchers allow more traffic and elevate scoring.
+   - Short-rest (3 days) starters have ~0.5+ ERA inflation and shorter outings.
+   - If pitcher info is not available in the title, acknowledge the uncertainty and widen your confidence interval.
+
+2. **Ballpark Run Factor** (20% of your estimate):
+   - Extreme parks: Coors Field (Colorado Rockies home) adds ~2-3 runs — treat any Coors game as HIGH-scoring.
+   - Pitcher-friendly parks: Petco Park (San Diego), Oracle Park (SF Giants), Tropicana Field — subtract 0.5-1 run.
+   - The Giants play at Oracle Park (San Francisco) — a notoriously pitcher-friendly park due to marine layer and cold air.
+   - Neutral/average parks: Fenway, Wrigley (when wind is calm), Yankee Stadium.
+
+3. **Weather** (15% of your estimate):
+   - Wind blowing OUT (e.g., 15+ mph to centerfield) at open stadiums: add 0.5-1.5 runs to expectation.
+   - Wind blowing IN: subtract 0.5-1 run. Cold temperatures (<50°F) deaden the ball — subtract 0.5 runs.
+   - Dome/retractable-roof stadiums: weather-neutral.
+
+4. **Market Structure** (15%):
+   - Volume/Liquidity ratio: ${signals.volumeToLiquidity.toFixed(2)} — sharp books set totals lines with high accuracy.
+   - The over/under total line in the title tells you the market-implied combined run expectation.
+   - MLB totals markets are HIGHLY efficient. You need a clear factor (ace pitcher, extreme weather, Coors) to deviate from the market.
+
+BASE RATES:
+- Average MLB game: 8.5-9.5 combined runs
+- With two aces: 6.5-8.0 runs
+- Coors Field: 11-14 runs
+- Cold weather outdoor game (<45°F): subtract 1-1.5 runs
+
+COMMON MISTAKES TO AVOID:
+- Do NOT call any MLB game "spring training" unless the title explicitly says so. The Kalshi MLB series (KXMLB) tracks REGULAR SEASON games.
+- Do NOT assume teams play differently in April vs July — starting pitchers are more reliable than "early season" narratives.`;
+        }
+        if (mlbType === "spread") {
+          return `⚾ MLB RUN LINE (±1.5 RUNS) — Key structural insight: covering a -1.5 spread requires winning by 2+ runs, which happens in only ~55% of games for heavy favorites. A team can be a -200 moneyline favorite and still lose the run line.
+
+ANALYSIS HIERARCHY:
+1. **Starting Pitcher Quality**: Same ace analysis as totals. A dominant ace makes covering -1.5 much more likely.
+2. **Blowout Potential**: Teams with high-power offenses vs weak starters have higher cover rates.
+3. **Bullpen**: Late runs matter for run line. A shaky bullpen on the leading team can blow a +2 lead.
+4. **Market Price**: ${signals.impliedProb.toFixed(0)}% implied probability. Run line favorites above 70% are near-certain covers on paper but still fail ~30% of the time in baseball.
+5. **Do NOT call this spring training** unless the title says so — KXMLB series = regular season.`;
+        }
+        return `⚾ MLB MONEYLINE — Binary win/lose, no spread.
+
+ANALYSIS HIERARCHY:
+1. **Starting Pitchers**: The single most important factor. A Cy Young-caliber ace vs a #4/5 starter shifts win probability by 15-20pp.
+2. **Home Field**: MLB home teams win ~54% — modest but consistent advantage.
+3. **Recent Bullpen Usage**: A team using 3-4 relievers last night has a tired bullpen tonight.
+4. **Market Efficiency**: MLB moneylines are among the most efficient in sports — look for ace-vs-replacement matchups or weather extremes as the primary edge sources.
+5. **Do NOT call this spring training** unless the title explicitly says so. KXMLB = regular season.`;
+      }
       if (soccer) {
         return `⚽ SOCCER / FOOTBALL — CRITICAL: This is a 3-way market (Win / Draw / Loss).
 
@@ -230,7 +304,10 @@ export async function analyzeMarket(candidate: ScanCandidate): Promise<AnalysisR
   const signals = deriveMarketSignals(candidate);
   const category = detectCategory(candidate);
   const soccer = isSoccerMarket(candidate);
-  const categoryGuidance = getCategoryGuidance(category, signals, soccer);
+  const mlb = isMLBMarket(candidate);
+  const mlbType = mlb ? getMLBMarketType(candidate) : "moneyline";
+  const categoryGuidance = getCategoryGuidance(category, signals, soccer, mlb, mlbType);
+  const todayStr = new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
 
   // Fetch the most recent empirical learnings from the Learner agent — these are
   // injected before the analysis prompt so the AI calibrates on actual track record
@@ -334,6 +411,13 @@ Soccer matches have three outcomes: Team A wins, draw, Team B wins.
     : "";
 
   const prompt = `You are a quantitative prediction market analyst with expertise in sports, politics, economics, crypto, and current events. Analyze this Kalshi prediction market to find mispricing opportunities.
+
+## IMPORTANT CONTEXT
+Today's date: **${todayStr}**
+- The MLB 2026 regular season is underway. Any MLB market on Kalshi (KXMLB series) is a REGULAR SEASON game unless the title explicitly says "spring training." Spring training concluded in mid-March 2026.
+- NHL 2025-26 regular season is in its final weeks heading toward the playoffs.
+- NBA 2025-26 regular season continues through mid-April.
+- March Madness (NCAA Tournament) is active through early April.
 ${learningsSection}
 ## ⚠️ CONTRACT DEFINITION — READ FIRST
 The market title IS the YES resolution condition. Read it literally:
