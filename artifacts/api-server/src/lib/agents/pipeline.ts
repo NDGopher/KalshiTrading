@@ -42,9 +42,15 @@ export interface LastCycleMarket {
   strategyName: string | null;
   reasoning: string | null;
   strategyReason: string | null;
-  disposition: "executed" | "skipped_risk" | "skipped_audit" | "skipped_duplicate" | "candidate";
+  disposition: "executed" | "skipped_risk" | "skipped_audit" | "skipped_duplicate" | "skipped_confidence" | "candidate";
   rejectionReason: string | null;
 }
+
+// Hard ceiling on AI confidence: empirical data shows win rate collapses above 75%.
+// 40–50% confidence = 71% win rate; 80%+ = 30% win rate. Above this threshold
+// Claude is almost always pricing "obvious" outcomes that the market has already
+// absorbed efficiently.
+const CONFIDENCE_CEILING = 0.75;
 
 let lastCycleMarkets: LastCycleMarket[] = [];
 let lastCycleAt: Date | null = null;
@@ -298,13 +304,24 @@ export async function runTradingCycle(): Promise<CycleResult> {
     let effectiveBankroll = bankroll;
     let approvedThisCycle = 0;
     let strategySkipped = 0;
+    let confidenceCapped = 0;
     // Tracks trades approved THIS cycle so the reverse middle detector can see
     // intra-cycle positions before they are written to the DB.
+    const confidenceCappedTickers = new Set<string>();
     const intraCycleTrades: Array<{ kalshiTicker: string; side: string }> = [];
     for (const audit of approved) {
       const strategyMatches = evaluateStrategies(audit.analysis, enabledStrategies);
       if (strategyMatches.length === 0) {
         strategySkipped++;
+        continue;
+      }
+
+      // Confidence ceiling: empirically, win rate collapses above 75% confidence.
+      // Skip the trade but record the ticker so the dashboard can display why.
+      if (audit.adjustedConfidence > CONFIDENCE_CEILING) {
+        confidenceCapped++;
+        confidenceCappedTickers.add(audit.analysis.candidate.market.ticker);
+        console.log(`[Pipeline] Confidence ceiling hit: ${audit.analysis.candidate.market.ticker} conf=${(audit.adjustedConfidence * 100).toFixed(0)}% > ${(CONFIDENCE_CEILING * 100).toFixed(0)}% — skipped`);
         continue;
       }
       const strategyName = strategyMatches[0].strategyName;
@@ -330,8 +347,12 @@ export async function runTradingCycle(): Promise<CycleResult> {
     }
     const riskApproved = riskDecisions.filter((d) => d.approved);
     const riskDuration = (Date.now() - riskStart) / 1000;
-    const riskDetails = strategySkipped > 0
-      ? `${riskApproved.length}/${riskDecisions.length} risk-approved, ${strategySkipped} no strategy match`
+    const riskExtras = [
+      strategySkipped > 0 ? `${strategySkipped} no-strategy` : null,
+      confidenceCapped > 0 ? `${confidenceCapped} conf>${(CONFIDENCE_CEILING * 100).toFixed(0)}% capped` : null,
+    ].filter(Boolean).join(", ");
+    const riskDetails = riskExtras
+      ? `${riskApproved.length}/${riskDecisions.length} risk-approved, ${riskExtras}`
       : `${riskApproved.length}/${riskDecisions.length} risk-approved`;
     updateAgentStatus("Risk Manager", "idle", riskDetails);
     agentResults.push({ agentName: "Risk Manager", status: "success", duration: riskDuration, details: riskDetails });
@@ -373,6 +394,9 @@ export async function runTradingCycle(): Promise<CycleResult> {
       let rejectionReason: string | null = null;
       if (executedTickers.has(c.market.ticker)) {
         disposition = "executed";
+      } else if (confidenceCappedTickers.has(c.market.ticker)) {
+        disposition = "skipped_confidence";
+        rejectionReason = `Confidence ${((analysis?.confidence ?? 0) * 100).toFixed(0)}% exceeds ${(CONFIDENCE_CEILING * 100).toFixed(0)}% ceiling — historically 30% win rate above this level`;
       } else if (riskSkippedTickers.has(c.market.ticker)) {
         disposition = "skipped_risk";
         rejectionReason = risk?.rejectReason || "Risk limit exceeded";
