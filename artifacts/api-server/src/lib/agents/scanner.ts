@@ -309,7 +309,33 @@ export async function scanMarkets(_sportFilters?: string[]): Promise<{
     console.info(`[Scanner] buildCandidateFromKalshi: ${candidates.length} candidates from ${markets.length} markets`);
 
     candidates.sort((a, b) => compositeScore(b) - compositeScore(a));
-    const topCandidates = candidates.slice(0, 100);
+
+    // Category-diversity selection: take the top-60 by score, then guarantee
+    // at least 4 slots for each non-Sports category so that crypto, politics,
+    // weather, and economics always reach the analyst even when tonight's games
+    // dominate the top of the score ranking.
+    const POOL_SIZE = 60;
+    const DIVERSITY_SLOTS_PER_CAT = 4;
+    const diversityPool = candidates.slice(0, POOL_SIZE);
+    const diversityExtras: ScanCandidate[] = [];
+    const includedTickers = new Set(diversityPool.map((c) => c.market.ticker));
+    const NON_SPORTS_CATEGORIES = ["Politics", "Economics", "Financials", "Entertainment", "Weather", "Crypto", "Finance"];
+    for (const cat of NON_SPORTS_CATEGORIES) {
+      const catCandidates = candidates
+        .filter((c) => !includedTickers.has(c.market.ticker) &&
+          NON_SPORTS_CATEGORIES.some((nc) => (c.market.category || "").includes(nc)))
+        .filter((c) => (c.market.category || "").toLowerCase().includes(cat.toLowerCase()))
+        .slice(0, DIVERSITY_SLOTS_PER_CAT);
+      for (const dc of catCandidates) {
+        diversityExtras.push(dc);
+        includedTickers.add(dc.market.ticker);
+      }
+    }
+    const topCandidates = [...diversityPool, ...diversityExtras].slice(0, 100);
+    if (diversityExtras.length > 0) {
+      const catLog = diversityExtras.map((c) => c.market.category || "?").join(", ");
+      console.info(`[Scanner] Diversity injection: +${diversityExtras.length} non-sports candidates (${catLog})`);
+    }
 
     // If API returned nothing usable, fall through to the DB cache
     if (topCandidates.length === 0) {

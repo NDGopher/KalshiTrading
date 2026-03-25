@@ -222,10 +222,10 @@ export async function runTradingCycle(): Promise<CycleResult> {
       return { marketsScanned: scanResult.totalScanned, opportunitiesFound: 0, tradesExecuted: 0, tradesSkipped: 0, totalDuration: (Date.now() - cycleStart) / 1000, agentResults };
     }
 
-    // Analyze top 20 candidates with real AI in both paper and live mode.
-    // Paper mode previously used simulated analysis, but real AI is used now
-    // so we accurately measure model performance before risking real capital.
-    const topCandidates = scanResult.candidates.slice(0, 20);
+    // Analyze top 35 candidates with real AI in both paper and live mode.
+    // 35 gives enough room for diverse categories (sports + crypto + politics +
+    // weather) after the scanner's diversity-reservation pass fills non-sports slots.
+    const topCandidates = scanResult.candidates.slice(0, 35);
 
     let analysisStart = Date.now();
     updateAgentStatus("Analyst", "running");

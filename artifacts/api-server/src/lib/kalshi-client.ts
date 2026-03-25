@@ -419,14 +419,30 @@ export async function getAllLiquidMarkets(_maxPages = 10): Promise<KalshiMarket[
   // Game-day series with REAL pre-game prices (20-80¢), proven in backtests.
   // Fetch first page of each — most series have < 100 active games at once.
   const GAME_SERIES = [
-    "KXLALIGAGAME",      // La Liga soccer — active Mar–May
-    "KXSERIEAGAME",      // Serie A soccer — active Mar–May
-    "KXUECLGAME",        // UEFA Conference League — active Mar–May
+    // Soccer — active Mar–May
+    "KXLALIGAGAME",      // La Liga
+    "KXSERIEAGAME",      // Serie A
+    "KXUECLGAME",        // UEFA Conference League
+    "KXUELAGAME",        // UEFA Europa League
+    "KXUCL",             // UEFA Champions League (knockout rounds Mar–May)
     "KXCOPPAITALIAGAME", // Coppa Italia
+    // NBA
     "KXNBASERIES",       // NBA playoff series
     "KXNBASPREAD",       // NBA game spreads
+    // NHL
     "KXNHLTOTAL",        // NHL goal totals
-    "KXNFLSPREAD",       // NFL spreads (off-season now, 0 markets until Sep)
+    "KXNHLSPREAD",       // NHL game spreads
+    "KXNHLGAME",         // NHL game winner
+    // College basketball — NCAA tournament active Mar–Apr
+    "KXNCAAB",           // NCAA men's basketball
+    "KXNCAABGAME",       // NCAA game-level markets
+    "KXMARCH",           // March Madness bracket markets
+    // MLB — season opens late March / April
+    "KXMLBSPREAD",       // MLB run-line spreads
+    "KXMLBTOTAL",        // MLB run totals
+    "KXMLBGAME",         // MLB game winner
+    // Other
+    "KXNFLSPREAD",       // NFL spreads (off-season until Sep — will return 0)
     "KXATPGAMETOTAL",    // ATP tennis
     "KXWBCTOTAL",        // WBC/MLB run totals
   ];
