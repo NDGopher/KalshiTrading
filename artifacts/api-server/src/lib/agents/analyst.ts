@@ -4,6 +4,7 @@ import { sql, gte } from "drizzle-orm";
 import type { ScanCandidate } from "./scanner.js";
 import { getRelevantNews } from "./news-fetcher.js";
 import { fetchLiveScore } from "../live-scores.js";
+import { fetchSportsIntel } from "../sports-intel.js";
 import { getLatestAnalystInjection } from "./learner.js";
 
 export interface AnalysisResult {
@@ -319,6 +320,11 @@ export async function analyzeMarket(candidate: ScanCandidate): Promise<AnalysisR
     ? `\n## Breaking News Context\n${newsContext}\nConsider whether these headlines are relevant to this market's resolution.`
     : "";
 
+  // Inject sport-specific pre-game intel (pitchers, injuries, goalies, lineups)
+  // Run in parallel with other async fetches — fails silently on timeout/error
+  const sportsIntel = await fetchSportsIntel(market.ticker, hoursToExpiry).catch(() => null);
+  const sportsIntelSection = sportsIntel?.section ? `\n${sportsIntel.section}` : "";
+
   const openPriceSection = signals.openPrice != null
     ? `- Open Price: $${signals.openPrice.toFixed(4)} → Current: $${yesPrice.toFixed(4)} (${signals.priceChange! > 0 ? "+" : ""}${signals.priceChange!.toFixed(1)}% drift)`
     : "";
@@ -448,7 +454,7 @@ ${openPriceSection}
 - Price Region: ${signals.priceRegion} (${signals.impliedProb.toFixed(1)}% implied)
 - Volume/Liquidity Ratio: ${signals.volumeToLiquidity.toFixed(2)} (${signals.volumeToLiquidity > 3 ? "⚡ heavy flow — possible informed trading" : signals.volumeToLiquidity > 1 ? "moderate activity" : "light flow"})
 - Market Efficiency: ${signals.marketEfficiency} (${signals.marketEfficiency === "high" ? "tight spread + high volume — edge is rare" : signals.marketEfficiency === "low" ? "wide spread or low volume — mispricing more likely" : "moderate efficiency"})
-${priceHistorySection}${sharpOddsSection}${liveScoreSection}${newsSection}
+${priceHistorySection}${sharpOddsSection}${liveScoreSection}${sportsIntelSection}${newsSection}
 
 ## Analysis Framework (${category})
 ${categoryGuidance}
