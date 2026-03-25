@@ -177,7 +177,7 @@ export default function Trades() {
                 </span>
               </CardContent></Card>
               <Card className="bg-black/40 border-white/5 shadow-none"><CardContent className="p-4 flex flex-col justify-center h-full">
-                <span className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Avg Edge Taken</span>
+                <span className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Median Edge</span>
                 <span className="text-2xl font-bold text-primary font-mono">{formatPercent(stats.avgEdge)}</span>
               </CardContent></Card>
               <Card className="bg-black/40 border-white/5 shadow-none"><CardContent className="p-4 flex flex-col justify-center h-full">

@@ -78,11 +78,16 @@ router.get("/trades/stats", async (_req, res): Promise<void> => {
     .filter((t) => new Date(t.createdAt) >= today)
     .reduce((sum, t) => sum + (t.pnl || 0), 0);
 
+  const medianOf = (vals: number[]): number => {
+    if (vals.length === 0) return 0;
+    const sorted = [...vals].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+  };
   const edgeValues = trades.map((t) => t.edge);
-  const avgEdge = edgeValues.length > 0 ? edgeValues.reduce((a, b) => a + b, 0) / edgeValues.length : 0;
+  const avgEdge = medianOf(edgeValues);
   const confValues = trades.map((t) => t.confidence);
-  const avgConfidence =
-    confValues.length > 0 ? confValues.reduce((a, b) => a + b, 0) / confValues.length : 0;
+  const avgConfidence = medianOf(confValues);
 
   const sortedTrades = [...trades].sort(
     (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()

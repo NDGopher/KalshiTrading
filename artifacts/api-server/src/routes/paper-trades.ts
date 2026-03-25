@@ -196,43 +196,55 @@ router.get("/paper-trades/equity", async (_req, res) => {
     // Analytics: category and edge-vs-outcome
     const closed = allTrades.filter(t => t.status === "won" || t.status === "lost");
 
+    // Median helper — avoids mean being wrecked by outlier edge claims
+    const median = (vals: number[]): number => {
+      if (vals.length === 0) return 0;
+      const sorted = [...vals].sort((a, b) => a - b);
+      const mid = Math.floor(sorted.length / 2);
+      return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+    };
+
     interface StrategyAgg {
       name: string;
       trades: number;
       wins: number;
-      totalEdge: number;
+      edges: number[];
       totalPnl: number;
       invested: number;
     }
     const stratMap = new Map<string, StrategyAgg>();
     for (const t of allTrades) {
       const k = t.strategyName || "Unknown";
-      if (!stratMap.has(k)) stratMap.set(k, { name: k, trades: 0, wins: 0, totalEdge: 0, totalPnl: 0, invested: 0 });
+      if (!stratMap.has(k)) stratMap.set(k, { name: k, trades: 0, wins: 0, edges: [], totalPnl: 0, invested: 0 });
       const s = stratMap.get(k)!;
       s.trades++;
       s.invested += t.entryPrice * t.quantity;
-      if (t.edge != null) s.totalEdge += t.edge;
+      if (t.edge != null) s.edges.push(t.edge);
       if (t.pnl != null) s.totalPnl += t.pnl;
       if (t.status === "won") s.wins++;
     }
     const strategyStats = Array.from(stratMap.values()).map(s => ({
-      ...s,
+      name: s.name,
+      trades: s.trades,
+      wins: s.wins,
+      totalPnl: s.totalPnl,
+      invested: s.invested,
       winRate: s.trades > 0 ? s.wins / s.trades : 0,
-      avgEdge: s.trades > 0 ? s.totalEdge / s.trades : 0,
+      medianEdge: median(s.edges),
       roi: s.invested > 0 ? s.totalPnl / s.invested : 0,
     }));
 
-    // Edge buckets for calibration
-    const edgeBuckets: { bucket: string; count: number; wins: number; avgEdge: number; winRate: number }[] = [];
-    const buckets = [[0,5],[5,10],[10,15],[15,20],[20,30],[30,50],[50,100]];
+    // Edge buckets for calibration — use median within each bucket
+    const edgeBuckets: { bucket: string; count: number; wins: number; medianEdge: number; winRate: number }[] = [];
+    const buckets = [[0,5],[5,10],[10,15],[15,20],[20,30],[30,50],[50,999]];
     for (const [lo, hi] of buckets) {
       const b = closed.filter(t => (t.edge ?? 0) >= lo && (t.edge ?? 0) < hi);
       if (b.length === 0) continue;
       edgeBuckets.push({
-        bucket: `${lo}–${hi}%`,
+        bucket: lo === 50 ? `50pp+` : `${lo}–${hi}pp`,
         count: b.length,
         wins: b.filter(t => t.status === "won").length,
-        avgEdge: b.reduce((s, t) => s + (t.edge ?? 0), 0) / b.length,
+        medianEdge: median(b.map(t => t.edge ?? 0)),
         winRate: b.filter(t => t.status === "won").length / b.length,
       });
     }

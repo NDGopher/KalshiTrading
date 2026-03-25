@@ -75,11 +75,10 @@ interface StrategyRow {
   name: string;
   trades: number;
   wins: number;
-  totalEdge: number;
   totalPnl: number;
   invested: number;
   winRate: number;
-  avgEdge: number;
+  medianEdge: number;
   roi: number;
 }
 
@@ -88,7 +87,7 @@ interface Bucket {
   count: number;
   wins: number;
   winRate: number;
-  avgEdge?: number;
+  medianEdge?: number;
 }
 
 interface EquityData {
@@ -524,7 +523,7 @@ export default function Paper() {
                         <th className="px-4 py-3 text-right font-semibold">Deployed</th>
                         <th className="px-4 py-3 text-right font-semibold">Closed</th>
                         <th className="px-4 py-3 text-right font-semibold">Win Rate</th>
-                        <th className="px-4 py-3 text-right font-semibold">Avg Edge</th>
+                        <th className="px-4 py-3 text-right font-semibold">Median Edge</th>
                         <th className="px-4 py-3 text-right font-semibold">Realized P&L</th>
                         <th className="px-4 py-3 text-right font-semibold">ROI</th>
                       </tr>
@@ -559,7 +558,7 @@ export default function Paper() {
                             }
                           </td>
                           <td className="px-4 py-3 font-mono text-right text-primary">
-                            {closed ? `${closed.avgEdge.toFixed(1)}%` : "—"}
+                            {closed ? `${closed.medianEdge.toFixed(1)}pp` : "—"}
                           </td>
                           <td className={`px-4 py-3 font-mono font-bold text-right ${!closed || closed.totalPnl >= 0 ? "text-success" : "text-destructive"}`}>
                             {closed && closed.totalPnl !== 0
