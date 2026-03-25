@@ -34,7 +34,7 @@ interface LastCycleMarket {
   strategyName: string | null;
   reasoning: string | null;
   strategyReason: string | null;
-  disposition: "executed" | "skipped_risk" | "skipped_audit" | "candidate";
+  disposition: "executed" | "skipped_risk" | "skipped_audit" | "skipped_duplicate" | "skipped_confidence" | "skipped_no_price" | "candidate";
   rejectionReason: string | null;
 }
 
@@ -101,6 +101,9 @@ function DispositionBadge({ d }: { d: LastCycleMarket["disposition"] }) {
   if (d === "executed") return <Badge className="bg-success/20 text-success border-success/30 text-[10px]">EXECUTED</Badge>;
   if (d === "skipped_risk") return <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30 text-[10px]">RISK BLOCKED</Badge>;
   if (d === "skipped_audit") return <Badge className="bg-destructive/20 text-destructive border-destructive/30 text-[10px]">FILTERED</Badge>;
+  if (d === "skipped_confidence") return <Badge className="bg-orange-500/20 text-orange-400 border-orange-500/30 text-[10px]">CONF CEILING</Badge>;
+  if (d === "skipped_no_price") return <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30 text-[10px]">NO PRICE CAP</Badge>;
+  if (d === "skipped_duplicate") return <Badge className="bg-slate-500/20 text-slate-400 border-slate-500/30 text-[10px]">DUPLICATE</Badge>;
   return <Badge variant="outline" className="text-muted-foreground text-[10px]">CANDIDATE</Badge>;
 }
 

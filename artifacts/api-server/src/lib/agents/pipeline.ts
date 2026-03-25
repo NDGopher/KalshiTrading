@@ -42,7 +42,7 @@ export interface LastCycleMarket {
   strategyName: string | null;
   reasoning: string | null;
   strategyReason: string | null;
-  disposition: "executed" | "skipped_risk" | "skipped_audit" | "skipped_duplicate" | "skipped_confidence" | "candidate";
+  disposition: "executed" | "skipped_risk" | "skipped_audit" | "skipped_duplicate" | "skipped_confidence" | "skipped_no_price" | "candidate";
   rejectionReason: string | null;
 }
 
@@ -51,6 +51,13 @@ export interface LastCycleMarket {
 // Claude is almost always pricing "obvious" outcomes that the market has already
 // absorbed efficiently.
 const CONFIDENCE_CEILING = 0.75;
+
+// Hard cap on NO-side entry price. Buying NO above 80¢ means the payout when
+// correct is only 20¢ per dollar risked — you need a >83% win rate just to break
+// even. Empirically, Sharp Money's NBA near-lock NO bets at 87–93¢ had 100% win
+// rate but still produced nearly zero profit because the math never works out.
+// This cap keeps us off the chalk and forces strategies to find meaningful edges.
+const NO_MAX_ENTRY_PRICE = 0.80;
 
 let lastCycleMarkets: LastCycleMarket[] = [];
 let lastCycleAt: Date | null = null;
@@ -305,9 +312,11 @@ export async function runTradingCycle(): Promise<CycleResult> {
     let approvedThisCycle = 0;
     let strategySkipped = 0;
     let confidenceCapped = 0;
+    let noPriceCapped = 0;
     // Tracks trades approved THIS cycle so the reverse middle detector can see
     // intra-cycle positions before they are written to the DB.
     const confidenceCappedTickers = new Set<string>();
+    const noPriceCappedTickers = new Set<string>();
     const intraCycleTrades: Array<{ kalshiTicker: string; side: string }> = [];
     for (const audit of approved) {
       const strategyMatches = evaluateStrategies(audit.analysis, enabledStrategies);
@@ -323,6 +332,21 @@ export async function runTradingCycle(): Promise<CycleResult> {
         confidenceCappedTickers.add(audit.analysis.candidate.market.ticker);
         console.log(`[Pipeline] Confidence ceiling hit: ${audit.analysis.candidate.market.ticker} conf=${(audit.adjustedConfidence * 100).toFixed(0)}% > ${(CONFIDENCE_CEILING * 100).toFixed(0)}% — skipped`);
         continue;
+      }
+
+      // NO-side entry price cap: buying NO above 80¢ requires >83% win rate to
+      // break even. Empirically these bets had 100% wins but near-zero profit
+      // because they collect only 4–13¢ on a $30 risk, with losses wiping
+      // multiple wins. Math never works — skip regardless of strategy.
+      if (audit.analysis.side === "no") {
+        const candidate = audit.analysis.candidate;
+        const noEntryPrice = candidate.noAsk ?? candidate.noPrice ?? (1 - (candidate.yesPrice ?? 0));
+        if (noEntryPrice > NO_MAX_ENTRY_PRICE) {
+          noPriceCapped++;
+          noPriceCappedTickers.add(candidate.market.ticker);
+          console.log(`[Pipeline] NO price cap: ${candidate.market.ticker} noAsk=${noEntryPrice.toFixed(2)} > ${NO_MAX_ENTRY_PRICE} — skipped`);
+          continue;
+        }
       }
       const strategyName = strategyMatches[0].strategyName;
       const decision = await assessRisk(audit, {
@@ -350,6 +374,7 @@ export async function runTradingCycle(): Promise<CycleResult> {
     const riskExtras = [
       strategySkipped > 0 ? `${strategySkipped} no-strategy` : null,
       confidenceCapped > 0 ? `${confidenceCapped} conf>${(CONFIDENCE_CEILING * 100).toFixed(0)}% capped` : null,
+      noPriceCapped > 0 ? `${noPriceCapped} NO>${(NO_MAX_ENTRY_PRICE * 100).toFixed(0)}¢ capped` : null,
     ].filter(Boolean).join(", ");
     const riskDetails = riskExtras
       ? `${riskApproved.length}/${riskDecisions.length} risk-approved, ${riskExtras}`
@@ -397,6 +422,11 @@ export async function runTradingCycle(): Promise<CycleResult> {
       } else if (confidenceCappedTickers.has(c.market.ticker)) {
         disposition = "skipped_confidence";
         rejectionReason = `Confidence ${((analysis?.confidence ?? 0) * 100).toFixed(0)}% exceeds ${(CONFIDENCE_CEILING * 100).toFixed(0)}% ceiling — historically 30% win rate above this level`;
+      } else if (noPriceCappedTickers.has(c.market.ticker)) {
+        disposition = "skipped_no_price";
+        const candidate = c;
+        const noAsk = candidate.noAsk ?? candidate.noPrice ?? (1 - (candidate.yesPrice ?? 0));
+        rejectionReason = `NO entry ${(noAsk * 100).toFixed(0)}¢ exceeds ${(NO_MAX_ENTRY_PRICE * 100).toFixed(0)}¢ cap — requires >83% win rate to break even at this price`;
       } else if (riskSkippedTickers.has(c.market.ticker)) {
         disposition = "skipped_risk";
         rejectionReason = risk?.rejectReason || "Risk limit exceeded";
