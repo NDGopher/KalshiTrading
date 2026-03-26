@@ -39,8 +39,10 @@ export interface ScanCandidate {
   sharpLine?: SharpLine | null;
 }
 
-// Kalshi KXMVE markets typically close 1-2 weeks out; keep window at 2 weeks (336 h)
-const MAX_HOURS_TO_EXPIRY = 336;
+// Sports markets rarely list games > 2 weeks out; non-sports (politics, crypto,
+// economics) can run 30-90 days. 720 h (30 days) lets both through. The vol/liq
+// floor in buildCandidateFromKalshi and the Sharp Money strategy gate dead markets.
+const MAX_HOURS_TO_EXPIRY = 720;
 
 function proximityScore(hoursToExpiry: number): number {
   if (hoursToExpiry <= 6) return 5.0;
@@ -49,7 +51,15 @@ function proximityScore(hoursToExpiry: number): number {
   if (hoursToExpiry <= 96) return 2.0;
   if (hoursToExpiry <= 168) return 1.0;
   if (hoursToExpiry <= 336) return 0.5;
+  if (hoursToExpiry <= 720) return 0.2; // 2–4 weeks: non-sports markets (politics, crypto)
   return 0.0;
+}
+
+const NON_SPORTS_CATEGORIES = ["Politics", "Economics", "Financials", "Entertainment", "Weather", "Crypto", "Finance"];
+
+function isNonSportsCategory(candidate: ScanCandidate): boolean {
+  const cat = candidate.market.category || "";
+  return NON_SPORTS_CATEGORIES.some((nc) => cat.includes(nc));
 }
 
 function compositeScore(candidate: ScanCandidate): number {
@@ -62,7 +72,11 @@ function compositeScore(candidate: ScanCandidate): number {
   const dipBonus = candidate.priceHistory?.isDip || candidate.priceHistory?.isSurge ? 0.8 : 0;
   // Bonus when sharp book comparison shows an edge
   const sharpBonus = candidate.sharpLine && candidate.sharpLine.edgeSide !== "NONE" ? 1.5 : 0;
-  return proximity * 3 + volNorm * 1.5 + liqNorm * 0.5 + spreadQuality * 0.5 + dipBonus + sharpBonus;
+  // Non-sports bonus: sports markets dominate proximity scoring (games are today/tomorrow).
+  // Add a flat bonus for non-sports markets that have real active trading volume so they
+  // can compete with sports in the composite ranking. No bonus for dead markets (vol=0).
+  const nonSportsBonus = isNonSportsCategory(candidate) && candidate.volume24h > 100 ? 2.5 : 0;
+  return proximity * 3 + volNorm * 1.5 + liqNorm * 0.5 + spreadQuality * 0.5 + dipBonus + sharpBonus + nonSportsBonus;
 }
 
 function buildCandidateFromKalshi(market: KalshiMarket): ScanCandidate | null {
@@ -310,31 +324,49 @@ export async function scanMarkets(_sportFilters?: string[]): Promise<{
 
     candidates.sort((a, b) => compositeScore(b) - compositeScore(a));
 
-    // Category-diversity selection: take the top-60 by score, then guarantee
-    // at least 4 slots for each non-Sports category so that crypto, politics,
-    // weather, and economics always reach the analyst even when tonight's games
-    // dominate the top of the score ranking.
+    // Category-diversity selection:
+    // 1. Take top-60 by compositeScore (will be heavily sports-dominated)
+    // 2. Guarantee up to 5 slots per non-sports category from the remainder
+    //    — but only inject markets with REAL trading activity (volume > 50 or liq > 500)
+    //    to avoid wasting AI budget on dead placeholder markets.
+    // 3. CRITICAL: put diversity extras FIRST in the returned list so the pipeline's
+    //    top-35 slice always includes them. Without this, non-sports candidates append
+    //    after 60+ sports markets and never reach the analyst.
     const POOL_SIZE = 60;
-    const DIVERSITY_SLOTS_PER_CAT = 4;
+    const DIVERSITY_SLOTS_PER_CAT = 5;
     const diversityPool = candidates.slice(0, POOL_SIZE);
     const diversityExtras: ScanCandidate[] = [];
     const includedTickers = new Set(diversityPool.map((c) => c.market.ticker));
-    const NON_SPORTS_CATEGORIES = ["Politics", "Economics", "Financials", "Entertainment", "Weather", "Crypto", "Finance"];
+
     for (const cat of NON_SPORTS_CATEGORIES) {
       const catCandidates = candidates
-        .filter((c) => !includedTickers.has(c.market.ticker) &&
-          NON_SPORTS_CATEGORIES.some((nc) => (c.market.category || "").includes(nc)))
-        .filter((c) => (c.market.category || "").toLowerCase().includes(cat.toLowerCase()))
+        .filter((c) =>
+          !includedTickers.has(c.market.ticker) &&
+          (c.market.category || "").toLowerCase().includes(cat.toLowerCase()) &&
+          // Volume floor: must have some trading activity to be worth AI analysis.
+          // Kept low (10/100) so lightly-traded non-sports markets (politics near-term,
+          // active crypto) get analyzed. Sharp Money's own vol/liq ≥ 1.4× filter
+          // gates actual execution — this is just the "is the market alive?" check.
+          (c.volume24h > 10 || c.liquidity > 100)
+        )
         .slice(0, DIVERSITY_SLOTS_PER_CAT);
       for (const dc of catCandidates) {
         diversityExtras.push(dc);
         includedTickers.add(dc.market.ticker);
       }
     }
-    const topCandidates = [...diversityPool, ...diversityExtras].slice(0, 100);
+
+    // Sort diversity extras by compositeScore so the best non-sports markets lead.
+    // Then interleave: first 7 non-sports slots (1 per category max), then sports pool.
+    // This guarantees non-sports reach the pipeline's top-35 analysis slice.
+    diversityExtras.sort((a, b) => compositeScore(b) - compositeScore(a));
+    const topCandidates = [...diversityExtras, ...diversityPool].slice(0, 100);
+
     if (diversityExtras.length > 0) {
-      const catLog = diversityExtras.map((c) => c.market.category || "?").join(", ");
-      console.info(`[Scanner] Diversity injection: +${diversityExtras.length} non-sports candidates (${catLog})`);
+      const catLog = diversityExtras.map((c) => `${c.market.category || "?"}(vol=${c.volume24h})`).join(", ");
+      console.info(`[Scanner] Diversity injection: +${diversityExtras.length} non-sports candidates → ${catLog}`);
+    } else {
+      console.info(`[Scanner] No non-sports candidates with sufficient volume found this cycle`);
     }
 
     // If API returned nothing usable, fall through to the DB cache
