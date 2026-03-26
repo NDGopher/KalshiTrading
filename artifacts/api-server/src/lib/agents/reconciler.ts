@@ -2,6 +2,12 @@ import { db, tradesTable, paperTradesTable, tradingSettingsTable } from "@worksp
 import { eq, inArray } from "drizzle-orm";
 import { getOrder, getMarket } from "../kalshi-client.js";
 
+// Kalshi charges a taker fee of 7% of the profit on winning trades.
+// Maker (limit order) fee is 3% — relevant when live trading with limit orders.
+// This fee applies ONLY to winning trades and ONLY to the profit portion (not the stake).
+// Formula: net_pnl = quantity * (1 - entryPrice) * (1 - TAKER_FEE_RATE)
+const TAKER_FEE_RATE = 0.07;
+
 export interface ReconciliationResult {
   reconciled: number;
   settled: number;
@@ -54,7 +60,8 @@ export async function reconcileOpenTrades(): Promise<ReconciliationResult> {
           (trade.side === "yes" && market.result === "yes") ||
           (trade.side === "no" && market.result === "no");
 
-        const payout = won ? trade.quantity * (1 - trade.entryPrice) : -trade.quantity * trade.entryPrice;
+        const grossProfit = trade.quantity * (1 - trade.entryPrice);
+        const payout = won ? grossProfit * (1 - TAKER_FEE_RATE) : -trade.quantity * trade.entryPrice;
 
         const finalClosingLine = trade.closingLinePrice ?? (lastPrice > 0 ? lastPrice : (won ? 1.0 : 0.0));
         const closingClv = computeClv(trade, finalClosingLine);
@@ -117,7 +124,8 @@ export async function reconcilePaperTrades(): Promise<{ settled: number; errors:
           (trade.side === "yes" && market.result === "yes") ||
           (trade.side === "no" && market.result === "no");
 
-        const payout = won ? trade.quantity * (1 - trade.entryPrice) : -trade.quantity * trade.entryPrice;
+        const grossProfit = trade.quantity * (1 - trade.entryPrice);
+        const payout = won ? grossProfit * (1 - TAKER_FEE_RATE) : -trade.quantity * trade.entryPrice;
 
         await db
           .update(paperTradesTable)
