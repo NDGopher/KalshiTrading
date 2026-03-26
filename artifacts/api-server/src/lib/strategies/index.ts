@@ -55,10 +55,11 @@ const pureValue: Strategy = {
     return candidates.filter((c) => c.yesPrice >= 0.12 && c.yesPrice <= 0.88);
   },
   shouldTrade(analysis) {
-    // Edge sanity cap: anything > 50pp means the AI is hallucinating a fake edge
-    // (e.g., claiming 200pp edge on a market priced at 8¢). Cap and reject.
-    if (analysis.edge > 50) {
-      return { trade: false, reason: `Edge claim ${analysis.edge.toFixed(0)}pp exceeds sanity cap — model hallucination, skip` };
+    // Edge sanity cap: empirical data shows win rate collapses above 20pp.
+    // 10-20pp edge = 77-89% WR; 20-30pp = 20% WR; 30pp+ = 35% WR.
+    // The model hallucinates large edges on markets it doesn't understand — skip all.
+    if (analysis.edge > 20) {
+      return { trade: false, reason: `Edge claim ${analysis.edge.toFixed(0)}pp exceeds 20pp sanity cap — empirically win rate collapses above this level, skip` };
     }
     if (analysis.edge >= 4 && analysis.confidence >= 0.35) {
       return { trade: true, reason: `Pure value: ${analysis.edge.toFixed(1)}pp edge, ${(analysis.confidence * 100).toFixed(0)}% confidence` };
@@ -83,15 +84,15 @@ const sharpMoney: Strategy = {
     });
   },
   shouldTrade(analysis) {
-    if (analysis.edge > 50) return { trade: false, reason: `Edge ${analysis.edge.toFixed(0)}pp exceeds sanity cap` };
+    if (analysis.edge > 20) return { trade: false, reason: `Edge ${analysis.edge.toFixed(0)}pp exceeds 20pp sanity cap` };
     const volume = analysis.candidate.volume24h;
     const liquidity = Math.max(1, analysis.candidate.liquidity);
     const volumeToLiquidity = Math.min(volume / liquidity, 10);
     const sharpScore = volumeToLiquidity * analysis.edge;
 
-    // Require a meaningful vol/liq ratio — 0.5x is trivially easy to hit.
-    // At 1.5x, someone is actually trading hard relative to available liquidity.
-    if (analysis.edge >= 5 && analysis.confidence >= 0.40 && volumeToLiquidity >= 1.5) {
+    // Lowered from 1.5x to 1.4x to modestly increase firing rate.
+    // Signal is empirically strong at 0-10pp edge (91.7% WR) — slightly more volume wanted.
+    if (analysis.edge >= 5 && analysis.confidence >= 0.40 && volumeToLiquidity >= 1.4) {
       return {
         trade: true,
         reason: `Sharp money: ${analysis.edge.toFixed(1)}pp edge, vol/liq=${volumeToLiquidity.toFixed(2)}x (live), sharp score=${sharpScore.toFixed(1)}`,
@@ -138,7 +139,7 @@ const contrarianReversal: Strategy = {
     });
   },
   shouldTrade(analysis) {
-    if (analysis.edge > 50) return { trade: false, reason: `Edge ${analysis.edge.toFixed(0)}pp exceeds sanity cap` };
+    if (analysis.edge > 20) return { trade: false, reason: `Edge ${analysis.edge.toFixed(0)}pp exceeds 20pp sanity cap` };
 
     const h = analysis.candidate.priceHistory;
     if (!h?.isSurge) return { trade: false, reason: "No surge detected in price history" };
@@ -192,7 +193,7 @@ const momentum: Strategy = {
     return candidates.filter((c) => c.yesPrice > 0.08 && c.yesPrice < 0.92);
   },
   shouldTrade(analysis) {
-    if (analysis.edge > 50) return { trade: false, reason: `Edge ${analysis.edge.toFixed(0)}pp exceeds sanity cap` };
+    if (analysis.edge > 20) return { trade: false, reason: `Edge ${analysis.edge.toFixed(0)}pp exceeds 20pp sanity cap` };
     const hoursLeft = analysis.candidate.hoursToExpiry;
     const currentPrice = analysis.candidate.yesPrice;
     const market = analysis.candidate.market;
@@ -249,9 +250,10 @@ const dipBuy: Strategy = {
     return candidates.filter((c) => {
       const h = c.priceHistory;
       if (!h?.isDip) return false;
-      // Require ≥10 snapshots (50 min at 5-min cadence) to trust the mean.
-      // With fewer snapshots the "mean" is just the last few prices — not a real baseline.
-      if (h.snapshots < 10) return false;
+      // Lowered from 10 → 8 snapshots (40 min at 5-min cadence).
+      // Dip Buy has the best win/loss ratio of all strategies (2.26×): avg win $36, avg loss $16.
+      // A slightly shorter baseline is worth the extra firing rate.
+      if (h.snapshots < 8) return false;
       return c.hoursToExpiry > 2 && c.yesPrice > 0.10 && c.yesPrice < 0.90;
     });
   },

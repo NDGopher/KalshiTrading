@@ -2,11 +2,15 @@ import { db, tradesTable, paperTradesTable, tradingSettingsTable } from "@worksp
 import { eq, inArray } from "drizzle-orm";
 import { getOrder, getMarket } from "../kalshi-client.js";
 
-// Kalshi charges a taker fee of 7% of the profit on winning trades.
-// Maker (limit order) fee is 3% — relevant when live trading with limit orders.
-// This fee applies ONLY to winning trades and ONLY to the profit portion (not the stake).
-// Formula: net_pnl = quantity * (1 - entryPrice) * (1 - TAKER_FEE_RATE)
-const TAKER_FEE_RATE = 0.07;
+// Kalshi taker fee formula: fee = ceil(0.07 × C × P × (1 − P))
+// where C = contracts, P = entry price per contract (0–1 scale).
+// This peaks at 3.5% effective rate around 50¢ and is much lower near extremes
+// (e.g., 2.1% at 70¢, 1.4% at 80¢). The P×(1−P) term means high-priced contracts
+// pay proportionally less in fees — important for NO bets near 70–80¢.
+// Fee only applies to WINNING trades. Losses have no fee (stake is simply lost).
+function kalshiTakerFee(contracts: number, entryPrice: number): number {
+  return Math.ceil(0.07 * contracts * entryPrice * (1 - entryPrice) * 100) / 100;
+}
 
 export interface ReconciliationResult {
   reconciled: number;
@@ -61,7 +65,8 @@ export async function reconcileOpenTrades(): Promise<ReconciliationResult> {
           (trade.side === "no" && market.result === "no");
 
         const grossProfit = trade.quantity * (1 - trade.entryPrice);
-        const payout = won ? grossProfit * (1 - TAKER_FEE_RATE) : -trade.quantity * trade.entryPrice;
+        const fee = won ? kalshiTakerFee(trade.quantity, trade.entryPrice) : 0;
+        const payout = won ? grossProfit - fee : -trade.quantity * trade.entryPrice;
 
         const finalClosingLine = trade.closingLinePrice ?? (lastPrice > 0 ? lastPrice : (won ? 1.0 : 0.0));
         const closingClv = computeClv(trade, finalClosingLine);
@@ -125,7 +130,8 @@ export async function reconcilePaperTrades(): Promise<{ settled: number; errors:
           (trade.side === "no" && market.result === "no");
 
         const grossProfit = trade.quantity * (1 - trade.entryPrice);
-        const payout = won ? grossProfit * (1 - TAKER_FEE_RATE) : -trade.quantity * trade.entryPrice;
+        const fee = won ? kalshiTakerFee(trade.quantity, trade.entryPrice) : 0;
+        const payout = won ? grossProfit - fee : -trade.quantity * trade.entryPrice;
 
         await db
           .update(paperTradesTable)
@@ -138,16 +144,13 @@ export async function reconcilePaperTrades(): Promise<{ settled: number; errors:
           .where(eq(paperTradesTable.id, trade.id));
 
         const [settings] = await db.select().from(tradingSettingsTable).limit(1);
-        if (settings) {
-          const balanceChange = won
-            ? trade.quantity * (1 - trade.entryPrice) + trade.quantity * trade.entryPrice
-            : 0;
-          if (balanceChange > 0) {
-            await db
-              .update(tradingSettingsTable)
-              .set({ paperBalance: settings.paperBalance + balanceChange })
-              .where(eq(tradingSettingsTable.id, settings.id));
-          }
+        if (settings && won && payout > 0) {
+          // Add back only the net profit (stake is never deducted when placing,
+          // so only profit is added on win). This keeps balance = start + cumulative_profit.
+          await db
+            .update(tradingSettingsTable)
+            .set({ paperBalance: settings.paperBalance + payout })
+            .where(eq(tradingSettingsTable.id, settings.id));
         }
 
         settled++;
