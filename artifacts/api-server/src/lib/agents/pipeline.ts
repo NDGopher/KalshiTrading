@@ -42,7 +42,7 @@ export interface LastCycleMarket {
   strategyName: string | null;
   reasoning: string | null;
   strategyReason: string | null;
-  disposition: "executed" | "skipped_risk" | "skipped_audit" | "skipped_duplicate" | "skipped_confidence" | "skipped_no_price" | "candidate";
+  disposition: "executed" | "skipped_risk" | "skipped_audit" | "skipped_duplicate" | "skipped_confidence" | "skipped_no_price" | "skipped_game_cap" | "candidate";
   rejectionReason: string | null;
 }
 
@@ -58,6 +58,23 @@ const CONFIDENCE_CEILING = 0.75;
 // rate but still produced nearly zero profit because the math never works out.
 // This cap keeps us off the chalk and forces strategies to find meaningful edges.
 const NO_MAX_ENTRY_PRICE = 0.80;
+
+// Per-game position limit: max number of open bets on the SAME game (same game ID
+// extracted from the ticker). Prevents correlated spread stacking — e.g., 7 bets on
+// MIL/POR at different spread lines where ONE outcome resolves ALL of them the same way.
+// March 2026: Late Efficiency stacked 7 POR bets in one night → -$208 from one game.
+const MAX_POSITIONS_PER_GAME = 2;
+
+/**
+ * Extracts a stable game key from a Kalshi ticker.
+ * Format: KXNBASPREAD-26MAR25DALDEN-DEN8 → "26MAR25DALDEN"
+ *          KXNHLGAME-26MAR26PITOTT-OTT    → "26MAR26PITOTT"
+ * Returns null for tickers that don't follow the series-game-leg pattern.
+ */
+function extractGameKey(ticker: string): string | null {
+  const parts = ticker.split("-");
+  return parts.length >= 2 ? parts[1] : null;
+}
 
 let lastCycleMarkets: LastCycleMarket[] = [];
 let lastCycleAt: Date | null = null;
@@ -313,11 +330,31 @@ export async function runTradingCycle(): Promise<CycleResult> {
     let strategySkipped = 0;
     let confidenceCapped = 0;
     let noPriceCapped = 0;
+    let gameCapSkipped = 0;
     // Tracks trades approved THIS cycle so the reverse middle detector can see
     // intra-cycle positions before they are written to the DB.
     const confidenceCappedTickers = new Set<string>();
     const noPriceCappedTickers = new Set<string>();
+    const gameCapTickers = new Set<string>();
     const intraCycleTrades: Array<{ kalshiTicker: string; side: string }> = [];
+
+    // Build a game-key → count map from currently open DB positions.
+    // This prevents adding a 3rd bet on a game where we already have 2 open.
+    const openGameCounts = new Map<string, number>();
+    try {
+      const { paperTradesTable } = await import("@workspace/db");
+      const openTrades = await db
+        .select({ kalshiTicker: paperTradesTable.kalshiTicker })
+        .from(paperTradesTable)
+        .where(eq(paperTradesTable.status, "open"));
+      for (const t of openTrades) {
+        const gk = extractGameKey(t.kalshiTicker);
+        if (gk) openGameCounts.set(gk, (openGameCounts.get(gk) ?? 0) + 1);
+      }
+    } catch {
+      // Non-fatal — if we can't load open trades, skip the per-game check
+    }
+
     for (const audit of approved) {
       const strategyMatches = evaluateStrategies(audit.analysis, enabledStrategies);
       if (strategyMatches.length === 0) {
@@ -348,6 +385,23 @@ export async function runTradingCycle(): Promise<CycleResult> {
           continue;
         }
       }
+
+      // Per-game position limit: prevent correlated spread stacking on the same game.
+      // Count positions already open in DB + approved this cycle for this game key.
+      const ticker = audit.analysis.candidate.market.ticker;
+      const gameKey = extractGameKey(ticker);
+      if (gameKey) {
+        const dbCount = openGameCounts.get(gameKey) ?? 0;
+        const cycleCount = intraCycleTrades.filter((t) => extractGameKey(t.kalshiTicker) === gameKey).length;
+        const totalGamePositions = dbCount + cycleCount;
+        if (totalGamePositions >= MAX_POSITIONS_PER_GAME) {
+          gameCapSkipped++;
+          gameCapTickers.add(ticker);
+          console.log(`[Pipeline] Game cap: ${ticker} already has ${totalGamePositions} positions on game ${gameKey} (max ${MAX_POSITIONS_PER_GAME}) — skipped`);
+          continue;
+        }
+      }
+
       const strategyName = strategyMatches[0].strategyName;
       const decision = await assessRisk(audit, {
         maxPositionPct: settings.maxPositionPct,
@@ -375,6 +429,7 @@ export async function runTradingCycle(): Promise<CycleResult> {
       strategySkipped > 0 ? `${strategySkipped} no-strategy` : null,
       confidenceCapped > 0 ? `${confidenceCapped} conf>${(CONFIDENCE_CEILING * 100).toFixed(0)}% capped` : null,
       noPriceCapped > 0 ? `${noPriceCapped} NO>${(NO_MAX_ENTRY_PRICE * 100).toFixed(0)}¢ capped` : null,
+      gameCapSkipped > 0 ? `${gameCapSkipped} game-cap (max ${MAX_POSITIONS_PER_GAME}/game)` : null,
     ].filter(Boolean).join(", ");
     const riskDetails = riskExtras
       ? `${riskApproved.length}/${riskDecisions.length} risk-approved, ${riskExtras}`
@@ -427,6 +482,10 @@ export async function runTradingCycle(): Promise<CycleResult> {
         const candidate = c;
         const noAsk = candidate.noAsk ?? candidate.noPrice ?? (1 - (candidate.yesPrice ?? 0));
         rejectionReason = `NO entry ${(noAsk * 100).toFixed(0)}¢ exceeds ${(NO_MAX_ENTRY_PRICE * 100).toFixed(0)}¢ cap — requires >83% win rate to break even at this price`;
+      } else if (gameCapTickers.has(c.market.ticker)) {
+        disposition = "skipped_game_cap";
+        const gk = extractGameKey(c.market.ticker);
+        rejectionReason = `Game position limit reached — already have ${MAX_POSITIONS_PER_GAME} bets on game ${gk ?? "this game"} (correlated spread stacking blocked)`;
       } else if (riskSkippedTickers.has(c.market.ticker)) {
         disposition = "skipped_risk";
         rejectionReason = risk?.rejectReason || "Risk limit exceeded";

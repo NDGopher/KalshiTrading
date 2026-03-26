@@ -225,46 +225,6 @@ const momentum: Strategy = {
   },
 };
 
-// ─── Strategy 5: Late Efficiency ──────────────────────────────────────────────
-const lateEfficiency: Strategy = {
-  name: "Late Efficiency",
-  description: "Exploits spread inefficiencies in the pre-game window (≤36h). Requires live spread data (not DB estimates) and a strong AI edge — wide spreads on synthetic data are meaningless.",
-  selectCandidates(candidates) {
-    return candidates.filter((c) =>
-      c.hoursToExpiry > 0.25 &&
-      c.hoursToExpiry <= 36 &&
-      c.spread > 0.01 &&
-      // Live spread data only — the DB cache synthesizes spread from estimated ask/bid,
-      // which tells us nothing about real market inefficiency.
-      c.hasLiveData &&
-      // Must be in genuine uncertainty zone
-      c.yesPrice >= 0.12 &&
-      c.yesPrice <= 0.88
-    );
-  },
-  shouldTrade(analysis) {
-    if (analysis.edge > 50) {
-      return { trade: false, reason: `Edge ${analysis.edge.toFixed(0)}pp exceeds sanity cap` };
-    }
-    const hoursLeft = analysis.candidate.hoursToExpiry;
-    const spread = analysis.candidate.spread;
-    const yesPrice = Math.max(0.01, analysis.candidate.yesPrice);
-    const spreadPct = (spread / yesPrice) * 100;
-
-    // Raised from 8pp to 12pp: Late Efficiency was over-firing on NBA spreads at 8pp.
-    // A real spread inefficiency needs strong model conviction on top of the spread signal.
-    // Confidence raised from 0.25 to 0.35 for the same reason.
-    if (analysis.edge >= 12 && analysis.confidence >= 0.35 && spreadPct > 2) {
-      return {
-        trade: true,
-        reason: `Late efficiency: ${hoursLeft.toFixed(1)}h to expiry, ${spreadPct.toFixed(1)}% spread (live), ${analysis.edge.toFixed(1)}pp edge`,
-        metadata: { hoursRemaining: hoursLeft },
-      };
-    }
-    return { trade: false, reason: `No inefficiency (${hoursLeft.toFixed(1)}h, ${spreadPct.toFixed(1)}% spread, edge=${analysis.edge.toFixed(1)}pp — need ≥12pp)` };
-  },
-};
-
 // ─── Strategy 6: Dip Buy (Mean Reversion) ────────────────────────────────────
 /**
  * Mean reversion with two tiers:
@@ -508,10 +468,12 @@ export const strategies: Strategy[] = [
   probabilityArb,     // Requires multi-leg YES sum > 100% — pure math
   dipBuy,             // Requires isDip + ≥10 snapshots + dip-age confirmation
   contrarianReversal, // Requires isSurge + stable market + low volume — specific
-  lateEfficiency,     // Requires live spread + hoursToExpiry ≤ 36 + 12pp edge
   sharpMoney,         // Requires live vol/liq data + vol/liq ≥ 1.5×
   momentum,           // Requires volume surge ≥ 2× confirmation
   pureValue,          // Catch-all: any market with edge ≥ 4pp, conf ≥ 35% — always last
+  // Late Efficiency removed (March 2026): 73 trades, 31.5% WR, -$733 P&L.
+  // Strategy systematically stacked 6-7 correlated spread bets on the same game,
+  // causing -$200+ losses from a single game outcome (e.g., MIL/POR 3/26/26).
   // marketMaking removed: paper trade simulation only executes taker trades (market
   // orders), so Market Making was silently mislabeling directional bets as spread-
   // capture trades. P&L numbers were meaningless. Re-add when live limit-order
