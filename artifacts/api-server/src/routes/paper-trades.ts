@@ -66,8 +66,7 @@ router.get("/paper-trades/stats", async (_req, res) => {
     const totalPnl = closed.reduce((s, t) => s + (t.pnl || 0), 0);
     const winRate = closed.length > 0 ? wins.length / closed.length : 0;
 
-    const [settings] = await db.select().from(tradingSettingsTable).limit(1);
-    const cashBalance = settings?.paperBalance || 5000;
+    const START_BALANCE = 5000;
 
     let openPositionValue = 0;
     let openCostBasis = 0;
@@ -81,7 +80,12 @@ router.get("/paper-trades/stats", async (_req, res) => {
     }
 
     const unrealizedPnl = openPositionValue - openCostBasis;
-    const totalPortfolioValue = cashBalance + openPositionValue;
+
+    // Anchor portfolio value to $5,000 start + all cash flows — same formula
+    // used by the equity graph so stat card and graph always agree.
+    // "Cash" = available cash = start + realized P&L - deployed capital.
+    const totalPortfolioValue = START_BALANCE + totalPnl + unrealizedPnl;
+    const cashBalance = START_BALANCE + totalPnl - openCostBasis;
 
     res.json({
       paperBalance: cashBalance,
@@ -148,13 +152,18 @@ router.get("/paper-trades/equity", async (_req, res) => {
         tradeId: t.id,
         type: "open",
       });
-      // Closing event (if resolved): cash comes back in based on result
+      // Closing event (if resolved): cash comes back in based on result.
+      // On WIN: return the original stake PLUS net profit (which is already
+      // fee-adjusted in t.pnl). Using cost + pnl keeps the graph consistent
+      // with the stats endpoint which also uses t.pnl for realized P&L.
+      // On LOSS: return 0 — stake is already gone from the open event.
       if ((t.status === "won" || t.status === "lost") && t.closedAt) {
-        const payout = t.status === "won" ? t.quantity * 1.0 : 0;
+        const netPnl = t.pnl ?? 0;
+        const payout = t.status === "won" ? cost + netPnl : 0;
         events.push({
           ts: new Date(t.closedAt).getTime(),
           label: t.status === "won"
-            ? `WON +$${((payout - cost)).toFixed(2)} — ${t.title.slice(0, 40)}`
+            ? `WON +$${netPnl.toFixed(2)} — ${t.title.slice(0, 40)}`
             : `LOST -$${cost.toFixed(2)} — ${t.title.slice(0, 40)}`,
           delta: payout,
           tradeId: t.id,
