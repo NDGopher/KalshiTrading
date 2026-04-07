@@ -1,5 +1,7 @@
 # Pipeline Documentation
 
+> **Last verified:** 2026-04-07
+
 ## The Autonomous Trading Cycle
 
 The Kalshi Trading System runs a continuous autonomous pipeline. This document explains every step in detail — what triggers it, what decisions are made, what data flows between agents, and what thresholds gate each stage.

@@ -2,6 +2,8 @@
 
 > **For AI assistants (Cursor, Open WebUI, Claude Projects, etc.)**
 > Read this before touching any code. It is the authoritative project brief.
+>
+> **Last verified:** 2026-04-07
 
 ---
 

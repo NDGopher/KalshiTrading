@@ -1,5 +1,7 @@
 # Kalshi Trading Dashboard
 
+> **Last verified:** 2026-04-07
+
 An autonomous AI-powered trading system for [Kalshi](https://kalshi.com) prediction markets. The system runs a continuous pipeline of specialized AI agents that scan markets, analyze opportunities using Claude AI, manage risk, and execute trades — all with a real-time dashboard for monitoring.
 
 ---

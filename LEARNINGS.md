@@ -3,6 +3,10 @@
 > Auto-generated from the `agent_learnings` database table.
 > The Learner agent runs every 10 pipeline cycles and synthesizes closed trade history into actionable insights.
 > These learnings are injected into every future analyst prompt to calibrate AI probability estimates.
+>
+> **Last verified:** 2026-04-07
+> **To regenerate:** trigger a learner run via `POST /api/pipeline/learner` on the API server,
+> then re-export from the `agent_learnings` table. The dashboard's Learner page shows the latest data live.
 
 ---
 
