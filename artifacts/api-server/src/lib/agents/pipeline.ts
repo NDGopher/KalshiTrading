@@ -78,9 +78,11 @@ function extractGameKey(ticker: string): string | null {
 
 let lastCycleMarkets: LastCycleMarket[] = [];
 let lastCycleAt: Date | null = null;
+let lastSuccessfulCycleAt: Date | null = null;
 let liveCycleId: string | null = null;
 let liveCycleInProgress = false;
 let liveCycleActiveAgent: string | null = null;
+let watchdogInterval: ReturnType<typeof setInterval> | null = null;
 
 export function getLastCycleSummary() {
   return {
@@ -89,6 +91,7 @@ export function getLastCycleSummary() {
     cycleId: liveCycleId,
     inProgress: liveCycleInProgress,
     activeAgent: liveCycleActiveAgent,
+    lastHeartbeatAt: lastSuccessfulCycleAt?.toISOString() || null,
   };
 }
 
@@ -153,6 +156,9 @@ function finishCycle() {
   pipelineRunning = false;
   liveCycleInProgress = false;
   liveCycleActiveAgent = null;
+  // Update heartbeat on every completion (success OR error) so the watchdog
+  // can tell the interval is still firing even when cycles fail.
+  lastSuccessfulCycleAt = new Date();
 }
 
 export async function runTradingCycle(): Promise<CycleResult> {
@@ -314,7 +320,20 @@ export async function runTradingCycle(): Promise<CycleResult> {
     updateAgentStatus("Risk Manager", "running");
     let bankroll: number;
     if (paperMode) {
-      bankroll = settings.paperBalance;
+      // Compute true paper bankroll from trade history rather than using the
+      // stale DB paper_balance field (which drifts when executor deducts stakes
+      // but reconciler only credits net profit rather than full stake recovery).
+      // Formula: $5,000 starting capital + all settled net P&L.
+      // Open positions don't reduce available cash in paper mode — they are
+      // virtual, so we only anchor on realised results.
+      try {
+        const { paperTradesTable: ptbl } = await import("@workspace/db");
+        const allSettled = await db.select({ pnl: ptbl.pnl }).from(ptbl);
+        const settledPnl = allSettled.reduce((s, t) => s + (t.pnl || 0), 0);
+        bankroll = 5000 + settledPnl;
+      } catch {
+        bankroll = settings.paperBalance || 5000;
+      }
     } else {
       try {
         const balanceData = await getBalance();
@@ -594,6 +613,10 @@ export function startPipeline(intervalMinutes: number) {
     clearInterval(pipelineInterval);
   }
 
+  // Seed heartbeat so the watchdog doesn't fire before the first cycle finishes.
+  // The watchdog checks 15 min with no cycle — if we just started, that's fine.
+  lastSuccessfulCycleAt = new Date();
+
   // Start the news fetcher so breaking news is available for analyst prompts
   startNewsFetcher();
 
@@ -604,6 +627,58 @@ export function startPipeline(intervalMinutes: number) {
   }, intervalMinutes * 60 * 1000);
 
   console.log(`[Pipeline] Started: runs every ${intervalMinutes} min (first cycle immediate)`);
+}
+
+/**
+ * Dead-man's switch / watchdog.
+ * Runs every minute and checks whether the pipeline has completed a cycle
+ * within the last 15 minutes. If not, it logs a recovery event and restarts
+ * the pipeline. This catches the case where a setInterval silently dies due
+ * to an unhandled exception that escaped the per-cycle try/catch.
+ */
+export function startWatchdog() {
+  if (watchdogInterval) {
+    clearInterval(watchdogInterval);
+  }
+
+  const WATCHDOG_CHECK_MS = 60 * 1000; // check every 1 minute
+  const STALE_THRESHOLD_MS = 15 * 60 * 1000; // restart if no cycle in 15 min
+
+  watchdogInterval = setInterval(async () => {
+    // Watchdog only acts when the pipeline is supposed to be active
+    if (!pipelineInterval) return;
+
+    const now = Date.now();
+    const lastCycleMs = lastSuccessfulCycleAt ? lastSuccessfulCycleAt.getTime() : 0;
+    const msSinceLastCycle = now - lastCycleMs;
+
+    if (msSinceLastCycle > STALE_THRESHOLD_MS) {
+      const minutesSince = Math.round(msSinceLastCycle / 60000);
+      console.warn(`[Watchdog] No pipeline cycle in ${minutesSince} min — restarting pipeline`);
+
+      try {
+        await db.insert(agentRunsTable).values({
+          agentName: "Watchdog",
+          status: "error",
+          duration: 0,
+          details: `Pipeline stall detected: no cycle for ${minutesSince} min. Auto-restarting.`,
+        });
+      } catch {
+        // Non-fatal — don't let the watchdog itself crash
+      }
+
+      try {
+        const [settings] = await db.select().from(tradingSettingsTable).limit(1);
+        const intervalMin = settings?.scanIntervalMinutes || 5;
+        startPipeline(intervalMin);
+        console.log(`[Watchdog] Pipeline restarted with ${intervalMin} min interval`);
+      } catch (err) {
+        console.error("[Watchdog] Failed to restart pipeline:", err instanceof Error ? err.message : err);
+      }
+    }
+  }, WATCHDOG_CHECK_MS);
+
+  console.log("[Watchdog] Dead-man's switch started (checks every 1 min, threshold 15 min)");
 }
 
 export function getNewsFetcherInfo() {
