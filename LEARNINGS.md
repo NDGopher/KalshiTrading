@@ -1,0 +1,236 @@
+# LEARNINGS.md — Agent Learning Export
+
+> Auto-generated from the `agent_learnings` database table.
+> The Learner agent runs every 10 pipeline cycles and synthesizes closed trade history into actionable insights.
+> These learnings are injected into every future analyst prompt to calibrate AI probability estimates.
+
+---
+
+## Latest Learning Run
+
+**Generated:** 2026-03-29T23:20:32Z  
+**Closed Trades Analyzed:** 276  
+**Overall Win Rate:** 54.7%  
+**Net P&L:** $147.11  
+
+---
+
+## Analyst Injection Block
+
+*This text is prepended to every Analyst prompt to provide empirical calibration:*
+
+```
+SYSTEM LEARNINGS (empirical, updated automatically):
+
+CORE STRENGTH: High AI confidence (≥60%) produces 70% win rates. Model is well-calibrated
+in high-certainty regimes. Conversely, <40% confidence wins only 43% of the time — avoid entirely.
+
+CATEGORY FILTER: Sports markets are a drag (54% WR, -$0.89/trade over 263 trades). Non-sports
+categories win 69% of the time with +$29.26 avg P&L. Deprioritize sports.
+
+PRICE SWEET SPOT: The 50-70c (moderate favorite) band is optimal: 63% WR, +$2.26/trade.
+Avoid 30-50c toss-ups (42% WR) unless very high confidence. Heavy underdog bets (0-15c, 15-30c)
+are losers except in rare, high-conviction cases.
+
+EDGE MISCALIBRATION: The 10-20% edge bucket works well (58% WR, +$6.31). But 20-30% claimed
+edges are RED FLAGS — only 17% WR on 6 trades, suggesting the model is overconfident at high
+stated edges. Do not rely on >20% edge claims.
+
+STRATEGY: Sharp Money approach (following consensus shifts) wins 75% WR. Pure Value wins only
+53% WR. Favor signal-based (sharp money, momentum) over purely statistical value.
+
+BET SIDE: YES-side bets severely underperform (28% WR). Bias toward NO-side (57% WR). YES
+reserved only for sharp money + ≥60% confidence.
+
+SIZING RULE: Confidence ≥60% = full size. 50-60% = 0.7x. 40-50% = 0.5x. <40% = 0% (do not trade).
+```
+
+---
+
+## Performance Breakdown
+
+### By Category
+
+| Category | Trades | Win Rate | Avg P&L |
+|---|---|---|---|
+| Sports | 263 | 54% | -$0.89 |
+| Other (non-sports) | 13 | 69% | +$29.26 |
+
+**Takeaway:** Sports markets dominate the portfolio (95%) but produce near-break-even results. Non-sports categories are dramatically more profitable per trade. The scanner's diversity injection was added specifically to address this imbalance.
+
+---
+
+### By Edge Bucket
+
+| Edge Range | Trades | Win Rate | Avg P&L |
+|---|---|---|---|
+| 0-5% | 52 | 58% | -$0.96 |
+| 5-10% | 128 | 57% | -$2.36 |
+| 10-20% | 66 | 58% | +$6.31 |
+| 20-30% | 6 | 17% | -$20.01 |
+| 30-50% | 14 | 36% | +$14.08 |
+| 50%+ | 10 | 40% | +$0.49 |
+
+**Takeaway:** The 10-20% edge band is the sweet spot — highest P&L per trade with reliable win rate. Claimed edges above 20% are a strong signal of model miscalibration (not more profitable bets). The 5-10% band is the most common but produces negative P&L, suggesting the edge floor needs raising.
+
+---
+
+### By AI Confidence
+
+| Confidence | Trades | Win Rate | Avg P&L |
+|---|---|---|---|
+| 30-40% | 120 | 43% | -$2.43 |
+| 40-50% | 73 | 60% | +$4.04 |
+| 50-60% | 20 | 60% | -$0.29 |
+| ≥60% | 63 | 70% | +$2.37 |
+
+**Takeaway:** Confidence is a genuinely predictive signal. 30-40% confidence trades lose money at 43% win rate. 60%+ confidence wins 70% of the time. The confidence ceiling (75% hard block) is also justified — above that level, Claude is overconfident on markets that have already been efficiently priced.
+
+---
+
+### By Bet Side
+
+| Side | Trades | Win Rate | Avg P&L |
+|---|---|---|---|
+| NO bets | 258 | 57% | -$0.11 |
+| YES bets | 18 | 28% | +$9.76 |
+
+**Takeaway:** The system heavily favors NO bets (94% of trades). YES bets have low win rate (28%) but high payout per win. With only 18 YES bets, the sample is too small to optimize — but YES bets should be reserved for high-conviction scenarios with sharp money signals.
+
+---
+
+### By Entry Price Range
+
+| Price Range | Trades | Win Rate | Avg P&L |
+|---|---|---|---|
+| 0-15¢ (heavy underdog) | 5 | 20% | +$42.25 |
+| 15-30¢ (underdog) | 17 | 18% | -$10.31 |
+| 30-50¢ (toss-up) | 106 | 42% | -$0.80 |
+| 50-70¢ (favorite) | 95 | 63% | +$2.26 |
+| 70¢+ (heavy favorite) | 53 | 81% | -$0.37 |
+
+**Takeaway:** The 50-70¢ favorite band is the clear sweet spot. Heavy favorites (70¢+) win often but pay so little that P&L is negative. Toss-ups (30-50¢) are a consistent money-loser. Underdogs are high variance and mostly money-losing.
+
+---
+
+### By Strategy
+
+| Strategy | Trades | Win Rate | Avg P&L |
+|---|---|---|---|
+| Pure Value | 244 | 53% | +$0.06 |
+| Sharp Money | 20 | 75% | +$6.62 |
+| Dip Buy | 8 | 38% | -$0.35 |
+| Momentum | 4 | 75% | +$0.99 |
+
+**Takeaway:** Sharp Money is the highest-performing strategy by a wide margin (75% win rate, +$6.62/trade). Pure Value (the default) barely breaks even at 53%. Dip Buy is underperforming — possibly because "dip" signals are not being classified correctly as liquidity flushes vs informed selling.
+
+---
+
+## Insights (Machine-Generated)
+
+The following insights were generated by Claude Haiku from the trade performance data:
+
+### 1. Sports Markets — AVOID
+- **Dimension:** category:Sports
+- **Finding:** Sports markets have generated 263 trades with only 54% win rate and -$0.89 avg P&L, dragging down overall system performance despite high volume.
+- **Action:** AVOID: Reduce or pause sports trading. Redirect capital to non-sports categories where win rate is 69% and avg P&L is +$29.26.
+- **Signal:** avoid | Trades: 263 | Win Rate: 54% | Avg P&L: -$0.89
+
+### 2. High AI Confidence — FAVOR
+- **Dimension:** ai_confidence:≥60%
+- **Finding:** High-confidence trades (≥60% AI confidence) show 70% win rate and +$2.37 avg P&L, the strongest signal in the dataset.
+- **Action:** FAVOR: Increase position sizing and entry frequency when AI confidence ≥60%. This is the system's genuine edge.
+- **Signal:** favor | Trades: 63 | Win Rate: 70% | Avg P&L: +$2.37
+
+### 3. Low AI Confidence — AVOID
+- **Dimension:** ai_confidence:30-40%
+- **Finding:** Low-confidence trades (30-40%) have 43% win rate and -$2.43 avg P&L, significantly below break-even.
+- **Action:** AVOID: Enforce a minimum confidence threshold of 50%. Do not trade when AI confidence is below 40%.
+- **Signal:** avoid | Trades: 120 | Win Rate: 43% | Avg P&L: -$2.43
+
+### 4. Toss-up Markets — CAUTION
+- **Dimension:** entry_price:30-50c_tossup
+- **Finding:** Toss-up markets (30-50c entry) have 42% win rate and -$0.80 avg P&L; the model is systematically wrong in high-uncertainty regimes.
+- **Action:** CAUTION: Reduce or eliminate trades in toss-up price bands unless AI confidence is ≥60%. Model lacks edge in near-coin-flip scenarios.
+- **Signal:** caution | Trades: 106 | Win Rate: 42% | Avg P&L: -$0.80
+
+### 5. Favorite Markets — FAVOR
+- **Dimension:** entry_price:50-70c_favorite
+- **Finding:** Favorite markets (50-70c) show 63% win rate and +$2.26 avg P&L — strong performance in moderately-priced liquid markets.
+- **Action:** FAVOR: Concentrate trading in the 50-70c price band, especially when AI confidence ≥50%. This is a sweet spot.
+- **Signal:** favor | Trades: 95 | Win Rate: 63% | Avg P&L: +$2.26
+
+### 6. Medium Edge Band — FAVOR
+- **Dimension:** edge_bucket:10-20%
+- **Finding:** 10-20% edge bucket shows 58% win rate and +$6.31 avg P&L, the best risk-adjusted return per trade.
+- **Action:** FAVOR: Prioritize trades with 10-20% claimed edge. This band has the highest edge-to-win-rate conversion.
+- **Signal:** favor | Trades: 66 | Win Rate: 58% | Avg P&L: +$6.31
+
+### 7. High Edge Miscalibration — CAUTION
+- **Dimension:** edge_bucket:20-30%
+- **Finding:** 20-30% edge bucket has only 17% win rate on 6 trades and -$20.01 avg P&L — severe miscalibration at high claimed edges.
+- **Action:** CAUTION: Do not trade when model claims 20-30% edge without independent verification. High stated edge is correlated with model failure.
+- **Signal:** caution | Trades: 6 | Win Rate: 17% | Avg P&L: -$20.01
+
+### 8. Sharp Money Strategy — FAVOR
+- **Dimension:** strategy:Sharp_Money
+- **Finding:** Sharp money strategy (following consensus shifts) has 75% win rate and +$6.62 avg P&L on 20 trades.
+- **Action:** FAVOR: Increase allocation to sharp money detection. When the system identifies real money movement, execution is reliable.
+- **Signal:** favor | Trades: 20 | Win Rate: 75% | Avg P&L: +$6.62
+
+### 9. YES Bets — CAUTION
+- **Dimension:** side:YES_bets
+- **Finding:** YES bets have only 28% win rate despite +$9.76 avg P&L (high payouts on rare events), but 18 trades is too few to trust.
+- **Action:** CAUTION: YES bets are rare and underperform. Restrict YES-side entries to ≥60% confidence and sharp money signals only.
+- **Signal:** caution | Trades: 18 | Win Rate: 28% | Avg P&L: +$9.76
+
+### 10. Heavy Favorites — NEUTRAL
+- **Dimension:** entry_price:70c+_heavy_favorite
+- **Finding:** Heavy favorites (70c+) have 81% win rate but -$0.37 avg P&L due to low absolute payouts on near-certainties.
+- **Action:** NEUTRAL: While win rate is high, position sizing must be large to overcome thin margins. Use only for capital efficiency, not edge.
+- **Signal:** neutral | Trades: 53 | Win Rate: 81% | Avg P&L: -$0.37
+
+---
+
+## Schema Reference
+
+The `agent_learnings` table stores:
+
+| Column | Type | Description |
+|---|---|---|
+| `id` | serial | Primary key |
+| `created_at` | timestamp | When this learning run completed |
+| `total_closed_trades` | integer | Closed trades analyzed |
+| `win_rate` | real | Fraction 0-1 (e.g., 0.547 = 54.7%) |
+| `total_pnl` | real | Net P&L in USD across all closed trades |
+| `insights` | jsonb | Array of LearningInsight objects |
+| `analyst_injection` | text | Calibration text injected into analyst prompts |
+| `raw_analysis` | text | Plain-text performance breakdown used as Claude input |
+
+### LearningInsight Shape
+
+```typescript
+interface LearningInsight {
+  dimension: string;        // What was measured, e.g. "category:Sports"
+  finding: string;          // 1-2 sentence fact from the data
+  action: string;           // Concrete instruction for the analyst
+  signal: "favor" | "avoid" | "caution" | "neutral";
+  trades: number;           // Number of trades in this bucket
+  winRate: number;          // 0-1 decimal
+  avgPnl: number;           // Average P&L per trade in USD
+}
+```
+
+---
+
+## How Learnings Are Generated
+
+1. **Trigger**: Runs every 10 pipeline cycles OR on-demand via `POST /api/pipeline/learner`
+2. **Minimum data**: Requires ≥10 closed trades; skips if fewer
+3. **Data source**: `paper_trades` table, `status IN ('won', 'lost')`
+4. **Processing**: Performance bucketed across 7 dimensions, structured summary built
+5. **AI synthesis**: Claude Haiku generates insights + analystInjection from the summary
+6. **Storage**: Written to `agent_learnings` table
+7. **Injection**: Next cycle's Analyst reads `getLatestAnalystInjection()` and prepends the text to every market analysis prompt
+
+Only insights with ≥5 closed trades in a bucket are included. The system requires statistically meaningful samples before making calibration decisions.
