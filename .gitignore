@@ -50,6 +50,13 @@ Thumbs.db
 *.env
 *.env.*
 
+# Local database files
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+*.sqlite-journal
+
 # Replit
 .cache/
 .local/
