@@ -178,14 +178,29 @@ export async function assessRisk(
     .orderBy(desc(tradeSource.createdAt))
     .limit(settings.maxConsecutiveLosses + 5);
 
+  // Time-gap streak reset: if the most recent settled trade is older than 3 days,
+  // the losing streak almost certainly ended before the pipeline went offline.
+  // Carrying a stale streak across a multi-day outage would permanently block trading.
+  // Root cause of March 30–April 7 outage: 3 consecutive losses at 23:40–23:50 on
+  // March 29 hit maxConsecutiveLosses=3; the server crashed ~1 hour later; when it
+  // came back up 8 days later the streak was still 3 and blocked every trade.
+  const STREAK_GAP_RESET_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
+  const mostRecentSettled = recentTrades.find((t) => t.status === "lost" || t.status === "won");
+  const streakGapExpired = mostRecentSettled
+    ? Date.now() - new Date(mostRecentSettled.createdAt).getTime() > STREAK_GAP_RESET_MS
+    : false;
+
   let consecutiveLosses = 0;
-  for (const trade of recentTrades) {
-    if (trade.status === "lost") {
-      consecutiveLosses++;
-    } else if (trade.status === "won") {
-      break;
+  if (!streakGapExpired) {
+    for (const trade of recentTrades) {
+      if (trade.status === "lost") {
+        consecutiveLosses++;
+      } else if (trade.status === "won") {
+        break;
+      }
     }
   }
+  // If streak gap expired: consecutiveLosses remains 0, streak is forgiven.
 
   const allTrades = await db.select().from(tradeSource);
   const totalPnl = allTrades.reduce((sum, t) => sum + (t.pnl || 0), 0);
