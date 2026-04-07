@@ -15,6 +15,8 @@ export default function Dashboard() {
     query: { queryKey: getGetPositionsQueryKey(), refetchInterval: 10000 }
   });
 
+  const positionList = Array.isArray(positions) ? positions : [];
+
   const isPositive = (val?: number | null) => (val || 0) >= 0;
 
   const stats = [
@@ -117,7 +119,7 @@ export default function Dashboard() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/5">
-                    {positions.map((pos) => (
+                    {positionList.map((pos) => (
                       <tr key={pos.ticker} className="hover:bg-white/[0.02] transition-colors">
                         <td className="px-6 py-4">
                           <div className="font-medium text-white mb-1">{pos.title}</div>

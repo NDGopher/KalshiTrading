@@ -1,0 +1,9 @@
+rank,strategy,total_pnl_usd,win_rate_pct,sharpe_approx,max_dd_pct,trades,trades_per_hour,expectancy_per_trade_usd,synthetic_outcome_trades
+1,Pure Value,252.23,52.82,7.8550,0.47,5839,34.76,0.0432,0
+2,Whale Flow,130.82,50.29,4.5754,0.36,4651,27.69,0.0281,0
+3,Volume Imbalance,125.25,50.80,4.1309,0.62,5345,31.82,0.0234,0
+4,Dip Buy,33.97,28.63,1.4738,1.52,3157,18.79,0.0108,0
+5,Fresh Wallet,0.00,0.00,0.0000,0.00,0,0.00,0.0000,0
+6,Sharp Wallet,0.00,0.00,0.0000,0.00,0,0.00,0.0000,0
+7,Market Maker,-0.09,84.77,-0.4299,0.01,243,1.45,-0.0004,0
+8,Probability Arb,-6.87,34.36,-0.4637,0.60,1330,7.92,-0.0052,0

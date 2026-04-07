@@ -1,3 +1,4 @@
+import "./load-env";
 import app from "./app";
 import { rehydratePipeline, startWatchdog } from "./lib/agents/pipeline.js";
 

@@ -50,6 +50,21 @@ Thumbs.db
 *.env
 *.env.*
 
+# pmxt / parquet cache (large binaries — do not commit)
+/data/kalshi/**
+!/data/kalshi/.gitkeep
+
+# JBecker / extracted Kalshi parquet (~tens of GB, many files — sync outside git).
+# Ignore directory contents but keep an empty tree marker (see root README).
+/data/jbecker-data/*
+!/data/jbecker-data/.gitkeep
+
+# Full JBecker archive download (multi‑GB — never commit)
+/data/jbecker-data.tar.zst
+/data/*.tar.zst
+
+# Backtest JSON/CSV outputs are tracked (multi-rank reports for dashboard / reproducibility)
+
 # Local database files
 *.db
 *.db-journal

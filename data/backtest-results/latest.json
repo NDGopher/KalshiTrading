@@ -1,0 +1,1928 @@
+{
+  "generatedAt": "2026-04-07T17:32:04.271Z",
+  "source": {
+    "date": "2026-04-07",
+    "paths": [
+      "C:\\kalshitrading\\data\\kalshi\\polymarket_orderbook_2026-04-07T15.parquet"
+    ],
+    "maxRowsPerFile": 80000
+  },
+  "metrics": {
+    "strategyName": "Pure Value",
+    "trades": 175,
+    "wins": 78,
+    "winRate": 0.44571428571428573,
+    "totalPnlUsd": 2800.860999999977,
+    "maxDrawdownPct": 36.40343683399052,
+    "sharpeApprox": 0.46683613751196024,
+    "equityCurve": [
+      {
+        "tsMs": 1775574000091,
+        "equity": 10000
+      },
+      {
+        "tsMs": 1775574000335,
+        "equity": 10157.44
+      },
+      {
+        "tsMs": 1775574000335,
+        "equity": 9927.34
+      },
+      {
+        "tsMs": 1775574000407,
+        "equity": 9936.26
+      },
+      {
+        "tsMs": 1775574000415,
+        "equity": 9686.02
+      },
+      {
+        "tsMs": 1775574000428,
+        "equity": 9476.846
+      },
+      {
+        "tsMs": 1775574000570,
+        "equity": 9232.256
+      },
+      {
+        "tsMs": 1775574000700,
+        "equity": 9029.746
+      },
+      {
+        "tsMs": 1775574000700,
+        "equity": 8808.586
+      },
+      {
+        "tsMs": 1775574000813,
+        "equity": 8619.496
+      },
+      {
+        "tsMs": 1775574001610,
+        "equity": 8431.645999999999
+      },
+      {
+        "tsMs": 1775574001610,
+        "equity": 8211.746
+      },
+      {
+        "tsMs": 1775574001831,
+        "equity": 8223.464
+      },
+      {
+        "tsMs": 1775574001955,
+        "equity": 9150.923999999999
+      },
+      {
+        "tsMs": 1775574002403,
+        "equity": 8874.579
+      },
+      {
+        "tsMs": 1775574002403,
+        "equity": 8606.514
+      },
+      {
+        "tsMs": 1775574003424,
+        "equity": 9665.714
+      },
+      {
+        "tsMs": 1775574003472,
+        "equity": 10855.314
+      },
+      {
+        "tsMs": 1775574003583,
+        "equity": 10622.534
+      },
+      {
+        "tsMs": 1775574003583,
+        "equity": 10839.204
+      },
+      {
+        "tsMs": 1775574003589,
+        "equity": 11428.764
+      },
+      {
+        "tsMs": 1775574003739,
+        "equity": 11633.804
+      },
+      {
+        "tsMs": 1775574003739,
+        "equity": 11842.364
+      },
+      {
+        "tsMs": 1775574004398,
+        "equity": 11899.064
+      },
+      {
+        "tsMs": 1775574005969,
+        "equity": 11635.534
+      },
+      {
+        "tsMs": 1775574006563,
+        "equity": 11337.934
+      },
+      {
+        "tsMs": 1775574006563,
+        "equity": 11954.694
+      },
+      {
+        "tsMs": 1775574008640,
+        "equity": 12057.454
+      },
+      {
+        "tsMs": 1775574009938,
+        "equity": 12111.344
+      },
+      {
+        "tsMs": 1775574010007,
+        "equity": 12673.594
+      },
+      {
+        "tsMs": 1775574010524,
+        "equity": 13009.083999999999
+      },
+      {
+        "tsMs": 1775574010524,
+        "equity": 13030.223999999998
+      },
+      {
+        "tsMs": 1775574012640,
+        "equity": 12750.223999999998
+      },
+      {
+        "tsMs": 1775574013151,
+        "equity": 14076.223999999998
+      },
+      {
+        "tsMs": 1775574013151,
+        "equity": 15539.503999999999
+      },
+      {
+        "tsMs": 1775574016164,
+        "equity": 16031.413999999999
+      },
+      {
+        "tsMs": 1775574018019,
+        "equity": 17573.724
+      },
+      {
+        "tsMs": 1775574018021,
+        "equity": 17068.643999999997
+      },
+      {
+        "tsMs": 1775574021755,
+        "equity": 16586.723999999995
+      },
+      {
+        "tsMs": 1775574021771,
+        "equity": 18069.483999999993
+      },
+      {
+        "tsMs": 1775574027394,
+        "equity": 18791.783999999992
+      },
+      {
+        "tsMs": 1775574027394,
+        "equity": 18331.22399999999
+      },
+      {
+        "tsMs": 1775574031369,
+        "equity": 18481.07399999999
+      },
+      {
+        "tsMs": 1775574050614,
+        "equity": 18511.10399999999
+      },
+      {
+        "tsMs": 1775574050614,
+        "equity": 18111.203999999987
+      },
+      {
+        "tsMs": 1775574060328,
+        "equity": 18684.62399999999
+      },
+      {
+        "tsMs": 1775574060328,
+        "equity": 18238.28399999999
+      },
+      {
+        "tsMs": 1775574062644,
+        "equity": 18246.28399999999
+      },
+      {
+        "tsMs": 1775574062875,
+        "equity": 17810.69399999999
+      },
+      {
+        "tsMs": 1775574063510,
+        "equity": 17413.383999999987
+      },
+      {
+        "tsMs": 1775574063578,
+        "equity": 17964.573999999986
+      },
+      {
+        "tsMs": 1775574074670,
+        "equity": 17946.273999999987
+      },
+      {
+        "tsMs": 1775574074670,
+        "equity": 17561.973999999987
+      },
+      {
+        "tsMs": 1775574079885,
+        "equity": 17850.933999999987
+      },
+      {
+        "tsMs": 1775574079885,
+        "equity": 17444.933999999987
+      },
+      {
+        "tsMs": 1775574084419,
+        "equity": 17071.573999999986
+      },
+      {
+        "tsMs": 1775574084419,
+        "equity": 16705.923999999985
+      },
+      {
+        "tsMs": 1775574155391,
+        "equity": 18188.250999999986
+      },
+      {
+        "tsMs": 1775574155391,
+        "equity": 19802.643999999986
+      },
+      {
+        "tsMs": 1775574160673,
+        "equity": 19314.087999999985
+      },
+      {
+        "tsMs": 1775574160673,
+        "equity": 18837.708999999984
+      },
+      {
+        "tsMs": 1775574163632,
+        "equity": 18822.188999999984
+      },
+      {
+        "tsMs": 1775574163632,
+        "equity": 18418.668999999983
+      },
+      {
+        "tsMs": 1775574172013,
+        "equity": 18399.918999999983
+      },
+      {
+        "tsMs": 1775574172016,
+        "equity": 18006.168999999983
+      },
+      {
+        "tsMs": 1775574198832,
+        "equity": 18006.168999999983
+      },
+      {
+        "tsMs": 1775574232126,
+        "equity": 18302.688999999984
+      },
+      {
+        "tsMs": 1775574232126,
+        "equity": 18603.828999999983
+      },
+      {
+        "tsMs": 1775574245398,
+        "equity": 18183.538999999982
+      },
+      {
+        "tsMs": 1775574245408,
+        "equity": 18302.90899999998
+      },
+      {
+        "tsMs": 1775574261268,
+        "equity": 18604.04899999998
+      },
+      {
+        "tsMs": 1775574261268,
+        "equity": 18910.22899999998
+      },
+      {
+        "tsMs": 1775574280441,
+        "equity": 18910.22899999998
+      },
+      {
+        "tsMs": 1775574280441,
+        "equity": 18464.48899999998
+      },
+      {
+        "tsMs": 1775574298340,
+        "equity": 18044.56899999998
+      },
+      {
+        "tsMs": 1775574315095,
+        "equity": 17634.50899999998
+      },
+      {
+        "tsMs": 1775574364333,
+        "equity": 17233.72899999998
+      },
+      {
+        "tsMs": 1775574364333,
+        "equity": 16842.22899999998
+      },
+      {
+        "tsMs": 1775574406425,
+        "equity": 16825.07899999998
+      },
+      {
+        "tsMs": 1775574406425,
+        "equity": 16464.57899999998
+      },
+      {
+        "tsMs": 1775574416166,
+        "equity": 16447.77899999998
+      },
+      {
+        "tsMs": 1775574416170,
+        "equity": 16431.02899999998
+      },
+      {
+        "tsMs": 1775574454420,
+        "equity": 16424.12899999998
+      },
+      {
+        "tsMs": 1775574455477,
+        "equity": 16071.63899999998
+      },
+      {
+        "tsMs": 1775574468235,
+        "equity": 15716.414999999979
+      },
+      {
+        "tsMs": 1775574599668,
+        "equity": 15975.134999999978
+      },
+      {
+        "tsMs": 1775574599668,
+        "equity": 15612.054999999978
+      },
+      {
+        "tsMs": 1775574602973,
+        "equity": 15858.054999999978
+      },
+      {
+        "tsMs": 1775574602973,
+        "equity": 15498.744999999979
+      },
+      {
+        "tsMs": 1775574613894,
+        "equity": 15492.224999999979
+      },
+      {
+        "tsMs": 1775574621663,
+        "equity": 15140.164999999979
+      },
+      {
+        "tsMs": 1775574621665,
+        "equity": 15389.224999999979
+      },
+      {
+        "tsMs": 1775574630013,
+        "equity": 15039.484999999979
+      },
+      {
+        "tsMs": 1775574630014,
+        "equity": 14697.864999999978
+      },
+      {
+        "tsMs": 1775574642385,
+        "equity": 14363.784999999978
+      },
+      {
+        "tsMs": 1775574642385,
+        "equity": 14037.244999999977
+      },
+      {
+        "tsMs": 1775574643701,
+        "equity": 14268.244999999977
+      },
+      {
+        "tsMs": 1775574643701,
+        "equity": 13944.024999999978
+      },
+      {
+        "tsMs": 1775574674624,
+        "equity": 13953.294999999978
+      },
+      {
+        "tsMs": 1775574674624,
+        "equity": 13962.594999999978
+      },
+      {
+        "tsMs": 1775574797812,
+        "equity": 13645.334999999977
+      },
+      {
+        "tsMs": 1775574797812,
+        "equity": 13335.034999999978
+      },
+      {
+        "tsMs": 1775574807232,
+        "equity": 13554.274999999978
+      },
+      {
+        "tsMs": 1775574807232,
+        "equity": 13246.294999999978
+      },
+      {
+        "tsMs": 1775574809959,
+        "equity": 13464.274999999978
+      },
+      {
+        "tsMs": 1775574809959,
+        "equity": 13686.034999999978
+      },
+      {
+        "tsMs": 1775574869837,
+        "equity": 13393.084999999977
+      },
+      {
+        "tsMs": 1775574869839,
+        "equity": 13440.544999999976
+      },
+      {
+        "tsMs": 1775574876052,
+        "equity": 13661.884999999977
+      },
+      {
+        "tsMs": 1775574876053,
+        "equity": 13886.584999999977
+      },
+      {
+        "tsMs": 1775574892003,
+        "equity": 13573.044999999976
+      },
+      {
+        "tsMs": 1775574892003,
+        "equity": 13265.844999999976
+      },
+      {
+        "tsMs": 1775575050419,
+        "equity": 12964.244999999975
+      },
+      {
+        "tsMs": 1775575050419,
+        "equity": 13177.604999999976
+      },
+      {
+        "tsMs": 1775575051992,
+        "equity": 13394.324999999975
+      },
+      {
+        "tsMs": 1775575051992,
+        "equity": 13614.824999999975
+      },
+      {
+        "tsMs": 1775575057532,
+        "equity": 13838.684999999976
+      },
+      {
+        "tsMs": 1775575057532,
+        "equity": 13524.324999999975
+      },
+      {
+        "tsMs": 1775575217465,
+        "equity": 13510.524999999976
+      },
+      {
+        "tsMs": 1775575217466,
+        "equity": 13496.774999999976
+      },
+      {
+        "tsMs": 1775575217467,
+        "equity": 13483.024999999976
+      },
+      {
+        "tsMs": 1775575217468,
+        "equity": 13469.274999999976
+      },
+      {
+        "tsMs": 1775575415016,
+        "equity": 13180.614999999976
+      },
+      {
+        "tsMs": 1775575779269,
+        "equity": 13231.164999999975
+      },
+      {
+        "tsMs": 1775575779336,
+        "equity": 14036.164999999975
+      },
+      {
+        "tsMs": 1775575781761,
+        "equity": 13701.194999999976
+      },
+      {
+        "tsMs": 1775575781761,
+        "equity": 14134.964999999976
+      },
+      {
+        "tsMs": 1775575786966,
+        "equity": 13830.384999999977
+      },
+      {
+        "tsMs": 1775575786966,
+        "equity": 14058.024999999976
+      },
+      {
+        "tsMs": 1775575787370,
+        "equity": 13755.624999999976
+      },
+      {
+        "tsMs": 1775575787904,
+        "equity": 14464.484999999977
+      },
+      {
+        "tsMs": 1775575789006,
+        "equity": 14114.084999999977
+      },
+      {
+        "tsMs": 1775575789014,
+        "equity": 14925.524999999978
+      },
+      {
+        "tsMs": 1775575789014,
+        "equity": 15783.194999999978
+      },
+      {
+        "tsMs": 1775575789031,
+        "equity": 15886.694999999978
+      },
+      {
+        "tsMs": 1775575790254,
+        "equity": 15546.614999999978
+      },
+      {
+        "tsMs": 1775575790254,
+        "equity": 15543.314999999979
+      },
+      {
+        "tsMs": 1775575794245,
+        "equity": 15657.564999999979
+      },
+      {
+        "tsMs": 1775575794245,
+        "equity": 15772.564999999979
+      },
+      {
+        "tsMs": 1775575795606,
+        "equity": 15946.670999999978
+      },
+      {
+        "tsMs": 1775575795606,
+        "equity": 15590.762999999979
+      },
+      {
+        "tsMs": 1775575796211,
+        "equity": 15244.96299999998
+      },
+      {
+        "tsMs": 1775575796211,
+        "equity": 15614.71299999998
+      },
+      {
+        "tsMs": 1775575829592,
+        "equity": 15830.172999999979
+      },
+      {
+        "tsMs": 1775575831346,
+        "equity": 15473.672999999979
+      },
+      {
+        "tsMs": 1775575832050,
+        "equity": 15080.972999999978
+      },
+      {
+        "tsMs": 1775575832050,
+        "equity": 14698.172999999979
+      },
+      {
+        "tsMs": 1775575835041,
+        "equity": 16112.662999999979
+      },
+      {
+        "tsMs": 1775575835171,
+        "equity": 16138.842999999979
+      },
+      {
+        "tsMs": 1775575842307,
+        "equity": 16221.682999999979
+      },
+      {
+        "tsMs": 1775575842307,
+        "equity": 15837.832999999979
+      },
+      {
+        "tsMs": 1775575910430,
+        "equity": 16276.312999999978
+      },
+      {
+        "tsMs": 1775575910430,
+        "equity": 16371.232999999978
+      },
+      {
+        "tsMs": 1775575918681,
+        "equity": 16010.696999999978
+      },
+      {
+        "tsMs": 1775575918681,
+        "equity": 15657.640999999978
+      },
+      {
+        "tsMs": 1775575945675,
+        "equity": 15313.660999999978
+      },
+      {
+        "tsMs": 1775575945675,
+        "equity": 15669.660999999978
+      },
+      {
+        "tsMs": 1775575962566,
+        "equity": 15680.100999999979
+      },
+      {
+        "tsMs": 1775575962566,
+        "equity": 15664.100999999979
+      },
+      {
+        "tsMs": 1775576032357,
+        "equity": 15327.770999999979
+      },
+      {
+        "tsMs": 1775576032360,
+        "equity": 14997.97099999998
+      },
+      {
+        "tsMs": 1775576032362,
+        "equity": 15108.22099999998
+      },
+      {
+        "tsMs": 1775576032364,
+        "equity": 14784.01099999998
+      },
+      {
+        "tsMs": 1775576035961,
+        "equity": 14458.73099999998
+      },
+      {
+        "tsMs": 1775576035961,
+        "equity": 14140.29099999998
+      },
+      {
+        "tsMs": 1775576037581,
+        "equity": 13836.360999999979
+      },
+      {
+        "tsMs": 1775576119401,
+        "equity": 13538.570999999978
+      },
+      {
+        "tsMs": 1775576119401,
+        "equity": 13717.280999999977
+      },
+      {
+        "tsMs": 1775576120029,
+        "equity": 13854.300999999978
+      },
+      {
+        "tsMs": 1775576120029,
+        "equity": 13546.560999999978
+      },
+      {
+        "tsMs": 1775576402148,
+        "equity": 13769.580999999978
+      },
+      {
+        "tsMs": 1775576402148,
+        "equity": 13456.960999999978
+      },
+      {
+        "tsMs": 1775576523856,
+        "equity": 13168.100999999977
+      },
+      {
+        "tsMs": 1775577393726,
+        "equity": 12886.700999999977
+      },
+      {
+        "tsMs": 1775577397561,
+        "equity": 12593.800999999978
+      },
+      {
+        "tsMs": 1775577397561,
+        "equity": 12800.860999999977
+      }
+    ],
+    "usedSyntheticOutcomes": 175
+  },
+  "tradesPreview": [
+    {
+      "ticker": "0x84f8b70331323c2fba97d7ceaa9a35fb645a0770d0dbff169d07f24f376766e9:108999723207897941876452935557011604067917389120996960199512481363958770540884",
+      "side": "yes",
+      "entryPrice": 0.52,
+      "stakeUsd": 199.68,
+      "contracts": 384,
+      "pnlUsd": 157.44,
+      "won": true,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 6.0pp edge, 47% confidence",
+      "tsMs": 1775574000335
+    },
+    {
+      "ticker": "0x84f8b70331323c2fba97d7ceaa9a35fb645a0770d0dbff169d07f24f376766e9:64533579809297525579033609963634939501013332859992608996100633472507000251907",
+      "side": "yes",
+      "entryPrice": 0.52,
+      "stakeUsd": 202.8,
+      "contracts": 390,
+      "pnlUsd": -230.10000000000002,
+      "won": false,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 5.9pp edge, 47% confidence",
+      "tsMs": 1775574000335
+    },
+    {
+      "ticker": "0x3236ae224e88b49ad38ed59261a5303079dfbcc266857c6da7e1715bc21ec9fe:57595511401001951405669372555419629091897524458564721628661835129821765206024",
+      "side": "no",
+      "entryPrice": 0.89,
+      "stakeUsd": 198.47,
+      "contracts": 223,
+      "pnlUsd": 8.919999999999996,
+      "won": true,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 4.1pp edge, 50% confidence",
+      "tsMs": 1775574000407
+    },
+    {
+      "ticker": "0x5d52fd8e215a7ac609d4af5da9dcf752e9e6b4fc2b47482c246d51c8aa8e9280:30262233103742413016273744865726694634847925546317079132006147490239167102562",
+      "side": "no",
+      "entryPrice": 0.27,
+      "stakeUsd": 198.72000000000003,
+      "contracts": 736,
+      "pnlUsd": -250.24000000000004,
+      "won": false,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 14.1pp edge, 60% confidence",
+      "tsMs": 1775574000415
+    },
+    {
+      "ticker": "0xd651468e42c91dea3df49832ed32dc1c7f45d4f457205ab4df929be04c0ddbe4:93992910198884098230354072371788102907618787552751835714382317969842101589710",
+      "side": "yes",
+      "entryPrice": 0.868,
+      "stakeUsd": 193.564,
+      "contracts": 223,
+      "pnlUsd": -209.174,
+      "won": false,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 8.8pp edge, 53% confidence",
+      "tsMs": 1775574000428
+    },
+    {
+      "ticker": "0x5d41f4a4385b22a66866d1d9b1f26ed020d194b9ef6a390ad323674915cbb101:3923148870870111011261789760917417463979550486151578613478490898499891475496",
+      "side": "no",
+      "entryPrice": 0.24,
+      "stakeUsd": 189.35999999999999,
+      "contracts": 789,
+      "pnlUsd": -244.58999999999997,
+      "won": false,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 15.5pp edge, 61% confidence",
+      "tsMs": 1775574000570
+    },
+    {
+      "ticker": "0xaf30b187212501ea837d08a57209c01feb2ac7bc604747fcb9f60c3eb7ee7b51:58813218710355547275717862370967833895655650883812622813757490470750892814981",
+      "side": "no",
+      "entryPrice": 0.7,
+      "stakeUsd": 184.1,
+      "contracts": 263,
+      "pnlUsd": -202.51,
+      "won": false,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 5.4pp edge, 50% confidence",
+      "tsMs": 1775574000700
+    },
+    {
+      "ticker": "0xaf30b187212501ea837d08a57209c01feb2ac7bc604747fcb9f60c3eb7ee7b51:66597804223209884278698852852461254486989472665646980036296251346036397367756",
+      "side": "yes",
+      "entryPrice": 0.31,
+      "stakeUsd": 180.42,
+      "contracts": 582,
+      "pnlUsd": -221.16,
+      "won": false,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 6.0pp edge, 47% confidence",
+      "tsMs": 1775574000700
+    },
+    {
+      "ticker": "0x5d41f4a4385b22a66866d1d9b1f26ed020d194b9ef6a390ad323674915cbb101:41948042972712182267050684447451101371023018135853224358636628397247859016019",
+      "side": "yes",
+      "entryPrice": 0.92,
+      "stakeUsd": 175.72,
+      "contracts": 191,
+      "pnlUsd": -189.09,
+      "won": false,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 4.4pp edge, 49% confidence",
+      "tsMs": 1775574000813
+    },
+    {
+      "ticker": "0x852fcfca1dfa1372b768aa6df2269d20564378bb6fe9c64bba3bc040370c1efd:46985784934245469874674051973070583024711389039998687745451745904831527332283",
+      "side": "no",
+      "entryPrice": 0.78,
+      "stakeUsd": 172.38,
+      "contracts": 221,
+      "pnlUsd": -187.85,
+      "won": false,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 4.5pp edge, 49% confidence",
+      "tsMs": 1775574001610
+    },
+    {
+      "ticker": "0x852fcfca1dfa1372b768aa6df2269d20564378bb6fe9c64bba3bc040370c1efd:99432401000770353406389174286851792153493338941614722624150072378970973371272",
+      "side": "yes",
+      "entryPrice": 0.23,
+      "stakeUsd": 168.59,
+      "contracts": 733,
+      "pnlUsd": -219.9,
+      "won": false,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 13.4pp edge, 57% confidence",
+      "tsMs": 1775574001610
+    },
+    {
+      "ticker": "0xd651468e42c91dea3df49832ed32dc1c7f45d4f457205ab4df929be04c0ddbe4:30673531672965352486866653245635942405329074533576831460015166603822268836098",
+      "side": "yes",
+      "entryPrice": 0.868,
+      "stakeUsd": 164.052,
+      "contracts": 189,
+      "pnlUsd": 11.718,
+      "won": true,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 8.9pp edge, 52% confidence",
+      "tsMs": 1775574001831
+    },
+    {
+      "ticker": "0x3236ae224e88b49ad38ed59261a5303079dfbcc266857c6da7e1715bc21ec9fe:77758682787047710070014205642343092896174197979264517628324382211549765356256",
+      "side": "yes",
+      "entryPrice": 0.14,
+      "stakeUsd": 164.36,
+      "contracts": 1174,
+      "pnlUsd": 927.46,
+      "won": true,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 19.0pp edge, 65% confidence",
+      "tsMs": 1775574001955
+    },
+    {
+      "ticker": "0x326df6a10a6cdd74bdc1ef77906037e90b1f1d6dd1fdcbf6580aea62de094a96:111947356992305187589428447311248216731582641625774563053368133120784997422919",
+      "side": "yes",
+      "entryPrice": 0.137,
+      "stakeUsd": 182.895,
+      "contracts": 1335,
+      "pnlUsd": -276.345,
+      "won": false,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 14.6pp edge, 59% confidence",
+      "tsMs": 1775574002403
+    },
+    {
+      "ticker": "0x326df6a10a6cdd74bdc1ef77906037e90b1f1d6dd1fdcbf6580aea62de094a96:80615165254308476859697533076369001631861513127578482097071314558553613438129",
+      "side": "yes",
+      "entryPrice": 0.137,
+      "stakeUsd": 177.41500000000002,
+      "contracts": 1295,
+      "pnlUsd": -268.06500000000005,
+      "won": false,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 14.0pp edge, 57% confidence",
+      "tsMs": 1775574002403
+    },
+    {
+      "ticker": "0xaf3a3a07512f3123098b5901a8c4ed2a8320cc7c8e011c831ce4af3c17324260:30366180262779010808139929063676071042343089991674577710986189846984779742371",
+      "side": "yes",
+      "entryPrice": 0.13,
+      "stakeUsd": 172.12,
+      "contracts": 1324,
+      "pnlUsd": 1059.1999999999998,
+      "won": true,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 12.9pp edge, 55% confidence",
+      "tsMs": 1775574003424
+    },
+    {
+      "ticker": "0xaf3a3a07512f3123098b5901a8c4ed2a8320cc7c8e011c831ce4af3c17324260:85677146697569934787475823154714326727658905985619546396571251691878626416300",
+      "side": "yes",
+      "entryPrice": 0.13,
+      "stakeUsd": 193.31,
+      "contracts": 1487,
+      "pnlUsd": 1189.6000000000001,
+      "won": true,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 10.1pp edge, 52% confidence",
+      "tsMs": 1775574003472
+    },
+    {
+      "ticker": "0x852efefbf590bf85c3f80574e11744ee3ae0c08e69d161bd63132cc5e445849f:46807665930911305915852257455723785775639386947195480354791414506512126962704",
+      "side": "no",
+      "entryPrice": 0.96,
+      "stakeUsd": 216.95999999999998,
+      "contracts": 226,
+      "pnlUsd": -232.77999999999997,
+      "won": false,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 4.5pp edge, 46% confidence",
+      "tsMs": 1775574003583
+    },
+    {
+      "ticker": "0x852efefbf590bf85c3f80574e11744ee3ae0c08e69d161bd63132cc5e445849f:57462501662299903516644893632483896521744645428384695459905246942810192087177",
+      "side": "yes",
+      "entryPrice": 0.45999999999999996,
+      "stakeUsd": 212.05999999999997,
+      "contracts": 461,
+      "pnlUsd": 216.67000000000002,
+      "won": true,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 11.8pp edge, 57% confidence",
+      "tsMs": 1775574003583
+    },
+    {
+      "ticker": "0xaf3f06b4f26051357aa7086b5e58ef3d56a600a2da3122b3f8458077b80efec7:104581597576139011386177902310104223406213651438550125086583470878579323994723",
+      "side": "yes",
+      "entryPrice": 0.25,
+      "stakeUsd": 216.75,
+      "contracts": 867,
+      "pnlUsd": 589.56,
+      "won": true,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 7.7pp edge, 48% confidence",
+      "tsMs": 1775574003589
+    },
+    {
+      "ticker": "0x0001cb8c0b39aeb614ab9a43867595317f06ede9c011661513065c638fbbefda:37843096702983984154813593339817451110105539743235209768242171001456417281055",
+      "side": "no",
+      "entryPrice": 0.49,
+      "stakeUsd": 228.34,
+      "contracts": 466,
+      "pnlUsd": 205.04,
+      "won": true,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 8.3pp edge, 50% confidence",
+      "tsMs": 1775574003739
+    },
+    {
+      "ticker": "0x0001cb8c0b39aeb614ab9a43867595317f06ede9c011661513065c638fbbefda:50868012450412588231700991321379235183301872220529434142919756787462014093776",
+      "side": "no",
+      "entryPrice": 0.49,
+      "stakeUsd": 232.26,
+      "contracts": 474,
+      "pnlUsd": 208.56,
+      "won": true,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 7.2pp edge, 49% confidence",
+      "tsMs": 1775574003739
+    },
+    {
+      "ticker": "0x5d52fd8e215a7ac609d4af5da9dcf752e9e6b4fc2b47482c246d51c8aa8e9280:20696806370003238950897392134152231996973852883215747317120845911799641544656",
+      "side": "yes",
+      "entryPrice": 0.75,
+      "stakeUsd": 236.25,
+      "contracts": 315,
+      "pnlUsd": 56.7,
+      "won": true,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 4.3pp edge, 49% confidence",
+      "tsMs": 1775574004398
+    },
+    {
+      "ticker": "0x5d198361dcd3318f0fbe0109e0add681e03f9a56c3d486682b4c809ba427218f:65089318023412228884599241224347661702587494723201076705296411040775627758544",
+      "side": "yes",
+      "entryPrice": 0.652,
+      "stakeUsd": 237.98000000000002,
+      "contracts": 365,
+      "pnlUsd": -263.53000000000003,
+      "won": false,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 11.6pp edge, 57% confidence",
+      "tsMs": 1775574005969
+    },
+    {
+      "ticker": "0x006e3bc30b325c9cd4e4a35e33738e7f49634dc353f8495303d511b875d8ad5b:104843058660950376380723861571450239193841790194474890622661228053834376067728",
+      "side": "no",
+      "entryPrice": 0.25,
+      "stakeUsd": 232.5,
+      "contracts": 930,
+      "pnlUsd": -297.6,
+      "won": false,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 8.1pp edge, 50% confidence",
+      "tsMs": 1775574006563
+    },
+    {
+      "ticker": "0x006e3bc30b325c9cd4e4a35e33738e7f49634dc353f8495303d511b875d8ad5b:82192875338543444321050059158489019675098254652958667767854340749139444164787",
+      "side": "no",
+      "entryPrice": 0.25,
+      "stakeUsd": 226.75,
+      "contracts": 907,
+      "pnlUsd": 616.76,
+      "won": true,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 10.7pp edge, 54% confidence",
+      "tsMs": 1775574006563
+    },
+    {
+      "ticker": "0x0a1b551058f78174cf64ed9d61edb103a76c4df88232ee1188dbc9e390896e7d:68841043137419682742407917950323128757425564408860523030307999893432460743024",
+      "side": "no",
+      "entryPrice": 0.65,
+      "stakeUsd": 238.55,
+      "contracts": 367,
+      "pnlUsd": 102.75999999999999,
+      "won": true,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 7.0pp edge, 49% confidence",
+      "tsMs": 1775574008640
+    },
+    {
+      "ticker": "0xd6487ff71f26b698891f9b5aa361a4f8037d324b2b98327faa5675cca91f4eb7:35160418684959883722880593676980471889106144095507048612426116737509657606189",
+      "side": "no",
+      "entryPrice": 0.76,
+      "stakeUsd": 240.92000000000002,
+      "contracts": 317,
+      "pnlUsd": 53.89,
+      "won": true,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 6.4pp edge, 51% confidence",
+      "tsMs": 1775574009938
+    },
+    {
+      "ticker": "0xd6487ff71f26b698891f9b5aa361a4f8037d324b2b98327faa5675cca91f4eb7:3156898969021883917278799976274836061114589281183575393747344237256664584551",
+      "side": "yes",
+      "entryPrice": 0.28,
+      "stakeUsd": 242.20000000000002,
+      "contracts": 865,
+      "pnlUsd": 562.25,
+      "won": true,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 9.9pp edge, 52% confidence",
+      "tsMs": 1775574010007
+    },
+    {
+      "ticker": "0x5d6b15ab6a3814b4bce80adfe95a41b9060884ba1c0edeefb5c470387b6b4208:112946846239034454139449534914008255909238044180828917613442169532156269134195",
+      "side": "no",
+      "entryPrice": 0.4,
+      "stakeUsd": 253.20000000000002,
+      "contracts": 633,
+      "pnlUsd": 335.49,
+      "won": true,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 11.0pp edge, 55% confidence",
+      "tsMs": 1775574010524
+    },
+    {
+      "ticker": "0x5d6b15ab6a3814b4bce80adfe95a41b9060884ba1c0edeefb5c470387b6b4208:29278912733527772994555951899630297750745632091876345460340292041435694560145",
+      "side": "yes",
+      "entryPrice": 0.86,
+      "stakeUsd": 259.71999999999997,
+      "contracts": 302,
+      "pnlUsd": 21.14,
+      "won": true,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 5.0pp edge, 47% confidence",
+      "tsMs": 1775574010524
+    },
+    {
+      "ticker": "0x003e0ed0df828b06301ea93d81b9242881fef7285bcd68797ee3621d53f9a7f3:37652333247386849541465951512081622231424488232138800415397291001396279647755",
+      "side": "yes",
+      "entryPrice": 0.9299999999999999,
+      "stakeUsd": 260.4,
+      "contracts": 280,
+      "pnlUsd": -280,
+      "won": false,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 5.2pp edge, 47% confidence",
+      "tsMs": 1775574012640
+    },
+    {
+      "ticker": "0x32426b6cb4c1c191e607c76dd121677d92b7a36299d8d0541cd54e9e0564aede:111324928603828804424107098707648604143021759890404592673036598638076199443376",
+      "side": "no",
+      "entryPrice": 0.15000000000000002,
+      "stakeUsd": 255.00000000000003,
+      "contracts": 1700,
+      "pnlUsd": 1326,
+      "won": true,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 8.7pp edge, 49% confidence",
+      "tsMs": 1775574013151
+    },
+    {
+      "ticker": "0x32426b6cb4c1c191e607c76dd121677d92b7a36299d8d0541cd54e9e0564aede:7996347029789009208610244358024994133099261503237554183739784480217978228645",
+      "side": "no",
+      "entryPrice": 0.15000000000000002,
+      "stakeUsd": 281.40000000000003,
+      "contracts": 1876,
+      "pnlUsd": 1463.28,
+      "won": true,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 16.4pp edge, 62% confidence",
+      "tsMs": 1775574013151
+    },
+    {
+      "ticker": "0xaf3f06b4f26051357aa7086b5e58ef3d56a600a2da3122b3f8458077b80efec7:53930329613729341190834006132632384577913962024305574333038965142015255694238",
+      "side": "yes",
+      "entryPrice": 0.36,
+      "stakeUsd": 310.68,
+      "contracts": 863,
+      "pnlUsd": 491.91,
+      "won": true,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 13.8pp edge, 59% confidence",
+      "tsMs": 1775574016164
+    },
+    {
+      "ticker": "0x009cb79c526eff4af80e0e568c648a165a837c0417f4e1de3cde02bfc4a3ab42:90961221852536626935066527019175692966756502140954022147607643885857223839441",
+      "side": "yes",
+      "entryPrice": 0.16000000000000003,
+      "stakeUsd": 320.4800000000001,
+      "contracts": 2003,
+      "pnlUsd": 1542.31,
+      "won": true,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 12.3pp edge, 55% confidence",
+      "tsMs": 1775574018019
+    },
+    {
+      "ticker": "0x009cb79c526eff4af80e0e568c648a165a837c0417f4e1de3cde02bfc4a3ab42:78248989003911084570545822588328465349799908602720117209950197127819310073802",
+      "side": "yes",
+      "entryPrice": 0.16,
+      "stakeUsd": 351.36,
+      "contracts": 2196,
+      "pnlUsd": -505.08000000000004,
+      "won": false,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 13.4pp edge, 58% confidence",
+      "tsMs": 1775574018021
+    },
+    {
+      "ticker": "0x5d41970668c1600e5077b716ad6c4d095ffcc918f3ff2648685604e37fd008e2:69607680675117064485222123726042000076816979685184405210587475927525121270330",
+      "side": "yes",
+      "entryPrice": 0.17000000000000004,
+      "stakeUsd": 341.36000000000007,
+      "contracts": 2008,
+      "pnlUsd": -481.9200000000001,
+      "won": false,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 13.4pp edge, 56% confidence",
+      "tsMs": 1775574021755
+    },
+    {
+      "ticker": "0x5d41970668c1600e5077b716ad6c4d095ffcc918f3ff2648685604e37fd008e2:77379157526453098303831361816044554870152227147269549546234332416009919996416",
+      "side": "yes",
+      "entryPrice": 0.17,
+      "stakeUsd": 331.67,
+      "contracts": 1951,
+      "pnlUsd": 1482.76,
+      "won": true,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 10.0pp edge, 52% confidence",
+      "tsMs": 1775574021771
+    },
+    {
+      "ticker": "0x5d5b8feb963ddcc0f4688f7ac0c0d375f99945b7a07155d60cd1a306c6b3054b:111141743875022425014082366328706246366536998743881258465740846069926282242834",
+      "side": "yes",
+      "entryPrice": 0.31,
+      "stakeUsd": 361.15,
+      "contracts": 1165,
+      "pnlUsd": 722.3,
+      "won": true,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 11.5pp edge, 55% confidence",
+      "tsMs": 1775574027394
+    },
+    {
+      "ticker": "0x5d5b8feb963ddcc0f4688f7ac0c0d375f99945b7a07155d60cd1a306c6b3054b:73197386422190855683808847899890112720383354193439504968265722423178479955299",
+      "side": "yes",
+      "entryPrice": 0.31000000000000005,
+      "stakeUsd": 375.7200000000001,
+      "contracts": 1212,
+      "pnlUsd": -460.56000000000006,
+      "won": false,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 8.3pp edge, 49% confidence",
+      "tsMs": 1775574027394
+    },
+    {
+      "ticker": "0x0a1b551058f78174cf64ed9d61edb103a76c4df88232ee1188dbc9e390896e7d:56474994774559829851462437736234567725783260130778254578352001078848194168934",
+      "side": "no",
+      "entryPrice": 0.66,
+      "stakeUsd": 366.3,
+      "contracts": 555,
+      "pnlUsd": 149.85,
+      "won": true,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 6.7pp edge, 50% confidence",
+      "tsMs": 1775574031369
+    },
+    {
+      "ticker": "0x006399caa830763ec168d078652f4bc9ba50c295c738c5c74b0c642d1aee2aba:88798919014488236613401689225817086499017377902922963337116302545974157261849",
+      "side": "no",
+      "entryPrice": 0.86,
+      "stakeUsd": 368.94,
+      "contracts": 429,
+      "pnlUsd": 30.03,
+      "won": true,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 10.5pp edge, 56% confidence",
+      "tsMs": 1775574050614
+    },
+    {
+      "ticker": "0x006399caa830763ec168d078652f4bc9ba50c295c738c5c74b0c642d1aee2aba:99615379541421673872644979986552283644195822355071624105177650646985723246250",
+      "side": "no",
+      "entryPrice": 0.86,
+      "stakeUsd": 369.8,
+      "contracts": 430,
+      "pnlUsd": -399.90000000000003,
+      "won": false,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 5.7pp edge, 49% confidence",
+      "tsMs": 1775574050614
+    },
+    {
+      "ticker": "0xaf13295bb3ad70cbb2939479477adb281b6b65a2362c1a5ea3fc9451644275f4:101746300066879227658650827050374661300669879754099839131894752881356574367850",
+      "side": "no",
+      "entryPrice": 0.36,
+      "stakeUsd": 362.15999999999997,
+      "contracts": 1006,
+      "pnlUsd": 573.4200000000001,
+      "won": true,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 8.6pp edge, 50% confidence",
+      "tsMs": 1775574060328
+    },
+    {
+      "ticker": "0xaf13295bb3ad70cbb2939479477adb281b6b65a2362c1a5ea3fc9451644275f4:3984616423194530948071484088101383550752729740555612260169262905210851632809",
+      "side": "no",
+      "entryPrice": 0.36,
+      "stakeUsd": 373.68,
+      "contracts": 1038,
+      "pnlUsd": -446.34000000000003,
+      "won": false,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 12.4pp edge, 58% confidence",
+      "tsMs": 1775574060328
+    },
+    {
+      "ticker": "0x5d3e8d056c9110df9c9713cdf1c9c5753c95a3302398f9ab7cc6d99129940401:71674190933122994109099728950336323019746927902505173841668488705722310516045",
+      "side": "yes",
+      "entryPrice": 0.91,
+      "stakeUsd": 364,
+      "contracts": 400,
+      "pnlUsd": 7.999999999999982,
+      "won": true,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 4.4pp edge, 45% confidence",
+      "tsMs": 1775574062644
+    },
+    {
+      "ticker": "0xaefa1b3071d946da2c02fde8ad680e5f85e3bf02c84348ff45505ed3a6e2f83c:95559257669423129322099175021786679688399445348808754457070341722627964051934",
+      "side": "no",
+      "entryPrice": 0.36,
+      "stakeUsd": 364.68,
+      "contracts": 1013,
+      "pnlUsd": -435.59000000000003,
+      "won": false,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 6.9pp edge, 49% confidence",
+      "tsMs": 1775574062875
+    },
+    {
+      "ticker": "0x5d3e8d056c9110df9c9713cdf1c9c5753c95a3302398f9ab7cc6d99129940401:79223378275075990217123291219342381137730456925934717574271978925444331493658",
+      "side": "no",
+      "entryPrice": 0.6,
+      "stakeUsd": 355.8,
+      "contracts": 593,
+      "pnlUsd": -397.31,
+      "won": false,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 11.8pp edge, 58% confidence",
+      "tsMs": 1775574063510
+    },
+    {
+      "ticker": "0xaefa1b3071d946da2c02fde8ad680e5f85e3bf02c84348ff45505ed3a6e2f83c:26891917625669558776907482340614734522506472830431534011234701162378927427123",
+      "side": "no",
+      "entryPrice": 0.36,
+      "stakeUsd": 348.12,
+      "contracts": 967,
+      "pnlUsd": 551.1899999999999,
+      "won": true,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 10.3pp edge, 54% confidence",
+      "tsMs": 1775574063578
+    },
+    {
+      "ticker": "0x0013dd043277e3e7ab5539506843280548b6fbaf9de70e8f6289fd8d34dcb0a5:49536599078400645487367984361948423422006645607741651726753907206113670918867",
+      "side": "yes",
+      "entryPrice": 0.98,
+      "stakeUsd": 358.68,
+      "contracts": 366,
+      "pnlUsd": -18.299999999999994,
+      "won": false,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 11.9pp edge, 58% confidence",
+      "tsMs": 1775574074670
+    },
+    {
+      "ticker": "0x0013dd043277e3e7ab5539506843280548b6fbaf9de70e8f6289fd8d34dcb0a5:93618383018576564678813590495137499294795082063174430575216579905666886882710",
+      "side": "yes",
+      "entryPrice": 0.98,
+      "stakeUsd": 358.68,
+      "contracts": 366,
+      "pnlUsd": -384.3,
+      "won": false,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 4.9pp edge, 46% confidence",
+      "tsMs": 1775574074670
+    },
+    {
+      "ticker": "0x324dfa0c36bf2b52a487abab92cd755d619e39c24df92a67230336c8c84d8237:7434071998240713996914734528523128872011327431008543326592774464526722992626",
+      "side": "yes",
+      "entryPrice": 0.51,
+      "stakeUsd": 350.88,
+      "contracts": 688,
+      "pnlUsd": 288.96,
+      "won": true,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 6.5pp edge, 49% confidence",
+      "tsMs": 1775574079885
+    },
+    {
+      "ticker": "0x324dfa0c36bf2b52a487abab92cd755d619e39c24df92a67230336c8c84d8237:85513314938040829746705051611968641136714776227185846105006072026069267931370",
+      "side": "no",
+      "entryPrice": 0.51,
+      "stakeUsd": 357,
+      "contracts": 700,
+      "pnlUsd": -406,
+      "won": false,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 9.8pp edge, 55% confidence",
+      "tsMs": 1775574079885
+    },
+    {
+      "ticker": "0x00161225e24382f0b8f2856f1e9d59a7a5839a9a231b3a33d52dd28ba89205bf:103872542387531296482194799730477588833591954933084382483449409187432710012415",
+      "side": "no",
+      "entryPrice": 0.97,
+      "stakeUsd": 348.23,
+      "contracts": 359,
+      "pnlUsd": -373.36,
+      "won": false,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 5.3pp edge, 45% confidence",
+      "tsMs": 1775574084419
+    },
+    {
+      "ticker": "0x00161225e24382f0b8f2856f1e9d59a7a5839a9a231b3a33d52dd28ba89205bf:1249401390009000815195116448493253369138083566922466489637862699825243832418",
+      "side": "yes",
+      "entryPrice": 0.96,
+      "stakeUsd": 340.8,
+      "contracts": 355,
+      "pnlUsd": -365.65000000000003,
+      "won": false,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 8.9pp edge, 55% confidence",
+      "tsMs": 1775574084419
+    },
+    {
+      "ticker": "0xaf30ebe95c57934df90bc9126132e0ce5e61a567f5f0c475a5c6b3cad9a2e2f9:58546554506386214069666644785810330125253046226907886294268346154204681956279",
+      "side": "yes",
+      "entryPrice": 0.17100000000000004,
+      "stakeUsd": 333.9630000000001,
+      "contracts": 1953,
+      "pnlUsd": 1482.3269999999998,
+      "won": true,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 8.3pp edge, 49% confidence",
+      "tsMs": 1775574155391
+    },
+    {
+      "ticker": "0xaf30ebe95c57934df90bc9126132e0ce5e61a567f5f0c475a5c6b3cad9a2e2f9:81988826341491243870198235322141312310928900677287781518910910931497765527450",
+      "side": "yes",
+      "entryPrice": 0.171,
+      "stakeUsd": 363.71700000000004,
+      "contracts": 2127,
+      "pnlUsd": 1614.3929999999998,
+      "won": true,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 15.4pp edge, 60% confidence",
+      "tsMs": 1775574155391
+    },
+    {
+      "ticker": "0x00925aafdbb3fbec14b49f343eb430ddb9cc1f827e5934b5513703d13f2851de:6864792964781918721937334716065868892125249145313476299156115929904357754621",
+      "side": "yes",
+      "entryPrice": 0.299,
+      "stakeUsd": 395.876,
+      "contracts": 1324,
+      "pnlUsd": -488.556,
+      "won": false,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 10.5pp edge, 55% confidence",
+      "tsMs": 1775574160673
+    },
+    {
+      "ticker": "0x00925aafdbb3fbec14b49f343eb430ddb9cc1f827e5934b5513703d13f2851de:77885186559515168193088638331153829637301570053629161224842952688145755959633",
+      "side": "yes",
+      "entryPrice": 0.29900000000000004,
+      "stakeUsd": 386.00900000000007,
+      "contracts": 1291,
+      "pnlUsd": -476.3790000000001,
+      "won": false,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 11.4pp edge, 56% confidence",
+      "tsMs": 1775574160673
+    },
+    {
+      "ticker": "0x84f0208e61709a632131aad0473b29935a5094181158df386fe31ae04672a9ac:18536755896247628398331111419081393140037644270042198706046442838812085276127",
+      "side": "no",
+      "entryPrice": 0.97,
+      "stakeUsd": 376.36,
+      "contracts": 388,
+      "pnlUsd": -15.519999999999992,
+      "won": false,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 9.8pp edge, 53% confidence",
+      "tsMs": 1775574163632
+    },
+    {
+      "ticker": "0x84f0208e61709a632131aad0473b29935a5094181158df386fe31ae04672a9ac:83983943837335511595523520933842603804453740096070552036272859332703405455931",
+      "side": "no",
+      "entryPrice": 0.97,
+      "stakeUsd": 376.36,
+      "contracts": 388,
+      "pnlUsd": -403.52000000000004,
+      "won": false,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 5.7pp edge, 47% confidence",
+      "tsMs": 1775574163632
+    },
+    {
+      "ticker": "0x324efc09328bf3304e8983df8f431c69e931e4284f191fbb2bccc9d81282b8c6:63113247944029205011143999470956034709912698654515718321571422765697303094694",
+      "side": "no",
+      "entryPrice": 0.98,
+      "stakeUsd": 367.5,
+      "contracts": 375,
+      "pnlUsd": -18.749999999999996,
+      "won": false,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 9.4pp edge, 54% confidence",
+      "tsMs": 1775574172013
+    },
+    {
+      "ticker": "0x324efc09328bf3304e8983df8f431c69e931e4284f191fbb2bccc9d81282b8c6:115153043306879435203867719390353864669952237139019234375759641082543473761321",
+      "side": "yes",
+      "entryPrice": 0.98,
+      "stakeUsd": 367.5,
+      "contracts": 375,
+      "pnlUsd": -393.75,
+      "won": false,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 9.9pp edge, 56% confidence",
+      "tsMs": 1775574172016
+    },
+    {
+      "ticker": "0x003e0ed0df828b06301ea93d81b9242881fef7285bcd68797ee3621d53f9a7f3:94748883714107889773916297751597069003897088125779034268166662323261198166466",
+      "side": "yes",
+      "entryPrice": 0.93,
+      "stakeUsd": 359.91,
+      "contracts": 387,
+      "pnlUsd": -2.1316282072803006e-14,
+      "won": false,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 6.2pp edge, 50% confidence",
+      "tsMs": 1775574198832
+    },
+    {
+      "ticker": "0x84fb64e5317d8e0db2008e16c377076c55d9c27464c645f8cfb1478dc3386901:31849502097389537454983006869142249022713659763256022197143994958654734497964",
+      "side": "no",
+      "entryPrice": 0.51,
+      "stakeUsd": 360.06,
+      "contracts": 706,
+      "pnlUsd": 296.52,
+      "won": true,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 5.8pp edge, 46% confidence",
+      "tsMs": 1775574232126
+    },
+    {
+      "ticker": "0x84fb64e5317d8e0db2008e16c377076c55d9c27464c645f8cfb1478dc3386901:54485311450024622885319722284181299080447658685514667810944606586087434862576",
+      "side": "no",
+      "entryPrice": 0.51,
+      "stakeUsd": 365.67,
+      "contracts": 717,
+      "pnlUsd": 301.14,
+      "won": true,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 10.6pp edge, 56% confidence",
+      "tsMs": 1775574232126
+    },
+    {
+      "ticker": "0x5d13e7823a302de5eca8c7ed0229a9991f2f365608ab6a3b6d8d2bad00f83a11:89500295301184752872350944194701719442074805144261671162036398647757265270947",
+      "side": "yes",
+      "entryPrice": 0.54,
+      "stakeUsd": 372.06,
+      "contracts": 689,
+      "pnlUsd": -420.29,
+      "won": false,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 6.8pp edge, 50% confidence",
+      "tsMs": 1775574245398
+    },
+    {
+      "ticker": "0x5d13e7823a302de5eca8c7ed0229a9991f2f365608ab6a3b6d8d2bad00f83a11:85515421682199045429186722601470401577310245520786064884840767117284351858187",
+      "side": "no",
+      "entryPrice": 0.7,
+      "stakeUsd": 363.29999999999995,
+      "contracts": 519,
+      "pnlUsd": 119.37,
+      "won": true,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 6.4pp edge, 48% confidence",
+      "tsMs": 1775574245408
+    },
+    {
+      "ticker": "0x00692a0760611411d54384eb82480e7cf6608a32a86f84221dd14f06c4d8568c:18882717575031942519402161580815798409067073064733880215249871269816446988433",
+      "side": "no",
+      "entryPrice": 0.51,
+      "stakeUsd": 365.67,
+      "contracts": 717,
+      "pnlUsd": 301.14,
+      "won": true,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 8.3pp edge, 51% confidence",
+      "tsMs": 1775574261268
+    },
+    {
+      "ticker": "0x00692a0760611411d54384eb82480e7cf6608a32a86f84221dd14f06c4d8568c:75856070971542086235767850512851569418395564664917207675363569179106760608719",
+      "side": "yes",
+      "entryPrice": 0.51,
+      "stakeUsd": 371.79,
+      "contracts": 729,
+      "pnlUsd": 306.17999999999995,
+      "won": true,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 7.3pp edge, 50% confidence",
+      "tsMs": 1775574261268
+    },
+    {
+      "ticker": "0xaf1c5703866c39bc9e0e880a2adbd35a8919fab7cef6f838570e727c154c32c1:23703667757047573625157663304984678622505777004115111324277937786609476417573",
+      "side": "no",
+      "entryPrice": 0.9299999999999999,
+      "stakeUsd": 377.58,
+      "contracts": 406,
+      "pnlUsd": 2.4868995751603507e-14,
+      "won": true,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 4.1pp edge, 47% confidence",
+      "tsMs": 1775574280441
+    },
+    {
+      "ticker": "0xaf1c5703866c39bc9e0e880a2adbd35a8919fab7cef6f838570e727c154c32c1:7245806878175371664645258719043590235707383052581740078741762772999156129983",
+      "side": "yes",
+      "entryPrice": 0.39,
+      "stakeUsd": 377.91,
+      "contracts": 969,
+      "pnlUsd": -445.74,
+      "won": false,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 8.8pp edge, 52% confidence",
+      "tsMs": 1775574280441
+    },
+    {
+      "ticker": "0x85290e3665630693d3626852df1774af09ac90e4a99823939cc5f6b79a397292:83859476073904939836008706982548675928714796699462865069946660695039051359113",
+      "side": "no",
+      "entryPrice": 0.51,
+      "stakeUsd": 369.24,
+      "contracts": 724,
+      "pnlUsd": -419.92,
+      "won": false,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 4.1pp edge, 45% confidence",
+      "tsMs": 1775574298340
+    },
+    {
+      "ticker": "0x85290e3665630693d3626852df1774af09ac90e4a99823939cc5f6b79a397292:30662729708039607998213171593762282613371197234212333747875149435301533338435",
+      "side": "yes",
+      "entryPrice": 0.51,
+      "stakeUsd": 360.57,
+      "contracts": 707,
+      "pnlUsd": -410.06,
+      "won": false,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 5.3pp edge, 47% confidence",
+      "tsMs": 1775574315095
+    },
+    {
+      "ticker": "0x32510d8e7457121823bba12ee5e6b8f13267ff882a1206be23837196e2470ef7:11503075899364303631704970952294210688659480326778782923026325044394147186808",
+      "side": "no",
+      "entryPrice": 0.51,
+      "stakeUsd": 352.41,
+      "contracts": 691,
+      "pnlUsd": -400.78000000000003,
+      "won": false,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 9.7pp edge, 55% confidence",
+      "tsMs": 1775574364333
+    },
+    {
+      "ticker": "0x32510d8e7457121823bba12ee5e6b8f13267ff882a1206be23837196e2470ef7:48624209588576125814538665023178357893303828471047318421166677858609830164916",
+      "side": "no",
+      "entryPrice": 0.51,
+      "stakeUsd": 344.25,
+      "contracts": 675,
+      "pnlUsd": -391.5,
+      "won": false,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 8.9pp edge, 52% confidence",
+      "tsMs": 1775574364333
+    },
+    {
+      "ticker": "0x84ff66929c59cf9721c640bd50de6395685b8371351b06732087f4e7841f0d85:106313574382263276281028807411163922403773699863623606342685826662371449388851",
+      "side": "no",
+      "entryPrice": 0.98,
+      "stakeUsd": 336.14,
+      "contracts": 343,
+      "pnlUsd": -17.149999999999995,
+      "won": false,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 7.6pp edge, 53% confidence",
+      "tsMs": 1775574406425
+    },
+    {
+      "ticker": "0x84ff66929c59cf9721c640bd50de6395685b8371351b06732087f4e7841f0d85:41288519377212856372248076568936018942940085120194343229167583297271415803960",
+      "side": "yes",
+      "entryPrice": 0.96,
+      "stakeUsd": 336,
+      "contracts": 350,
+      "pnlUsd": -360.5,
+      "won": false,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 5.5pp edge, 47% confidence",
+      "tsMs": 1775574406425
+    },
+    {
+      "ticker": "0x5d201368154473ae51e50b2776e0d6b9c717c2a3447f752a3e60843cf2b8908a:108962655309821096634026785211146639365007182733130870802213927582443786660022",
+      "side": "no",
+      "entryPrice": 0.98,
+      "stakeUsd": 329.28,
+      "contracts": 336,
+      "pnlUsd": -16.799999999999997,
+      "won": false,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 6.3pp edge, 48% confidence",
+      "tsMs": 1775574416166
+    },
+    {
+      "ticker": "0x5d201368154473ae51e50b2776e0d6b9c717c2a3447f752a3e60843cf2b8908a:29803241362122880139553543875034108824437708941181013319684830516079987753680",
+      "side": "yes",
+      "entryPrice": 0.98,
+      "stakeUsd": 328.3,
+      "contracts": 335,
+      "pnlUsd": -16.749999999999996,
+      "won": false,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 7.0pp edge, 49% confidence",
+      "tsMs": 1775574416170
+    },
+    {
+      "ticker": "0xaf40ef629920fb7aadadc0ac339a582bc664c922f4a5019def5c907a6ce0d194:46379458719677352245124929763001775761214846552345829391209059916555763170909",
+      "side": "yes",
+      "entryPrice": 0.95,
+      "stakeUsd": 327.75,
+      "contracts": 345,
+      "pnlUsd": -6.899999999999988,
+      "won": false,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 12.2pp edge, 58% confidence",
+      "tsMs": 1775574454420
+    },
+    {
+      "ticker": "0xaf40ef629920fb7aadadc0ac339a582bc664c922f4a5019def5c907a6ce0d194:34346375082826525336869793029908770838055478823153472840295861020226114332623",
+      "side": "yes",
+      "entryPrice": 0.94,
+      "stakeUsd": 328.06,
+      "contracts": 349,
+      "pnlUsd": -352.49,
+      "won": false,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 4.5pp edge, 45% confidence",
+      "tsMs": 1775574455477
+    },
+    {
+      "ticker": "0x5d198361dcd3318f0fbe0109e0add681e03f9a56c3d486682b4c809ba427218f:85362162985357174572313797472788672614865167951234512764065120964413646320204",
+      "side": "yes",
+      "entryPrice": 0.652,
+      "stakeUsd": 320.784,
+      "contracts": 492,
+      "pnlUsd": -355.224,
+      "won": false,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 11.4pp edge, 54% confidence",
+      "tsMs": 1775574468235
+    },
+    {
+      "ticker": "0x3234351969817f6315b1b7cc3a6e7eb4ff0d76cd152464aa0e9f51d08fa49cf1:38223281321330053945588780793913701980867396510302401042282158741973920916007",
+      "side": "yes",
+      "entryPrice": 0.51,
+      "stakeUsd": 314.16,
+      "contracts": 616,
+      "pnlUsd": 258.71999999999997,
+      "won": true,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 4.0pp edge, 45% confidence",
+      "tsMs": 1775574599668
+    },
+    {
+      "ticker": "0x3234351969817f6315b1b7cc3a6e7eb4ff0d76cd152464aa0e9f51d08fa49cf1:45134220398580625610089151992824941823083994470542914360667916348325898094259",
+      "side": "yes",
+      "entryPrice": 0.51,
+      "stakeUsd": 319.26,
+      "contracts": 626,
+      "pnlUsd": -363.08,
+      "won": false,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 6.3pp edge, 50% confidence",
+      "tsMs": 1775574599668
+    },
+    {
+      "ticker": "0x005399402cb770346feb56d09ba96a9df8d7038ca4030059095f451270be900f:82701518909175841127189389556490102667255840631150715477004084200788365979241",
+      "side": "no",
+      "entryPrice": 0.52,
+      "stakeUsd": 312,
+      "contracts": 600,
+      "pnlUsd": 246,
+      "won": true,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 5.4pp edge, 48% confidence",
+      "tsMs": 1775574602973
+    },
+    {
+      "ticker": "0x005399402cb770346feb56d09ba96a9df8d7038ca4030059095f451270be900f:96181493883921431461094885974512884262009061532379122838382684095031517116860",
+      "side": "no",
+      "entryPrice": 0.52,
+      "stakeUsd": 316.68,
+      "contracts": 609,
+      "pnlUsd": -359.31,
+      "won": false,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 8.1pp edge, 52% confidence",
+      "tsMs": 1775574602973
+    },
+    {
+      "ticker": "0xd64b01b4a28b810e9b4a1427a40f20a124eae34ddd9e35a0b8a177f04fc0b270:108996911071802284361118719288178024384279278195731190677566912070735244251296",
+      "side": "yes",
+      "entryPrice": 0.95,
+      "stakeUsd": 309.7,
+      "contracts": 326,
+      "pnlUsd": -6.519999999999989,
+      "won": false,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 4.6pp edge, 45% confidence",
+      "tsMs": 1775574613894
+    },
+    {
+      "ticker": "0xaf1225ec44254b8c60570d0e5f1ed0fb2a6e5cdd9e0016d60d5611d8e51d0233:94939378673578632205071083739559272884372149429873760856157637135031460894035",
+      "side": "no",
+      "entryPrice": 0.51,
+      "stakeUsd": 309.57,
+      "contracts": 607,
+      "pnlUsd": -352.06,
+      "won": false,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 4.5pp edge, 47% confidence",
+      "tsMs": 1775574621663
+    },
+    {
+      "ticker": "0xaf1225ec44254b8c60570d0e5f1ed0fb2a6e5cdd9e0016d60d5611d8e51d0233:38702752942976301809069866670736492349825223706197802741463151430370546603078",
+      "side": "no",
+      "entryPrice": 0.51,
+      "stakeUsd": 302.43,
+      "contracts": 593,
+      "pnlUsd": 249.06,
+      "won": true,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 8.2pp edge, 51% confidence",
+      "tsMs": 1775574621665
+    },
+    {
+      "ticker": "0x008f688cd1cd5961f811c2fe49b615362022861cc4ec7e3be1d5510f2bc039bc:15701951403165850597875868414130172407079608983322616167557719397856891754616",
+      "side": "yes",
+      "entryPrice": 0.51,
+      "stakeUsd": 307.53000000000003,
+      "contracts": 603,
+      "pnlUsd": -349.74,
+      "won": false,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 4.7pp edge, 46% confidence",
+      "tsMs": 1775574630013
+    },
+    {
+      "ticker": "0x008f688cd1cd5961f811c2fe49b615362022861cc4ec7e3be1d5510f2bc039bc:8994540765083391819084427108348169314868003195226457501522618837220320529353",
+      "side": "yes",
+      "entryPrice": 0.51,
+      "stakeUsd": 300.39,
+      "contracts": 589,
+      "pnlUsd": -341.62,
+      "won": false,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 4.3pp edge, 46% confidence",
+      "tsMs": 1775574630014
+    },
+    {
+      "ticker": "0x00586b6ccd49ab1f11375c7d3743a1eb2d0223ec254a359f58c9408aba59dde1:57291470450419793582426098234654792180986230232595149172986541004938126935331",
+      "side": "no",
+      "entryPrice": 0.51,
+      "stakeUsd": 293.76,
+      "contracts": 576,
+      "pnlUsd": -334.08,
+      "won": false,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 5.3pp edge, 48% confidence",
+      "tsMs": 1775574642385
+    },
+    {
+      "ticker": "0x00586b6ccd49ab1f11375c7d3743a1eb2d0223ec254a359f58c9408aba59dde1:88505155777539678210306318642403708737332566647900062883848648940122084705648",
+      "side": "yes",
+      "entryPrice": 0.51,
+      "stakeUsd": 287.13,
+      "contracts": 563,
+      "pnlUsd": -326.54,
+      "won": false,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 8.5pp edge, 53% confidence",
+      "tsMs": 1775574642385
+    },
+    {
+      "ticker": "0x5d5baac3a00a4f4d434903d4f6fda30357991716e676ddf2b5e329b0cf8a1f3a:69260978879088393119434499164525782556206757153589664234335407867528766290442",
+      "side": "yes",
+      "entryPrice": 0.51,
+      "stakeUsd": 280.5,
+      "contracts": 550,
+      "pnlUsd": 231,
+      "won": true,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 6.1pp edge, 49% confidence",
+      "tsMs": 1775574643701
+    },
+    {
+      "ticker": "0x5d5baac3a00a4f4d434903d4f6fda30357991716e676ddf2b5e329b0cf8a1f3a:70458863796748927773064459791176345838141118841710759237175558178403482957531",
+      "side": "no",
+      "entryPrice": 0.51,
+      "stakeUsd": 285.09000000000003,
+      "contracts": 559,
+      "pnlUsd": -324.22,
+      "won": false,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 5.4pp edge, 47% confidence",
+      "tsMs": 1775574643701
+    },
+    {
+      "ticker": "0x5cec0ed647e8398c631916ff4ba0fd71f716ec1afc3f02b7548b0a993f80f9ce:21689371329035631229485780294905618229550681072569381529193113534403286631659",
+      "side": "no",
+      "entryPrice": 0.9,
+      "stakeUsd": 278.1,
+      "contracts": 309,
+      "pnlUsd": 9.269999999999989,
+      "won": true,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 5.3pp edge, 47% confidence",
+      "tsMs": 1775574674624
+    },
+    {
+      "ticker": "0x5cec0ed647e8398c631916ff4ba0fd71f716ec1afc3f02b7548b0a993f80f9ce:5357860995865804747890968564153942198898854087490180082157797171343372751769",
+      "side": "no",
+      "entryPrice": 0.9,
+      "stakeUsd": 279,
+      "contracts": 310,
+      "pnlUsd": 9.29999999999999,
+      "won": true,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 5.5pp edge, 50% confidence",
+      "tsMs": 1775574674624
+    },
+    {
+      "ticker": "0xaf2d8206fa65a86671369e8154f7f610c8d5f44cffbf869973440c89906fd3b5:23020079832963405735306885891526402034114564409201891028000225165657528187665",
+      "side": "yes",
+      "entryPrice": 0.51,
+      "stakeUsd": 278.97,
+      "contracts": 547,
+      "pnlUsd": -317.26000000000005,
+      "won": false,
+      "usedSyntheticOutcome": true,
+      "reason": "Pure value: 9.9pp edge, 55% confidence",
+      "tsMs": 1775574797812
+    }
+  ]
+}

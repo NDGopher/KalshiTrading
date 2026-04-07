@@ -9,6 +9,7 @@ import Trades from "@/pages/Trades";
 import Agents from "@/pages/Agents";
 import Settings from "@/pages/Settings";
 import Backtest from "@/pages/Backtest";
+import Backtests from "@/pages/Backtests";
 import Brain from "@/pages/Brain";
 import Paper from "@/pages/Paper";
 import NotFound from "@/pages/not-found";
@@ -31,6 +32,7 @@ function Router() {
       <Route path="/agents" component={Agents} />
       <Route path="/settings" component={Settings} />
       <Route path="/backtest" component={Backtest} />
+      <Route path="/backtests" component={Backtests} />
       <Route path="/brain" component={Brain} />
       <Route path="/paper" component={Paper} />
       <Route component={NotFound} />

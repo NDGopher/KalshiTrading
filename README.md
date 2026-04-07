@@ -227,13 +227,70 @@ pnpm --filter @workspace/dashboard run dev    # UI on $PORT
 ├── artifacts/
 │   ├── api-server/          # Express API + all agents
 │   └── dashboard/           # React + Vite dashboard
+├── data/
+│   ├── backtest-results/    # Committed multi/single backtest outputs (JSON + CSV)
+│   └── jbecker-data/        # Local parquet only — see “Data you cannot put on GitHub”
 ├── lib/
+│   ├── backtester/          # JBecker / pmxt historical replay, strategies, CLI
 │   ├── db/                  # Drizzle schema + migrations
 │   ├── api-spec/            # OpenAPI spec
 │   ├── api-client-react/    # Generated React Query hooks
 │   └── integrations-anthropic-ai/  # Anthropic client
 └── pnpm-workspace.yaml
 ```
+
+---
+
+## Data you cannot put on GitHub (and what is committed)
+
+GitHub is fine for **source code** and **moderate-sized artifacts** (low tens of MB). It is **not** a place for your full Kalshi parquet mirror.
+
+| Path | Typical size | In git? |
+|------|----------------|--------|
+| `data/jbecker-data/` (trades + markets parquet) | **~50+ GB**, **tens of thousands of files** | **No** — copy via USB, NAS, cloud drive, or re-download on the other PC |
+| `data/kalshi/` (pmxt / archive parquet cache) | Often **multi‑GB** | **No** |
+| `data/jbecker-data.tar.zst` (optional resumable download from the backtester CLI) | Often **tens of GB** | **No** |
+| `data/backtest-results/` (ranked JSON, CSV, `last-ranked.json`) | **~10–20 MB** in typical runs | **Yes** (tracked for reproducibility + dashboard) |
+
+The repo keeps `data/jbecker-data/.gitkeep` so the folder exists after clone; **you still populate parquet locally**.
+
+---
+
+## Historical backtesting (JBecker + dashboard)
+
+- **Package:** `lib/backtester` — blind replay (no lookahead), Kalshi taker fees, optional half‑Kelly sizing.
+- **CLI (multi-strategy rank):**
+  ```bash
+  pnpm --filter @workspace/backtester run historical-multi -- \
+    --from 2025-03-01 --to 2025-03-31 --sport all \
+    --bankroll 5000 --kelly \
+    --market-rows-per-file 500000 --max-trade-scan-rows 0 --max-trade-rows 5000000
+  ```
+- **API:** `GET /api/pmxt-backtests/multi/latest` serves `data/backtest-results/multi/last-ranked.json`.
+- **UI:** Dashboard route **Backtests** — run history + historical multi card.
+
+**Sharp / Fresh wallet strategies** need **wallet-like columns** on trade rows (e.g. `taker_id`, `maker_id`). Many public `trades_*.parquet` extracts only have price/count/time — those strategies will show **zero trades** until the dump includes ids (or you set `KALSHI_SHARP_WALLET_IDS` for known sharp wallets when ids exist).
+
+---
+
+## Backtest learnings (engineering notes)
+
+1. **Reported `sharpeApprox` in multi JSON** is derived from **per-trade PnL** with a `sqrt(N)`-style scaling — useful as a rough signal, **not** the same as annualized portfolio Sharpe. Treat “high Sharpe + many trades” with skepticism unless you validate on **out-of-sample** windows.
+2. **Half-Kelly + cap** plus small model edges → **many trades with very small `stakeUsd`** in simulation — dollar PnL can look modest while percentage return on `$5k` is still meaningful over a short window.
+3. **Probability Arb** in replay is easy to **over-trade**; the codebase uses stricter leg-sum thresholds, per-game spacing, and lower hourly caps than earlier iterations.
+4. **Do not commit `.env`** — secrets stay local or in your host’s secret manager.
+
+---
+
+## Working on this repo on another PC
+
+**Bring from this machine (securely):**
+
+- **`.env`** (or recreate it): at minimum `DATABASE_URL`, `ANTHROPIC_API_KEY` / AI keys, and any `PORT` / `BASE_PATH` / `API_PROXY_TARGET` you use. Never commit these.
+- **JBecker (or pmxt) data tree** under `data/jbecker-data/` (and optionally `data/kalshi/`) — too large for git; use external copy.
+- Optional: **Cursor** — sign in with the **same Cursor account** if you want cloud-synced features where enabled; for chat continuity, Cursor does not expose a “portable chat file” per thread: paste a short **handoff summary** into a new chat, or keep notes in-repo (e.g. `docs/handoff.md` — only if you want that file; user didn’t ask for a new doc file, I’ll mention in README briefly).
+
+**You do not need to copy:** `node_modules` (run `pnpm install`), or committed `data/backtest-results/` (comes from `git pull`).
 
 ---
 

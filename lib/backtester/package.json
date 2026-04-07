@@ -1,0 +1,31 @@
+{
+  "name": "@workspace/backtester",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./nightly": "./src/nightly.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "backtest": "tsx ./src/cli/run-backtest.ts",
+    "historical-multi": "tsx ./src/cli/run-historical-multi.ts",
+    "historical-multi:test-week-nfl-nba": "tsx ./src/cli/run-historical-multi.ts -- --from 2025-03-03 --to 2025-03-09 --sport \"NFL,NBA\" --bankroll 5000 --kelly --market-rows-per-file 500000 --max-trade-scan-rows 0 --max-trade-rows 2000000 --apply-learner",
+    "historical-multi:test-month-all": "tsx ./src/cli/run-historical-multi.ts -- --from 2025-03-01 --to 2025-03-31 --sport all --bankroll 5000 --kelly --market-rows-per-file 500000 --max-trade-scan-rows 0 --max-trade-rows 5000000 --apply-learner",
+    "download-jbecker": "tsx ./src/cli/download-jbecker.ts"
+  },
+  "dependencies": {
+    "7zip-bin": "^5.2.0",
+    "hyparquet": "^1.25.5",
+    "hyparquet-compressors": "^1.1.1",
+    "pg": "^8.20.0",
+    "pmxt": "^0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@types/pg": "^8.18.0",
+    "tsx": "catalog:",
+    "typescript": "~5.9.2"
+  }
+}

@@ -8,6 +8,7 @@ import settingsRouter from "./settings";
 import backtestRouter from "./backtest";
 import costsRouter from "./costs";
 import paperTradesRouter from "./paper-trades";
+import pmxtBacktestsRouter from "./pmxt-backtests";
 
 const router: IRouter = Router();
 
@@ -20,5 +21,6 @@ router.use(settingsRouter);
 router.use(backtestRouter);
 router.use(costsRouter);
 router.use(paperTradesRouter);
+router.use(pmxtBacktestsRouter);
 
 export default router;

@@ -11,7 +11,8 @@ import {
   FlaskConical,
   FileText,
   BrainCircuit,
-  DollarSign
+  DollarSign,
+  BarChart3
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useGetDashboardOverview, getGetDashboardOverviewQueryKey } from "@workspace/api-client-react";
@@ -44,6 +45,7 @@ export function Layout({ children }: LayoutProps) {
     { href: "/paper", label: "Paper Trading", icon: FileText },
     { href: "/agents", label: "Agent Status", icon: Cpu },
     { href: "/backtest", label: "Backtest", icon: FlaskConical },
+    { href: "/backtests", label: "Backtests", icon: BarChart3 },
     { href: "/settings", label: "Settings", icon: Settings },
   ];
 

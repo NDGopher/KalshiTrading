@@ -1,0 +1,109 @@
+strategy,ts_iso,ticker,sport,side,entry,contracts,pnl_usd,won,edge_pp,reason
+Market Maker,2025-03-05T02:09:30.396Z,KXNBAWEST-25-LAL,NBA,yes,0.1600,1,0.0038,1,4.260139349701395,MM quote zone spread=2.0¢
+Whale Flow,2025-03-08T00:01:00.688Z,KXNBA-25-BOS,NBA,yes,0.3100,1,-0.3100,0,4.005886936592812,Whale print mid=30.0¢
+Whale Flow,2025-03-08T03:40:27.119Z,KXNBA-25-BOS,NBA,yes,0.3000,1,-0.3000,0,4.1307075854082225,Whale print mid=29.0¢
+Whale Flow,2025-03-09T06:11:08.888Z,KXNBA-25-BOS,NBA,yes,0.3000,1,-0.3000,0,4.020100580270797,Whale print mid=29.0¢
+Whale Flow,2025-03-05T05:01:18.455Z,KXNBA-25-CLE,NBA,yes,0.1800,1,-0.1800,0,4.316027972027975,Whale print mid=17.0¢
+Whale Flow,2025-03-05T14:31:50.297Z,KXNBAWEST-25-LAL,NBA,yes,0.1800,1,-0.1800,0,5.595350096711796,Whale print mid=17.0¢
+Whale Flow,2025-03-05T14:49:02.740Z,KXNBAWEST-25-LAL,NBA,yes,0.1800,1,-0.1800,0,5.595350096711796,Whale print mid=17.0¢
+Whale Flow,2025-03-08T22:50:25.975Z,KXNBAWEST-25-LAL,NBA,yes,0.1800,1,-0.1800,0,5.301868791002809,Whale print mid=17.0¢
+Whale Flow,2025-03-05T02:09:30.396Z,KXNBAWEST-25-LAL,NBA,yes,0.1700,1,-0.1700,0,4.260139349701395,Whale print mid=16.0¢
+Whale Flow,2025-03-05T13:31:08.321Z,KXNBA-25-CLE,NBA,yes,0.1600,1,-0.1600,0,5.00571498771499,Whale print mid=15.0¢
+Whale Flow,2025-03-05T21:02:30.146Z,KXNBAWEST-25-LAL,NBA,no,0.8400,1,0.1500,1,4.756461739699152,Whale print mid=17.0¢
+Volume Imbalance,2025-03-08T02:52:04.173Z,KXNBA-25-OKC,NBA,no,0.7000,1,-0.7000,0,4.074563229031663,Flow imbalance=-3.54 edge=4.1pp
+Volume Imbalance,2025-03-05T05:01:18.455Z,KXNBA-25-CLE,NBA,no,0.6500,1,0.3300,1,7.642975774941391,Flow imbalance=-3.65 edge=7.6pp
+Volume Imbalance,2025-03-08T00:01:00.688Z,KXNBA-25-BOS,NBA,yes,0.3100,1,-0.3100,0,4.005886936592812,Flow imbalance=1.19 edge=4.0pp
+Volume Imbalance,2025-03-08T03:40:27.119Z,KXNBA-25-BOS,NBA,yes,0.3000,1,-0.3000,0,4.180693446088796,Flow imbalance=1.50 edge=4.2pp
+Volume Imbalance,2025-03-08T22:49:31.564Z,KXNBAWEST-25-LAL,NBA,yes,0.2000,1,-0.2000,0,4.0252129514321275,Flow imbalance=7.93 edge=4.0pp
+Volume Imbalance,2025-03-05T13:00:06.862Z,KXNBAWEST-25-LAL,NBA,yes,0.1900,1,-0.1900,0,4.90634950208802,Flow imbalance=18.57 edge=4.9pp
+Volume Imbalance,2025-03-05T14:26:17.954Z,KXNBAWEST-25-LAL,NBA,yes,0.1800,1,-0.1800,0,5.636249277224542,Flow imbalance=14.54 edge=5.6pp
+Volume Imbalance,2025-03-05T14:31:50.297Z,KXNBAWEST-25-LAL,NBA,yes,0.1800,1,-0.1800,0,5.595350096711796,Flow imbalance=14.54 edge=5.6pp
+Volume Imbalance,2025-03-05T14:49:02.740Z,KXNBAWEST-25-LAL,NBA,yes,0.1800,1,-0.1800,0,5.595350096711796,Flow imbalance=14.54 edge=5.6pp
+Volume Imbalance,2025-03-05T15:32:46.116Z,KXNBAWEST-25-LAL,NBA,yes,0.1800,1,-0.1800,0,5.646804642166342,Flow imbalance=14.54 edge=5.6pp
+Volume Imbalance,2025-03-08T13:46:08.486Z,KXNBAWEST-25-LAL,NBA,yes,0.1800,1,-0.1800,0,4.130873452129266,Flow imbalance=4.73 edge=4.1pp
+Volume Imbalance,2025-03-08T18:33:37.899Z,KXNBAWEST-25-LAL,NBA,yes,0.1800,1,-0.1800,0,4.129959183673471,Flow imbalance=0.76 edge=4.1pp
+Volume Imbalance,2025-03-08T23:09:54.504Z,KXNBAWEST-25-LAL,NBA,yes,0.1800,1,-0.1800,0,5.157230769230766,Flow imbalance=0.38 edge=5.2pp
+Volume Imbalance,2025-03-05T02:09:30.396Z,KXNBAWEST-25-LAL,NBA,yes,0.1700,1,-0.1700,0,4.260139349701395,Flow imbalance=15.98 edge=4.3pp
+Volume Imbalance,2025-03-05T23:20:36.511Z,KXNBA-25-CLE,NBA,yes,0.1300,1,-0.1300,0,5.403300699300698,Flow imbalance=1.66 edge=5.4pp
+Pure Value,2025-03-08T02:52:04.173Z,KXNBA-25-OKC,NBA,no,0.7000,1,-0.7000,0,4.074563229031663,"Pure value: 4.1pp edge, 40% confidence"
+Pure Value,2025-03-05T05:01:18.455Z,KXNBA-25-CLE,NBA,no,0.6600,1,0.3200,1,13.985678103997156,"Pure value: 14.0pp edge, 58% confidence"
+Pure Value,2025-03-08T00:01:00.688Z,KXNBA-25-BOS,NBA,yes,0.3100,1,-0.3100,0,4.005886936592812,"Pure value: 4.0pp edge, 52% confidence"
+Pure Value,2025-03-08T01:42:26.470Z,KXNBA-25-BOS,NBA,yes,0.3000,1,-0.3000,0,4.333167464114834,"Pure value: 4.3pp edge, 52% confidence"
+Pure Value,2025-03-08T03:40:27.119Z,KXNBA-25-BOS,NBA,yes,0.3000,1,-0.3000,0,4.180693446088796,"Pure value: 4.2pp edge, 43% confidence"
+Pure Value,2025-03-08T03:49:18.847Z,KXNBA-25-BOS,NBA,yes,0.3000,1,-0.3000,0,4.080295406086454,"Pure value: 4.1pp edge, 42% confidence"
+Pure Value,2025-03-09T06:11:08.888Z,KXNBA-25-BOS,NBA,yes,0.3000,1,-0.3000,0,4.020100580270797,"Pure value: 4.0pp edge, 52% confidence"
+Pure Value,2025-03-08T22:49:31.564Z,KXNBAWEST-25-LAL,NBA,yes,0.2000,1,-0.2000,0,4.0252129514321275,"Pure value: 4.0pp edge, 52% confidence"
+Pure Value,2025-03-05T13:00:06.862Z,KXNBAWEST-25-LAL,NBA,yes,0.1900,1,-0.1900,0,4.90634950208802,"Pure value: 4.9pp edge, 53% confidence"
+Pure Value,2025-03-05T05:22:19.546Z,KXNBA-25-CLE,NBA,yes,0.1800,1,-0.1800,0,4.3348436886854165,"Pure value: 4.3pp edge, 50% confidence"
+Pure Value,2025-03-05T14:26:17.954Z,KXNBAWEST-25-LAL,NBA,yes,0.1800,1,-0.1800,0,5.636249277224542,"Pure value: 5.6pp edge, 52% confidence"
+Pure Value,2025-03-05T14:31:50.297Z,KXNBAWEST-25-LAL,NBA,yes,0.1800,1,-0.1800,0,5.595350096711796,"Pure value: 5.6pp edge, 54% confidence"
+Pure Value,2025-03-05T14:49:02.740Z,KXNBAWEST-25-LAL,NBA,yes,0.1800,1,-0.1800,0,5.595350096711796,"Pure value: 5.6pp edge, 54% confidence"
+Pure Value,2025-03-05T15:32:46.116Z,KXNBAWEST-25-LAL,NBA,yes,0.1800,1,-0.1800,0,5.646804642166342,"Pure value: 5.6pp edge, 54% confidence"
+Pure Value,2025-03-08T13:46:08.486Z,KXNBAWEST-25-LAL,NBA,yes,0.1800,1,-0.1800,0,4.130873452129266,"Pure value: 4.1pp edge, 52% confidence"
+Pure Value,2025-03-08T18:33:37.899Z,KXNBAWEST-25-LAL,NBA,yes,0.1800,1,-0.1800,0,4.129959183673471,"Pure value: 4.1pp edge, 43% confidence"
+Pure Value,2025-03-08T23:09:54.504Z,KXNBAWEST-25-LAL,NBA,yes,0.1800,1,-0.1800,0,5.157230769230766,"Pure value: 5.2pp edge, 47% confidence"
+Pure Value,2025-03-05T02:09:30.396Z,KXNBAWEST-25-LAL,NBA,yes,0.1700,1,-0.1700,0,4.260139349701395,"Pure value: 4.3pp edge, 53% confidence"
+Pure Value,2025-03-05T07:13:43.184Z,KXNBA-25-CLE,NBA,yes,0.1700,1,-0.1700,0,4.159550011993285,"Pure value: 4.2pp edge, 42% confidence"
+Pure Value,2025-03-05T07:17:38.917Z,KXNBA-25-CLE,NBA,yes,0.1700,1,-0.1700,0,4.138106782106782,"Pure value: 4.1pp edge, 43% confidence"
+Pure Value,2025-03-04T02:03:25.571Z,KXNBAWEST-25-LAL,NBA,yes,0.1600,1,-0.1600,0,4.0666236870699,"Pure value: 4.1pp edge, 48% confidence"
+Pure Value,2025-03-05T13:31:08.321Z,KXNBA-25-CLE,NBA,yes,0.1600,1,-0.1600,0,5.057348710990503,"Pure value: 5.1pp edge, 52% confidence"
+Pure Value,2025-03-05T13:55:57.828Z,KXNBA-25-CLE,NBA,yes,0.1500,1,-0.1500,0,4.156130420815929,"Pure value: 4.2pp edge, 43% confidence"
+Pure Value,2025-03-05T16:07:22.980Z,KXNBAWEST-25-LAL,NBA,no,0.8400,1,0.1500,1,4.847195357833659,"Pure value: 4.8pp edge, 39% confidence"
+Pure Value,2025-03-05T17:23:46.506Z,KXNBAWEST-25-LAL,NBA,no,0.8400,1,0.1500,1,4.878415584415588,"Pure value: 4.9pp edge, 48% confidence"
+Pure Value,2025-03-05T19:19:39.804Z,KXNBAWEST-25-LAL,NBA,no,0.8400,1,0.1500,1,4.817288367546434,"Pure value: 4.8pp edge, 39% confidence"
+Pure Value,2025-03-05T21:02:30.146Z,KXNBAWEST-25-LAL,NBA,no,0.8400,1,0.1500,1,4.756461739699152,"Pure value: 4.8pp edge, 48% confidence"
+Pure Value,2025-03-06T04:02:34.628Z,KXNBA-25-CLE,NBA,yes,0.1500,1,-0.1500,0,4.0195477855477835,"Pure value: 4.0pp edge, 49% confidence"
+Pure Value,2025-03-05T16:52:38.777Z,KXNBAWEST-25-LAL,NBA,no,0.8500,1,0.1400,1,4.205111614364284,"Pure value: 4.2pp edge, 38% confidence"
+Pure Value,2025-03-05T23:20:36.511Z,KXNBA-25-CLE,NBA,yes,0.1300,1,-0.1300,0,5.403300699300698,"Pure value: 5.4pp edge, 44% confidence"
+Pure Value,2025-03-06T07:07:44.135Z,KXNBA-25-CLE,NBA,yes,0.1300,1,-0.1300,0,5.687064935064937,"Pure value: 5.7pp edge, 51% confidence"
+Pure Value,2025-03-09T06:42:06.507Z,KXNBAWEST-25-GSW,NBA,no,0.8900,1,0.1000,1,5.437699890470974,"Pure value: 5.4pp edge, 50% confidence"
+Probability Arb,2025-03-08T01:42:59.254Z,KXNBA-25-OKC,NBA,no,0.7100,1,-0.7100,0,33.99999999999999,"Probability arb: YES legs sum > 100%, fade rich leg (34.0pp)"
+Probability Arb,2025-03-08T06:17:11.514Z,KXNBA-25-OKC,NBA,no,0.7100,1,-0.7100,0,33.99999999999999,"Probability arb: YES legs sum > 100%, fade rich leg (34.0pp)"
+Probability Arb,2025-03-09T01:00:35.037Z,KXNBA-25-OKC,NBA,no,0.7100,1,-0.7100,0,33.99999999999999,"Probability arb: YES legs sum > 100%, fade rich leg (34.0pp)"
+Probability Arb,2025-03-09T11:36:15.451Z,KXNBA-25-OKC,NBA,no,0.7100,1,-0.7100,0,33.99999999999999,"Probability arb: YES legs sum > 100%, fade rich leg (34.0pp)"
+Probability Arb,2025-03-09T12:35:07.094Z,KXNBA-25-OKC,NBA,no,0.7100,1,-0.7100,0,33.99999999999999,"Probability arb: YES legs sum > 100%, fade rich leg (34.0pp)"
+Probability Arb,2025-03-09T14:11:33.202Z,KXNBA-25-OKC,NBA,no,0.7100,1,-0.7100,0,33.99999999999999,"Probability arb: YES legs sum > 100%, fade rich leg (34.0pp)"
+Probability Arb,2025-03-09T18:04:45.661Z,KXNBA-25-OKC,NBA,no,0.7100,1,-0.7100,0,33.99999999999999,"Probability arb: YES legs sum > 100%, fade rich leg (34.0pp)"
+Probability Arb,2025-03-09T18:12:32.512Z,KXNBA-25-OKC,NBA,no,0.7100,1,-0.7100,0,33.99999999999999,"Probability arb: YES legs sum > 100%, fade rich leg (34.0pp)"
+Probability Arb,2025-03-09T18:31:52.167Z,KXNBA-25-OKC,NBA,no,0.7100,1,-0.7100,0,33.99999999999999,"Probability arb: YES legs sum > 100%, fade rich leg (34.0pp)"
+Probability Arb,2025-03-09T18:34:28.230Z,KXNBA-25-OKC,NBA,no,0.7100,1,-0.7100,0,33.99999999999999,"Probability arb: YES legs sum > 100%, fade rich leg (34.0pp)"
+Probability Arb,2025-03-04T19:22:09.224Z,KXNBA-25-OKC,NBA,no,0.7000,1,-0.7000,0,31.99999999999999,"Probability arb: YES legs sum > 100%, fade rich leg (32.0pp)"
+Probability Arb,2025-03-05T02:19:12.101Z,KXNBA-25-OKC,NBA,no,0.7000,1,-0.7000,0,31.99999999999999,"Probability arb: YES legs sum > 100%, fade rich leg (32.0pp)"
+Probability Arb,2025-03-05T14:38:39.449Z,KXNBA-25-OKC,NBA,no,0.7000,1,-0.7000,0,31.99999999999999,"Probability arb: YES legs sum > 100%, fade rich leg (32.0pp)"
+Probability Arb,2025-03-05T15:01:30.239Z,KXNBA-25-OKC,NBA,no,0.7000,1,-0.7000,0,31.99999999999999,"Probability arb: YES legs sum > 100%, fade rich leg (32.0pp)"
+Probability Arb,2025-03-05T18:12:59.636Z,KXNBA-25-OKC,NBA,no,0.7000,1,-0.7000,0,31.99999999999999,"Probability arb: YES legs sum > 100%, fade rich leg (32.0pp)"
+Probability Arb,2025-03-05T19:48:31.107Z,KXNBA-25-OKC,NBA,no,0.7000,1,-0.7000,0,31.99999999999999,"Probability arb: YES legs sum > 100%, fade rich leg (32.0pp)"
+Probability Arb,2025-03-05T19:57:13.632Z,KXNBA-25-OKC,NBA,no,0.7000,1,-0.7000,0,31.99999999999999,"Probability arb: YES legs sum > 100%, fade rich leg (32.0pp)"
+Probability Arb,2025-03-05T20:11:02.565Z,KXNBA-25-OKC,NBA,no,0.7000,1,-0.7000,0,31.99999999999999,"Probability arb: YES legs sum > 100%, fade rich leg (32.0pp)"
+Probability Arb,2025-03-05T20:17:24.418Z,KXNBA-25-OKC,NBA,no,0.7000,1,-0.7000,0,31.99999999999999,"Probability arb: YES legs sum > 100%, fade rich leg (32.0pp)"
+Probability Arb,2025-03-05T20:24:52.137Z,KXNBA-25-OKC,NBA,no,0.7000,1,-0.7000,0,31.99999999999999,"Probability arb: YES legs sum > 100%, fade rich leg (32.0pp)"
+Probability Arb,2025-03-05T20:32:30.111Z,KXNBA-25-OKC,NBA,no,0.7000,1,-0.7000,0,31.99999999999999,"Probability arb: YES legs sum > 100%, fade rich leg (32.0pp)"
+Probability Arb,2025-03-05T20:39:39.257Z,KXNBA-25-OKC,NBA,no,0.7000,1,-0.7000,0,31.99999999999999,"Probability arb: YES legs sum > 100%, fade rich leg (32.0pp)"
+Probability Arb,2025-03-05T22:27:45.809Z,KXNBA-25-OKC,NBA,no,0.7000,1,-0.7000,0,31.99999999999999,"Probability arb: YES legs sum > 100%, fade rich leg (32.0pp)"
+Probability Arb,2025-03-05T22:29:53.864Z,KXNBA-25-OKC,NBA,no,0.7000,1,-0.7000,0,31.99999999999999,"Probability arb: YES legs sum > 100%, fade rich leg (32.0pp)"
+Probability Arb,2025-03-05T23:24:22.823Z,KXNBA-25-OKC,NBA,no,0.7000,1,-0.7000,0,31.99999999999999,"Probability arb: YES legs sum > 100%, fade rich leg (32.0pp)"
+Probability Arb,2025-03-06T00:05:13.724Z,KXNBA-25-OKC,NBA,no,0.7000,1,-0.7000,0,31.99999999999999,"Probability arb: YES legs sum > 100%, fade rich leg (32.0pp)"
+Probability Arb,2025-03-06T00:13:44.533Z,KXNBA-25-OKC,NBA,no,0.7000,1,-0.7000,0,31.99999999999999,"Probability arb: YES legs sum > 100%, fade rich leg (32.0pp)"
+Probability Arb,2025-03-06T00:42:41.964Z,KXNBA-25-OKC,NBA,no,0.7000,1,-0.7000,0,31.99999999999999,"Probability arb: YES legs sum > 100%, fade rich leg (32.0pp)"
+Probability Arb,2025-03-06T00:45:14.788Z,KXNBA-25-OKC,NBA,no,0.7000,1,-0.7000,0,31.99999999999999,"Probability arb: YES legs sum > 100%, fade rich leg (32.0pp)"
+Probability Arb,2025-03-06T00:47:27.077Z,KXNBA-25-OKC,NBA,no,0.7000,1,-0.7000,0,31.99999999999999,"Probability arb: YES legs sum > 100%, fade rich leg (32.0pp)"
+Probability Arb,2025-03-06T01:26:06.485Z,KXNBA-25-OKC,NBA,no,0.7000,1,-0.7000,0,31.99999999999999,"Probability arb: YES legs sum > 100%, fade rich leg (32.0pp)"
+Probability Arb,2025-03-06T01:44:05.689Z,KXNBA-25-OKC,NBA,no,0.7000,1,-0.7000,0,31.99999999999999,"Probability arb: YES legs sum > 100%, fade rich leg (32.0pp)"
+Probability Arb,2025-03-06T02:45:23.129Z,KXNBA-25-OKC,NBA,no,0.7000,1,-0.7000,0,31.99999999999999,"Probability arb: YES legs sum > 100%, fade rich leg (32.0pp)"
+Probability Arb,2025-03-06T03:59:53.105Z,KXNBA-25-OKC,NBA,no,0.7000,1,-0.7000,0,31.99999999999999,"Probability arb: YES legs sum > 100%, fade rich leg (32.0pp)"
+Probability Arb,2025-03-06T05:51:24.765Z,KXNBA-25-OKC,NBA,no,0.7000,1,-0.7000,0,31.99999999999999,"Probability arb: YES legs sum > 100%, fade rich leg (32.0pp)"
+Probability Arb,2025-03-06T06:41:41.783Z,KXNBA-25-OKC,NBA,no,0.7000,1,-0.7000,0,31.99999999999999,"Probability arb: YES legs sum > 100%, fade rich leg (32.0pp)"
+Probability Arb,2025-03-06T07:10:15.838Z,KXNBA-25-OKC,NBA,no,0.7000,1,-0.7000,0,31.99999999999999,"Probability arb: YES legs sum > 100%, fade rich leg (32.0pp)"
+Probability Arb,2025-03-06T14:57:38.407Z,KXNBA-25-OKC,NBA,no,0.7000,1,-0.7000,0,31.99999999999999,"Probability arb: YES legs sum > 100%, fade rich leg (32.0pp)"
+Probability Arb,2025-03-06T15:14:26.594Z,KXNBA-25-OKC,NBA,no,0.7000,1,-0.7000,0,31.99999999999999,"Probability arb: YES legs sum > 100%, fade rich leg (32.0pp)"
+Probability Arb,2025-03-06T16:10:56.074Z,KXNBA-25-OKC,NBA,no,0.7000,1,-0.7000,0,31.99999999999999,"Probability arb: YES legs sum > 100%, fade rich leg (32.0pp)"
+Probability Arb,2025-03-06T17:25:33.621Z,KXNBA-25-OKC,NBA,no,0.7000,1,-0.7000,0,31.99999999999999,"Probability arb: YES legs sum > 100%, fade rich leg (32.0pp)"
+Probability Arb,2025-03-06T20:33:15.773Z,KXNBA-25-OKC,NBA,no,0.7000,1,-0.7000,0,31.99999999999999,"Probability arb: YES legs sum > 100%, fade rich leg (32.0pp)"
+Probability Arb,2025-03-06T23:36:19.504Z,KXNBA-25-OKC,NBA,no,0.7000,1,-0.7000,0,31.99999999999999,"Probability arb: YES legs sum > 100%, fade rich leg (32.0pp)"
+Probability Arb,2025-03-06T23:53:28.968Z,KXNBA-25-OKC,NBA,no,0.7000,1,-0.7000,0,31.99999999999999,"Probability arb: YES legs sum > 100%, fade rich leg (32.0pp)"
+Probability Arb,2025-03-07T02:57:59.975Z,KXNBA-25-OKC,NBA,no,0.7000,1,-0.7000,0,31.99999999999999,"Probability arb: YES legs sum > 100%, fade rich leg (32.0pp)"
+Probability Arb,2025-03-07T04:11:44.566Z,KXNBA-25-OKC,NBA,no,0.7000,1,-0.7000,0,31.99999999999999,"Probability arb: YES legs sum > 100%, fade rich leg (32.0pp)"
+Probability Arb,2025-03-07T04:37:17.839Z,KXNBA-25-OKC,NBA,no,0.7000,1,-0.7000,0,31.99999999999999,"Probability arb: YES legs sum > 100%, fade rich leg (32.0pp)"
+Probability Arb,2025-03-07T04:53:31.934Z,KXNBA-25-OKC,NBA,no,0.7000,1,-0.7000,0,31.99999999999999,"Probability arb: YES legs sum > 100%, fade rich leg (32.0pp)"
+Probability Arb,2025-03-07T13:09:57.409Z,KXNBA-25-OKC,NBA,no,0.7000,1,-0.7000,0,31.99999999999999,"Probability arb: YES legs sum > 100%, fade rich leg (32.0pp)"
+Probability Arb,2025-03-07T16:56:28.199Z,KXNBA-25-OKC,NBA,no,0.7000,1,-0.7000,0,31.99999999999999,"Probability arb: YES legs sum > 100%, fade rich leg (32.0pp)"

@@ -61,7 +61,7 @@ const pureValue: Strategy = {
     if (analysis.edge > 20) {
       return { trade: false, reason: `Edge claim ${analysis.edge.toFixed(0)}pp exceeds 20pp sanity cap — empirically win rate collapses above this level, skip` };
     }
-    if (analysis.edge >= 4 && analysis.confidence >= 0.35) {
+    if (analysis.edge >= 4.5 && analysis.confidence >= 0.36) {
       return { trade: true, reason: `Pure value: ${analysis.edge.toFixed(1)}pp edge, ${(analysis.confidence * 100).toFixed(0)}% confidence` };
     }
     return { trade: false, reason: `Insufficient value: edge=${analysis.edge.toFixed(1)}pp, conf=${(analysis.confidence * 100).toFixed(0)}%` };

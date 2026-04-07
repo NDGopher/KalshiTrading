@@ -268,6 +268,25 @@ Only include insights for buckets with ≥5 closed trades. Focus on the most act
     `[Learner] Wrote ${parsed.insights.length} insights from ${closed.length} closed trades (win rate ${Math.round(winRate * 100)}%)`
   );
 
+  if (process.env.PMXT_NIGHTLY_BACKTEST === "1") {
+    try {
+      const { runPmxtNightlyBacktestIfEnabled } = await import("@workspace/backtester/nightly");
+      await runPmxtNightlyBacktestIfEnabled();
+    } catch (e) {
+      console.warn("[Learner] PMXT archive backtest hook failed:", e);
+    }
+  }
+
+  try {
+    const { tryApplyMultiBacktestRankToSettings } = await import("../apply-backtest-rank.js");
+    const rankApply = await tryApplyMultiBacktestRankToSettings();
+    if (rankApply.applied) {
+      console.log("[Learner] Multi-strategy backtest rank →", rankApply.detail);
+    }
+  } catch (e) {
+    console.warn("[Learner] apply-backtest-rank failed:", e);
+  }
+
   return {
     totalClosedTrades: closed.length,
     insights: parsed.insights,

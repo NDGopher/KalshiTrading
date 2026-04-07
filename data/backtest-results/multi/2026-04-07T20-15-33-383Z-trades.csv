@@ -1,0 +1,204 @@
+strategy,ts_iso,ticker,sport,side,entry,contracts,pnl_usd,won,edge_pp,reason
+Dip Buy,2023-01-18T16:00:15.729Z,HIGHCHI-23JAN18-B38.5,Other,yes,0.1200,1,0.8700,1,6.787035378414689,"Dip buy: 64.8% below mean, edge=6.8pp"
+Dip Buy,2023-01-21T17:06:57.254Z,HIGHCHI-23JAN21-B31.5,Other,yes,0.1200,1,0.8700,1,6.883607975667459,"Dip buy: 34.6% below mean, edge=6.9pp"
+Dip Buy,2023-01-21T16:57:47.605Z,HIGHCHI-23JAN21-B31.5,Other,yes,0.1300,1,0.8600,1,6.528299120234604,"Dip buy: 31.2% below mean, edge=6.5pp"
+Dip Buy,2023-01-21T16:54:59.832Z,HIGHCHI-23JAN21-B31.5,Other,yes,0.1400,1,0.8500,1,6.209044048734769,"Dip buy: 28.5% below mean, edge=6.2pp"
+Dip Buy,2023-01-21T16:08:48.030Z,HIGHCHI-23JAN21-B31.5,Other,yes,0.1500,1,0.8400,1,6.087334510150044,"Dip buy: 27.5% below mean, edge=6.1pp"
+Dip Buy,2023-01-21T16:26:15.992Z,HIGHCHI-23JAN21-B31.5,Other,yes,0.1500,1,0.8400,1,6.059090909090909,"Dip buy: 27.3% below mean, edge=6.1pp"
+Dip Buy,2023-01-18T19:46:42.698Z,HIGHCHI-23JAN18-B40.5,Other,yes,0.3800,1,-0.3800,0,6.120382487078135,"Dip buy: 50.5% below mean, edge=6.1pp"
+Dip Buy,2023-01-18T18:47:24.164Z,HIGHCHI-23JAN18-B40.5,Other,yes,0.3700,1,-0.3700,0,6.473789707845174,"Dip buy: 53.0% below mean, edge=6.5pp"
+Dip Buy,2023-01-19T16:15:44.774Z,HIGHCHI-23JAN19-B43.5,Other,yes,0.2100,1,-0.2100,0,6.078602920395665,"Dip buy: 44.7% below mean, edge=6.1pp"
+Dip Buy,2023-01-18T20:01:11.567Z,HIGHCHI-23JAN18-B40.5,Other,yes,0.1600,1,-0.1600,0,8.305230998509689,"Dip buy: 78.1% below mean, edge=8.3pp"
+Dip Buy,2023-01-18T20:16:57.966Z,HIGHCHI-23JAN18-B40.5,Other,yes,0.1600,1,-0.1600,0,8.145573122529646,"Dip buy: 76.8% below mean, edge=8.1pp"
+Dip Buy,2023-01-20T13:00:00.872Z,HIGHCHI-23JAN20-B32.5,Other,yes,0.1500,1,-0.1500,0,10.971670995670992,"Dip buy: 49.2% below mean, edge=11.0pp"
+Dip Buy,2023-01-21T22:26:21.631Z,HIGHCHI-23JAN21-B33.5,Other,yes,0.1500,1,-0.1500,0,9.266671243494631,"Dip buy: 72.7% below mean, edge=9.3pp"
+Dip Buy,2023-01-18T21:27:41.581Z,HIGHCHI-23JAN18-B40.5,Other,yes,0.1200,1,-0.1200,0,8.530060606060609,"Dip buy: 80.4% below mean, edge=8.5pp"
+Dip Buy,2023-01-18T21:47:57.481Z,HIGHCHI-23JAN18-B40.5,Other,yes,0.1200,1,-0.1200,0,8.322918324722437,"Dip buy: 78.7% below mean, edge=8.3pp"
+Whale Flow,2023-01-18T16:00:15.729Z,HIGHCHI-23JAN18-B38.5,Other,yes,0.1200,1,0.8700,1,6.787035378414689,Whale print mid=11.0¢
+Whale Flow,2023-01-20T23:36:31.789Z,HIGHCHI-23JAN21-B31.5,Other,yes,0.1200,1,0.8700,1,4.104227795193312,Whale print mid=11.0¢
+Whale Flow,2023-01-18T18:01:12.840Z,APRPOTUS-23JAN20-T43.0,Other,no,0.8100,1,-0.8100,0,14.162248803827755,Whale print mid=20.0¢
+Whale Flow,2023-01-21T18:57:21.351Z,HIGHCHI-23JAN21-B31.5,Other,no,0.7600,1,-0.7600,0,8.72267230443974,Whale print mid=25.0¢
+Whale Flow,2023-01-21T19:39:35.507Z,HIGHCHI-23JAN21-B31.5,Other,no,0.6700,1,-0.6700,0,17.096432778489117,Whale print mid=34.0¢
+Whale Flow,2023-01-19T16:19:22.396Z,HIGHCHI-23JAN20-B34.5,Other,no,0.6500,1,-0.6500,0,4.024245989304809,Whale print mid=36.0¢
+Whale Flow,2023-01-19T17:03:00.089Z,HIGHCHI-23JAN20-B34.5,Other,no,0.5800,1,-0.5800,0,5.50139184952978,Whale print mid=43.0¢
+Whale Flow,2023-01-19T17:23:09.233Z,GRAMSOTY-65-EOM,Other,yes,0.5300,1,-0.5300,0,4.074909090909085,Whale print mid=52.0¢
+Whale Flow,2023-01-20T01:56:01.062Z,HIGHCHI-23JAN20-B34.5,Other,no,0.4800,1,-0.4800,0,5.460700702220533,Whale print mid=53.0¢
+Whale Flow,2023-01-20T01:58:04.596Z,HIGHCHI-23JAN20-B34.5,Other,no,0.4300,1,-0.4300,0,5.507904306220091,Whale print mid=58.0¢
+Whale Flow,2023-01-18T19:34:26.353Z,GDP-232022 Q4-T2.5,Other,yes,0.5800,1,0.4000,1,4.482121212121227,Whale print mid=57.0¢
+Whale Flow,2023-01-18T19:55:39.711Z,HIGHCHI-23JAN18-B40.5,Other,yes,0.3800,1,-0.3800,0,5.930759902737471,Whale print mid=37.0¢
+Whale Flow,2023-01-18T18:12:16.133Z,GDP-232022 Q4-T2.5,Other,yes,0.6100,1,0.3700,1,4.322081504702191,Whale print mid=60.0¢
+Whale Flow,2023-01-19T17:36:38.591Z,GRAMBNA-65-A,Other,yes,0.3600,1,-0.3600,0,4.649454545454546,Whale print mid=35.0¢
+Whale Flow,2023-01-18T21:35:28.251Z,GDP-232022 Q4-T3.0,Other,no,0.6400,1,0.3400,1,4.412675324675325,Whale print mid=37.0¢
+Whale Flow,2023-01-19T18:49:17.379Z,GDP-232022 Q4-T3.0,Other,no,0.6500,1,0.3300,1,4.670348162475824,Whale print mid=36.0¢
+Whale Flow,2023-01-20T15:55:38.185Z,HIGHCHI-23JAN21-B35.5,Other,no,0.6600,1,0.3200,1,4.922759358288776,Whale print mid=35.0¢
+Whale Flow,2023-01-21T18:51:51.411Z,HIGHCHI-23JAN22-B35.5,Other,no,0.6700,1,0.3100,1,4.437948051948054,Whale print mid=34.0¢
+Whale Flow,2023-01-18T19:34:14.707Z,GDP-232022 Q4-T3.0,Other,no,0.6800,1,0.3000,1,4.461033259423503,Whale print mid=33.0¢
+Whale Flow,2023-01-20T15:53:24.578Z,HIGHCHI-23JAN21-B35.5,Other,no,0.6800,1,0.3000,1,4.569818181818181,Whale print mid=33.0¢
+Whale Flow,2023-01-21T18:35:14.826Z,HIGHCHI-23JAN22-B35.5,Other,no,0.6800,1,0.3000,1,4.295090909090909,Whale print mid=33.0¢
+Whale Flow,2023-01-21T18:42:57.776Z,HIGHCHI-23JAN22-B35.5,Other,no,0.6800,1,0.3000,1,4.295090909090909,Whale print mid=33.0¢
+Whale Flow,2023-01-19T04:34:45.403Z,HIGHCHI-23JAN19-B43.5,Other,yes,0.2800,1,-0.2800,0,4.1096363636363655,Whale print mid=27.0¢
+Whale Flow,2023-01-22T16:26:04.227Z,HIGHCHI-23JAN22-B35.5,Other,no,0.7100,1,0.2700,1,8.51241807294502,Whale print mid=30.0¢
+Whale Flow,2023-01-19T03:48:31.402Z,HIGHCHI-23JAN19-B43.5,Other,yes,0.2600,1,-0.2600,0,4.88343827941442,Whale print mid=25.0¢
+Whale Flow,2023-01-19T01:44:59.629Z,APRPOTUS-23JAN20-B44.3,Other,yes,0.2500,1,-0.2500,0,5.1519823008849555,Whale print mid=24.0¢
+Whale Flow,2023-01-21T02:13:46.421Z,HIGHCHI-23JAN21-B35.5,Other,no,0.7300,1,0.2500,1,4.359433681073027,Whale print mid=28.0¢
+Whale Flow,2023-01-20T19:40:30.781Z,HIGHCHI-23JAN21-B35.5,Other,yes,0.2200,1,-0.2200,0,4.015972027972029,Whale print mid=21.0¢
+Whale Flow,2023-01-19T14:40:08.376Z,APRPOTUS-23JAN20-B43.1,Other,no,0.8100,1,0.1700,1,11.421090909090912,Whale print mid=20.0¢
+Whale Flow,2023-01-18T20:01:11.567Z,HIGHCHI-23JAN18-B40.5,Other,yes,0.1600,1,-0.1600,0,8.305230998509689,Whale print mid=15.0¢
+Whale Flow,2023-01-18T20:16:57.966Z,HIGHCHI-23JAN18-B40.5,Other,yes,0.1600,1,-0.1600,0,8.145573122529646,Whale print mid=15.0¢
+Whale Flow,2023-01-20T13:00:00.872Z,HIGHCHI-23JAN20-B32.5,Other,yes,0.1500,1,-0.1500,0,10.971670995670992,Whale print mid=14.0¢
+Whale Flow,2023-01-18T04:46:56.392Z,HIGHCHI-23JAN18-B42.5,Other,no,0.8600,1,0.1300,1,5.335426573426572,Whale print mid=15.0¢
+Whale Flow,2023-01-21T22:10:07.914Z,HIGHCHI-23JAN22-B37.5,Other,yes,0.1300,1,-0.1300,0,4.312148760330581,Whale print mid=12.0¢
+Whale Flow,2023-01-22T01:34:37.907Z,HIGHCHI-23JAN22-B31.5,Other,no,0.8600,1,0.1300,1,8.215272727272724,Whale print mid=15.0¢
+Whale Flow,2023-01-21T02:14:12.205Z,HIGHCHI-23JAN21-B37.5,Other,no,0.8700,1,0.1200,1,6.745454545454548,Whale print mid=14.0¢
+Whale Flow,2023-01-20T13:00:13.907Z,HIGHCHI-23JAN20-B34.5,Other,no,0.1200,1,-0.1200,0,7.000315312594385,Whale print mid=89.0¢
+Whale Flow,2023-01-20T13:44:28.162Z,HIGHCHI-23JAN20-B36.5,Other,no,0.8900,1,0.1000,1,5.045919661733614,Whale print mid=12.0¢
+Volume Imbalance,2023-01-18T16:38:50.727Z,HIGHCHI-23JAN18-B38.5,Other,yes,0.1100,1,0.8800,1,6.165151515151515,Flow imbalance=1.59 edge=6.2pp
+Volume Imbalance,2023-01-18T16:46:27.433Z,HIGHCHI-23JAN18-B38.5,Other,yes,0.1200,1,0.8700,1,4.066267942583733,Flow imbalance=4.43 edge=4.1pp
+Volume Imbalance,2023-01-18T17:10:43.118Z,HIGHCHI-23JAN18-B38.5,Other,no,0.8700,1,-0.8700,0,4.207636363636366,Flow imbalance=-1.36 edge=4.2pp
+Volume Imbalance,2023-01-20T02:20:50.159Z,HIGHCHI-23JAN20-T37,Other,no,0.1200,1,0.8700,1,75.21931313131311,Flow imbalance=-12.45 edge=75.2pp
+Volume Imbalance,2023-01-18T17:04:34.305Z,HIGHCHI-23JAN18-B38.5,Other,no,0.8500,1,-0.8500,0,5.01867872441694,Flow imbalance=-1.15 edge=5.0pp
+Volume Imbalance,2023-01-18T17:45:07.622Z,HIGHCHI-23JAN18-B38.5,Other,no,0.8500,1,-0.8500,0,4.528817720350715,Flow imbalance=-1.75 edge=4.5pp
+Volume Imbalance,2023-01-22T16:49:05.789Z,HIGHCHI-23JAN23-B32.5,Other,yes,0.1900,1,0.7900,1,4.435801652892563,Flow imbalance=3.80 edge=4.4pp
+Volume Imbalance,2023-01-18T18:30:44.780Z,HIGHCHI-23JAN18-B38.5,Other,no,0.7600,1,-0.7600,0,4.990837095790113,Flow imbalance=-5.14 edge=5.0pp
+Volume Imbalance,2023-01-21T18:57:21.351Z,HIGHCHI-23JAN21-B31.5,Other,no,0.7600,1,-0.7600,0,8.72267230443974,Flow imbalance=-16.44 edge=8.7pp
+Volume Imbalance,2023-01-18T18:37:55.609Z,HIGHCHI-23JAN18-B38.5,Other,no,0.7500,1,-0.7500,0,5.03879435127979,Flow imbalance=-5.14 edge=5.0pp
+Volume Imbalance,2023-01-18T19:41:58.719Z,HIGHCHI-23JAN18-B38.5,Other,no,0.7400,1,-0.7400,0,4.881535603715173,Flow imbalance=-6.34 edge=4.9pp
+Volume Imbalance,2023-01-18T19:50:28.024Z,HIGHCHI-23JAN18-B38.5,Other,no,0.7200,1,-0.7200,0,5.354255192878335,Flow imbalance=-2.18 edge=5.4pp
+Volume Imbalance,2023-01-18T19:54:42.444Z,HIGHCHI-23JAN18-B38.5,Other,no,0.7000,1,-0.7000,0,5.6455593220338995,Flow imbalance=-2.18 edge=5.6pp
+Volume Imbalance,2023-01-21T19:39:35.507Z,HIGHCHI-23JAN21-B31.5,Other,no,0.6700,1,-0.6700,0,17.096432778489117,Flow imbalance=-5.31 edge=17.1pp
+Volume Imbalance,2023-01-21T20:42:58.021Z,HIGHCHI-23JAN21-B31.5,Other,no,0.6100,1,-0.6100,0,17.219999999999995,Flow imbalance=-6.04 edge=17.2pp
+Volume Imbalance,2023-01-21T20:56:55.631Z,HIGHCHI-23JAN21-B31.5,Other,no,0.6100,1,-0.6100,0,11.03674121405751,Flow imbalance=-5.61 edge=11.0pp
+Volume Imbalance,2023-01-18T19:59:01.017Z,HIGHCHI-23JAN18-B38.5,Other,no,0.5200,1,-0.5200,0,13.142077519379841,Flow imbalance=-4.58 edge=13.1pp
+Volume Imbalance,2023-01-18T20:02:27.127Z,HIGHCHI-23JAN18-B38.5,Other,no,0.4900,1,-0.4900,0,11.585167464114832,Flow imbalance=-1.32 edge=11.6pp
+Volume Imbalance,2023-01-18T19:46:42.698Z,HIGHCHI-23JAN18-B40.5,Other,yes,0.3800,1,-0.3800,0,6.120382487078135,Flow imbalance=28.98 edge=6.1pp
+Volume Imbalance,2023-01-18T19:55:39.711Z,HIGHCHI-23JAN18-B40.5,Other,yes,0.3800,1,-0.3800,0,5.930759902737471,Flow imbalance=25.93 edge=5.9pp
+Volume Imbalance,2023-01-18T18:12:16.133Z,GDP-232022 Q4-T2.5,Other,yes,0.6100,1,0.3700,1,4.322081504702191,Flow imbalance=3.26 edge=4.3pp
+Volume Imbalance,2023-01-18T18:47:24.164Z,HIGHCHI-23JAN18-B40.5,Other,yes,0.3700,1,-0.3700,0,6.473789707845174,Flow imbalance=34.52 edge=6.5pp
+Volume Imbalance,2023-01-19T20:16:42.014Z,HIGHCHI-23JAN19-B43.5,Other,no,0.6100,1,0.3700,1,31.995735247208934,Flow imbalance=-31.39 edge=32.0pp
+Volume Imbalance,2023-01-19T19:16:40.487Z,HIGHCHI-23JAN19-B43.5,Other,no,0.6600,1,0.3200,1,31,Flow imbalance=-34.17 edge=31.0pp
+Volume Imbalance,2023-01-21T18:51:51.411Z,HIGHCHI-23JAN22-B35.5,Other,no,0.6700,1,0.3100,1,4.437948051948054,Flow imbalance=-1.13 edge=4.4pp
+Volume Imbalance,2023-01-21T16:56:06.373Z,HIGHCHI-23JAN21-B35.5,Other,no,0.6900,1,0.2900,1,5.467262373162141,Flow imbalance=-1.68 edge=5.5pp
+Volume Imbalance,2023-01-21T17:01:01.346Z,HIGHCHI-23JAN21-B35.5,Other,no,0.6900,1,0.2900,1,5.2990574806359545,Flow imbalance=-6.81 edge=5.3pp
+Volume Imbalance,2023-01-21T17:07:10.878Z,HIGHCHI-23JAN21-B35.5,Other,no,0.7000,1,0.2800,1,4.214104283775927,Flow imbalance=-9.06 edge=4.2pp
+Volume Imbalance,2023-01-19T16:14:46.044Z,HIGHCHI-23JAN19-B43.5,Other,yes,0.2700,1,-0.2700,0,4.8369102380269595,Flow imbalance=1.00 edge=4.8pp
+Volume Imbalance,2023-01-19T18:45:02.127Z,HIGHCHI-23JAN19-B39.5,Other,yes,0.2700,1,-0.2700,0,5.786965614696182,Flow imbalance=5.73 edge=5.8pp
+Volume Imbalance,2023-01-22T16:26:04.227Z,HIGHCHI-23JAN22-B35.5,Other,no,0.7100,1,0.2700,1,9.044686868686869,Flow imbalance=-2.50 edge=9.0pp
+Volume Imbalance,2023-01-19T03:16:23.873Z,HIGHCHI-23JAN19-B43.5,Other,yes,0.2500,1,-0.2500,0,5.615474361202849,Flow imbalance=0.97 edge=5.6pp
+Volume Imbalance,2023-01-21T02:13:46.421Z,HIGHCHI-23JAN21-B35.5,Other,no,0.7300,1,0.2500,1,4.359433681073027,Flow imbalance=-4.00 edge=4.4pp
+Volume Imbalance,2023-01-21T16:32:34.861Z,HIGHCHI-23JAN21-B35.5,Other,no,0.7300,1,0.2500,1,4.680663390663395,Flow imbalance=-15.20 edge=4.7pp
+Volume Imbalance,2023-01-20T00:42:59.816Z,HIGHCHI-23JAN20-B32.5,Other,yes,0.2400,1,-0.2400,0,4.085184952978057,Flow imbalance=11.68 edge=4.1pp
+Volume Imbalance,2023-01-21T01:19:26.930Z,HIGHCHI-23JAN21-B35.5,Other,no,0.7400,1,0.2400,1,4.059565966067358,Flow imbalance=-7.73 edge=4.1pp
+Volume Imbalance,2023-01-21T16:18:00.096Z,HIGHCHI-23JAN21-B35.5,Other,no,0.7400,1,0.2400,1,4.399498979823171,Flow imbalance=-15.76 edge=4.4pp
+Volume Imbalance,2023-01-22T16:23:18.760Z,HIGHCHI-23JAN22-B35.5,Other,no,0.7400,1,0.2400,1,7.7764632310364785,Flow imbalance=-5.39 edge=7.8pp
+Volume Imbalance,2023-01-19T16:46:58.887Z,HIGHCHI-23JAN19-B43.5,Other,yes,0.2200,1,-0.2200,0,5.445862407862409,Flow imbalance=1.92 edge=5.4pp
+Volume Imbalance,2023-01-20T00:24:42.888Z,HIGHCHI-23JAN20-B32.5,Other,yes,0.2200,1,-0.2200,0,5.0314296388542985,Flow imbalance=8.28 edge=5.0pp
+Volume Imbalance,2023-01-20T19:40:30.781Z,HIGHCHI-23JAN21-B35.5,Other,yes,0.2200,1,-0.2200,0,4.015972027972029,Flow imbalance=2.97 edge=4.0pp
+Volume Imbalance,2023-01-19T20:11:52.708Z,HIGHCHI-23JAN19-B43.5,Other,no,0.7900,1,0.1900,1,18,Flow imbalance=-36.94 edge=18.0pp
+Volume Imbalance,2023-01-19T14:40:08.376Z,APRPOTUS-23JAN20-B43.1,Other,no,0.8100,1,0.1700,1,11.421090909090912,Flow imbalance=-3.56 edge=11.4pp
+Volume Imbalance,2023-01-19T15:15:31.529Z,APRPOTUS-23JAN20-B43.1,Other,no,0.8100,1,0.1700,1,9.654363636363637,Flow imbalance=-5.93 edge=9.7pp
+Volume Imbalance,2023-01-18T20:01:11.567Z,HIGHCHI-23JAN18-B40.5,Other,yes,0.1600,1,-0.1600,0,8.305230998509689,Flow imbalance=19.26 edge=8.3pp
+Volume Imbalance,2023-01-18T20:16:57.966Z,HIGHCHI-23JAN18-B40.5,Other,yes,0.1600,1,-0.1600,0,8.145573122529646,Flow imbalance=16.37 edge=8.1pp
+Volume Imbalance,2023-01-21T19:38:50.980Z,HIGHCHI-23JAN21-B33.5,Other,yes,0.1600,1,-0.1600,0,9.178607392607391,Flow imbalance=11.78 edge=9.2pp
+Volume Imbalance,2023-01-20T13:00:00.872Z,HIGHCHI-23JAN20-B32.5,Other,yes,0.1500,1,-0.1500,0,10.971670995670992,Flow imbalance=22.31 edge=11.0pp
+Volume Imbalance,2023-01-21T22:26:21.631Z,HIGHCHI-23JAN21-B33.5,Other,yes,0.1500,1,-0.1500,0,9.266671243494631,Flow imbalance=8.13 edge=9.3pp
+Volume Imbalance,2023-01-18T17:43:48.982Z,APRPOTUS-23JAN20-B43.4,Other,no,0.8600,1,0.1300,1,8.195412587412584,Flow imbalance=-2.91 edge=8.2pp
+Pure Value,2023-01-18T17:10:43.118Z,HIGHCHI-23JAN18-B38.5,Other,no,0.8700,1,-0.8700,0,4.207636363636366,"Pure value: 4.2pp edge, 50% confidence"
+Pure Value,2023-01-18T17:20:37.479Z,HIGHCHI-23JAN18-B38.5,Other,no,0.8600,1,-0.8600,0,4.5870830039525705,"Pure value: 4.6pp edge, 51% confidence"
+Pure Value,2023-01-21T16:57:47.605Z,HIGHCHI-23JAN21-B31.5,Other,yes,0.1300,1,0.8600,1,6.528299120234604,"Pure value: 6.5pp edge, 54% confidence"
+Pure Value,2023-01-21T17:07:00.955Z,HIGHCHI-23JAN21-B31.5,Other,yes,0.1300,1,0.8600,1,5.941015961138102,"Pure value: 5.9pp edge, 53% confidence"
+Pure Value,2023-01-18T17:45:07.622Z,HIGHCHI-23JAN18-B38.5,Other,no,0.8500,1,-0.8500,0,4.528817720350715,"Pure value: 4.5pp edge, 51% confidence"
+Pure Value,2023-01-19T17:55:48.518Z,HIGHCHI-23JAN19-B39.5,Other,no,0.1400,1,0.8500,1,15.4217502032851,"Pure value: 15.4pp edge, 62% confidence"
+Pure Value,2023-01-21T16:08:48.030Z,HIGHCHI-23JAN21-B31.5,Other,yes,0.1500,1,0.8400,1,6.087334510150044,"Pure value: 6.1pp edge, 53% confidence"
+Pure Value,2023-01-21T16:26:15.992Z,HIGHCHI-23JAN21-B31.5,Other,yes,0.1500,1,0.8400,1,6.059090909090909,"Pure value: 6.1pp edge, 53% confidence"
+Pure Value,2023-01-21T16:54:55.908Z,HIGHCHI-23JAN21-B31.5,Other,yes,0.1500,1,0.8400,1,5.766229408175716,"Pure value: 5.8pp edge, 53% confidence"
+Pure Value,2023-01-18T17:04:34.305Z,HIGHCHI-23JAN18-B38.5,Other,no,0.8300,1,-0.8300,0,5.793445676274938,"Pure value: 5.8pp edge, 52% confidence"
+Pure Value,2023-01-20T19:40:10.773Z,HIGHCHI-23JAN21-B31.5,Other,no,0.8200,1,-0.8200,0,4.849112836911834,"Pure value: 4.8pp edge, 53% confidence"
+Pure Value,2023-01-18T18:01:12.840Z,APRPOTUS-23JAN20-T43.0,Other,no,0.8100,1,-0.8100,0,14.162248803827755,"Pure value: 14.2pp edge, 57% confidence"
+Pure Value,2023-01-20T21:15:51.820Z,HIGHCHI-23JAN21-B31.5,Other,no,0.8100,1,-0.8100,0,4.398141414141415,"Pure value: 4.4pp edge, 52% confidence"
+Pure Value,2023-01-21T15:34:40.516Z,HIGHCHI-23JAN21-B31.5,Other,yes,0.1800,1,0.8000,1,4.308785923753663,"Pure value: 4.3pp edge, 52% confidence"
+Pure Value,2023-01-19T20:50:53.445Z,GRAMAOTY-65-HH,Other,no,0.7900,1,-0.7900,0,4.072727272727272,"Pure value: 4.1pp edge, 39% confidence"
+Pure Value,2023-01-22T16:49:05.789Z,HIGHCHI-23JAN23-B32.5,Other,yes,0.1900,1,0.7900,1,4.435801652892563,"Pure value: 4.4pp edge, 52% confidence"
+Pure Value,2023-01-21T04:43:52.665Z,HIGHCHI-23JAN21-B31.5,Other,no,0.7700,1,-0.7700,0,6.567115005476451,"Pure value: 6.6pp edge, 54% confidence"
+Pure Value,2023-01-18T18:30:44.780Z,HIGHCHI-23JAN18-B38.5,Other,no,0.7600,1,-0.7600,0,4.990837095790113,"Pure value: 5.0pp edge, 51% confidence"
+Pure Value,2023-01-21T18:57:21.351Z,HIGHCHI-23JAN21-B31.5,Other,no,0.7600,1,-0.7600,0,8.72267230443974,"Pure value: 8.7pp edge, 56% confidence"
+Pure Value,2023-01-21T19:38:49.809Z,HIGHCHI-23JAN21-B33.5,Other,no,0.2200,1,0.7600,1,5.7350427482602555,"Pure value: 5.7pp edge, 44% confidence"
+Pure Value,2023-01-18T18:37:55.609Z,HIGHCHI-23JAN18-B38.5,Other,no,0.7500,1,-0.7500,0,5.03879435127979,"Pure value: 5.0pp edge, 51% confidence"
+Pure Value,2023-01-18T19:41:58.719Z,HIGHCHI-23JAN18-B38.5,Other,no,0.7400,1,-0.7400,0,4.881535603715173,"Pure value: 4.9pp edge, 51% confidence"
+Pure Value,2023-01-21T19:42:16.743Z,HIGHCHI-23JAN21-B33.5,Other,no,0.2400,1,0.7400,1,4.6774120286294245,"Pure value: 4.7pp edge, 43% confidence"
+Pure Value,2023-01-18T19:50:28.024Z,HIGHCHI-23JAN18-B38.5,Other,no,0.7200,1,-0.7200,0,5.354255192878335,"Pure value: 5.4pp edge, 52% confidence"
+Pure Value,2023-01-19T15:32:00.180Z,GOVSHUT-23OCT02,Other,no,0.2700,1,0.7100,1,7.026636579572443,"Pure value: 7.0pp edge, 49% confidence"
+Pure Value,2023-01-18T19:54:42.444Z,HIGHCHI-23JAN18-B38.5,Other,no,0.7000,1,-0.7000,0,5.6455593220338995,"Pure value: 5.6pp edge, 52% confidence"
+Pure Value,2023-01-21T19:39:35.507Z,HIGHCHI-23JAN21-B31.5,Other,no,0.6700,1,-0.6700,0,17.096432778489117,"Pure value: 17.1pp edge, 63% confidence"
+Pure Value,2023-01-19T16:19:22.396Z,HIGHCHI-23JAN20-B34.5,Other,no,0.6500,1,-0.6500,0,4.024245989304809,"Pure value: 4.0pp edge, 49% confidence"
+Pure Value,2023-01-22T19:26:34.320Z,HIGHCHI-23JAN23-B32.5,Other,no,0.6500,1,-0.6500,0,4.071288218507946,"Pure value: 4.1pp edge, 52% confidence"
+Pure Value,2023-01-18T19:08:16.008Z,APRPOTUS-23JAN20-T43.0,Other,no,0.6100,1,-0.6100,0,19.71977622377623,"Pure value: 19.7pp edge, 62% confidence"
+Pure Value,2023-01-21T20:42:58.021Z,HIGHCHI-23JAN21-B31.5,Other,no,0.6100,1,-0.6100,0,17.219999999999995,"Pure value: 17.2pp edge, 63% confidence"
+Pure Value,2023-01-21T20:56:55.631Z,HIGHCHI-23JAN21-B31.5,Other,no,0.6100,1,-0.6100,0,11.03674121405751,"Pure value: 11.0pp edge, 58% confidence"
+Pure Value,2023-01-22T21:56:15.217Z,HIGHCHI-23JAN23-B32.5,Other,no,0.6100,1,-0.6100,0,4.672227445558241,"Pure value: 4.7pp edge, 52% confidence"
+Pure Value,2023-01-19T17:03:00.089Z,HIGHCHI-23JAN20-B34.5,Other,no,0.5800,1,-0.5800,0,5.50139184952978,"Pure value: 5.5pp edge, 51% confidence"
+Pure Value,2023-01-19T19:16:44.373Z,HIGHCHI-23JAN20-B34.5,Other,no,0.5600,1,-0.5600,0,5.374526315789474,"Pure value: 5.4pp edge, 50% confidence"
+Pure Value,2023-01-19T21:06:39.562Z,HIGHCHI-23JAN20-B34.5,Other,no,0.5600,1,-0.5600,0,4.8483249516441,"Pure value: 4.8pp edge, 50% confidence"
+Pure Value,2023-01-22T23:54:53.441Z,HIGHCHI-23JAN23-B32.5,Other,no,0.5600,1,-0.5600,0,5.532233766233769,"Pure value: 5.5pp edge, 53% confidence"
+Pure Value,2023-01-21T17:35:24.672Z,HIGHCHI-23JAN21-B33.5,Other,no,0.4200,1,0.5600,1,5.006149597238196,"Pure value: 5.0pp edge, 43% confidence"
+Pure Value,2023-01-20T00:54:30.479Z,HIGHCHI-23JAN20-B34.5,Other,no,0.5400,1,-0.5400,0,4.146163892445581,"Pure value: 4.1pp edge, 49% confidence"
+Pure Value,2023-01-19T17:23:09.233Z,GRAMSOTY-65-EOM,Other,yes,0.5300,1,-0.5300,0,4.074909090909085,"Pure value: 4.1pp edge, 45% confidence"
+Pure Value,2023-01-20T00:12:52.630Z,HIGHCHI-23JAN20-B34.5,Other,no,0.5300,1,-0.5300,0,5.041696597880646,"Pure value: 5.0pp edge, 50% confidence"
+Pure Value,2023-01-22T19:38:21.268Z,HIGHCHI-23JAN22-B33.5,Other,yes,0.4500,1,0.5300,1,4.817855649773217,"Pure value: 4.8pp edge, 52% confidence"
+Pure Value,2023-01-18T19:45:10.505Z,APRPOTUS-23JAN20-T43.0,Other,no,0.5200,1,-0.5200,0,16.73007301360057,"Pure value: 16.7pp edge, 59% confidence"
+Pure Value,2023-01-18T19:59:01.017Z,HIGHCHI-23JAN18-B38.5,Other,no,0.5200,1,-0.5200,0,13.142077519379841,"Pure value: 13.1pp edge, 59% confidence"
+Pure Value,2023-01-18T20:02:27.127Z,HIGHCHI-23JAN18-B38.5,Other,no,0.4900,1,-0.4900,0,11.585167464114832,"Pure value: 11.6pp edge, 57% confidence"
+Pure Value,2023-01-19T15:53:06.823Z,HIGHCHI-23JAN19-B41.5,Other,no,0.4900,1,-0.4900,0,4.046867132867132,"Pure value: 4.0pp edge, 50% confidence"
+Pure Value,2023-01-20T00:25:32.625Z,HIGHCHI-23JAN20-B34.5,Other,no,0.4800,1,-0.4800,0,6.009629647397458,"Pure value: 6.0pp edge, 51% confidence"
+Pure Value,2023-01-20T01:56:01.062Z,HIGHCHI-23JAN20-B34.5,Other,no,0.4800,1,-0.4800,0,5.460700702220533,"Pure value: 5.5pp edge, 51% confidence"
+Pure Value,2023-01-21T16:19:01.342Z,HIGHCHI-23JAN21-B33.5,Other,no,0.5000,1,0.4800,1,4.40700384122919,"Pure value: 4.4pp edge, 43% confidence"
+Pure Value,2023-01-22T16:41:06.595Z,HIGHCHI-23JAN22-B33.5,Other,yes,0.5000,1,0.4800,1,4.4259307627357085,"Pure value: 4.4pp edge, 51% confidence"
+Probability Arb,2023-01-20T02:20:50.159Z,HIGHCHI-23JAN20-T37,Other,no,0.1200,1,0.8700,1,84.00000000000001,"Probability arb: YES legs sum > 100%, fade rich leg (84.0pp)"
+Probability Arb,2023-01-19T17:55:48.518Z,HIGHCHI-23JAN19-B39.5,Other,no,0.1400,1,0.8500,1,80,"Probability arb: YES legs sum > 100%, fade rich leg (80.0pp)"
+Probability Arb,2023-01-18T16:10:06.518Z,HIGHCHI-23JAN18-B40.5,Other,no,0.1900,1,0.7900,1,70,"Probability arb: YES legs sum > 100%, fade rich leg (70.0pp)"
+Probability Arb,2023-01-18T17:00:26.481Z,HIGHCHI-23JAN18-B40.5,Other,no,0.1900,1,0.7900,1,70,"Probability arb: YES legs sum > 100%, fade rich leg (70.0pp)"
+Probability Arb,2023-01-18T17:42:20.294Z,HIGHCHI-23JAN18-B40.5,Other,no,0.2200,1,0.7600,1,64.00000000000001,"Probability arb: YES legs sum > 100%, fade rich leg (64.0pp)"
+Probability Arb,2023-01-21T19:38:49.809Z,HIGHCHI-23JAN21-B33.5,Other,no,0.2200,1,0.7600,1,64.00000000000001,"Probability arb: YES legs sum > 100%, fade rich leg (64.0pp)"
+Probability Arb,2023-01-21T19:42:16.743Z,HIGHCHI-23JAN21-B33.5,Other,no,0.2400,1,0.7400,1,60.00000000000001,"Probability arb: YES legs sum > 100%, fade rich leg (60.0pp)"
+Probability Arb,2023-01-18T16:00:06.930Z,HIGHCHI-23JAN18-B40.5,Other,no,0.2500,1,0.7300,1,58.00000000000001,"Probability arb: YES legs sum > 100%, fade rich leg (58.0pp)"
+Probability Arb,2023-01-18T17:04:38.711Z,HIGHCHI-23JAN18-B40.5,Other,no,0.2500,1,0.7300,1,58.00000000000001,"Probability arb: YES legs sum > 100%, fade rich leg (58.0pp)"
+Probability Arb,2023-01-18T15:48:01.803Z,HIGHCHI-23JAN18-B40.5,Other,no,0.3100,1,0.6700,1,45.99999999999999,"Probability arb: YES legs sum > 100%, fade rich leg (46.0pp)"
+Probability Arb,2023-01-18T15:50:06.717Z,HIGHCHI-23JAN18-B40.5,Other,no,0.3100,1,0.6700,1,45.99999999999999,"Probability arb: YES legs sum > 100%, fade rich leg (46.0pp)"
+Probability Arb,2023-01-18T22:47:37.238Z,HIGHCHI-23JAN19-B41.5,Other,no,0.6600,1,-0.6600,0,24,"Probability arb: YES legs sum > 100%, fade rich leg (24.0pp)"
+Probability Arb,2023-01-18T22:59:12.617Z,HIGHCHI-23JAN19-B41.5,Other,no,0.6600,1,-0.6600,0,24,"Probability arb: YES legs sum > 100%, fade rich leg (24.0pp)"
+Probability Arb,2023-01-18T23:10:44.834Z,HIGHCHI-23JAN19-B41.5,Other,no,0.6600,1,-0.6600,0,24,"Probability arb: YES legs sum > 100%, fade rich leg (24.0pp)"
+Probability Arb,2023-01-18T15:20:06.436Z,HIGHCHI-23JAN18-B40.5,Other,no,0.3300,1,0.6500,1,42.00000000000001,"Probability arb: YES legs sum > 100%, fade rich leg (42.0pp)"
+Probability Arb,2023-01-18T15:40:06.489Z,HIGHCHI-23JAN18-B40.5,Other,no,0.3300,1,0.6500,1,42.00000000000001,"Probability arb: YES legs sum > 100%, fade rich leg (42.0pp)"
+Probability Arb,2023-01-19T00:27:20.176Z,HIGHCHI-23JAN19-B41.5,Other,no,0.6500,1,-0.6500,0,21.999999999999996,"Probability arb: YES legs sum > 100%, fade rich leg (22.0pp)"
+Probability Arb,2023-01-19T01:28:41.393Z,HIGHCHI-23JAN19-B41.5,Other,no,0.6500,1,-0.6500,0,21.999999999999996,"Probability arb: YES legs sum > 100%, fade rich leg (22.0pp)"
+Probability Arb,2023-01-19T01:30:56.149Z,HIGHCHI-23JAN19-B41.5,Other,no,0.6500,1,-0.6500,0,21.999999999999996,"Probability arb: YES legs sum > 100%, fade rich leg (22.0pp)"
+Probability Arb,2023-01-19T02:49:10.042Z,HIGHCHI-23JAN19-B41.5,Other,no,0.6400,1,-0.6400,0,19.999999999999996,"Probability arb: YES legs sum > 100%, fade rich leg (20.0pp)"
+Probability Arb,2023-01-21T21:39:45.486Z,HIGHCHI-23JAN22-B33.5,Other,no,0.6400,1,-0.6400,0,19.999999999999996,"Probability arb: YES legs sum > 100%, fade rich leg (20.0pp)"
+Probability Arb,2023-01-19T03:14:43.857Z,HIGHCHI-23JAN19-B41.5,Other,no,0.6300,1,-0.6300,0,17.999999999999993,"Probability arb: YES legs sum > 100%, fade rich leg (18.0pp)"
+Probability Arb,2023-01-21T22:09:50.311Z,HIGHCHI-23JAN22-B33.5,Other,no,0.6100,1,-0.6100,0,13.99999999999999,"Probability arb: YES legs sum > 100%, fade rich leg (14.0pp)"
+Probability Arb,2023-01-21T21:54:43.398Z,HIGHCHI-23JAN22-B33.5,Other,no,0.6000,1,-0.6000,0,12.000000000000005,"Probability arb: YES legs sum > 100%, fade rich leg (12.0pp)"
+Probability Arb,2023-01-22T02:22:21.653Z,HIGHCHI-23JAN22-B33.5,Other,no,0.5900,1,-0.5900,0,10.000000000000004,"Probability arb: YES legs sum > 100%, fade rich leg (10.0pp)"
+Probability Arb,2023-01-19T23:19:35.468Z,HIGHCHI-23JAN20-B34.5,Other,no,0.5800,1,-0.5800,0,8.000000000000002,"Probability arb: YES legs sum > 100%, fade rich leg (8.0pp)"
+Probability Arb,2023-01-18T15:10:06.543Z,HIGHCHI-23JAN18-B40.5,Other,no,0.4000,1,0.5800,1,27.999999999999996,"Probability arb: YES legs sum > 100%, fade rich leg (28.0pp)"
+Probability Arb,2023-01-18T15:30:07.962Z,HIGHCHI-23JAN18-B40.5,Other,no,0.4000,1,0.5800,1,27.999999999999996,"Probability arb: YES legs sum > 100%, fade rich leg (28.0pp)"
+Probability Arb,2023-01-18T15:23:04.648Z,HIGHCHI-23JAN18-B40.5,Other,no,0.4100,1,0.5700,1,25.999999999999996,"Probability arb: YES legs sum > 100%, fade rich leg (26.0pp)"
+Probability Arb,2023-01-19T19:16:44.373Z,HIGHCHI-23JAN20-B34.5,Other,no,0.5600,1,-0.5600,0,5,"Probability arb: YES legs sum > 100%, fade rich leg (5.0pp)"
+Probability Arb,2023-01-19T21:06:39.562Z,HIGHCHI-23JAN20-B34.5,Other,no,0.5600,1,-0.5600,0,5,"Probability arb: YES legs sum > 100%, fade rich leg (5.0pp)"
+Probability Arb,2023-01-21T17:35:24.672Z,HIGHCHI-23JAN21-B33.5,Other,no,0.4200,1,0.5600,1,23.999999999999993,"Probability arb: YES legs sum > 100%, fade rich leg (24.0pp)"
+Probability Arb,2023-01-19T14:41:55.947Z,HIGHCHI-23JAN19-B41.5,Other,no,0.5400,1,-0.5400,0,5,"Probability arb: YES legs sum > 100%, fade rich leg (5.0pp)"
+Probability Arb,2023-01-19T17:55:22.815Z,HIGHCHI-23JAN19-B41.5,Other,no,0.5400,1,-0.5400,0,5,"Probability arb: YES legs sum > 100%, fade rich leg (5.0pp)"
+Probability Arb,2023-01-20T00:54:30.479Z,HIGHCHI-23JAN20-B34.5,Other,no,0.5400,1,-0.5400,0,5,"Probability arb: YES legs sum > 100%, fade rich leg (5.0pp)"
+Probability Arb,2023-01-18T14:14:29.419Z,HIGHCHI-23JAN18-B40.5,Other,no,0.4400,1,0.5400,1,19.99999999999999,"Probability arb: YES legs sum > 100%, fade rich leg (20.0pp)"
+Probability Arb,2023-01-20T00:12:52.630Z,HIGHCHI-23JAN20-B34.5,Other,no,0.5300,1,-0.5300,0,5,"Probability arb: YES legs sum > 100%, fade rich leg (5.0pp)"
+Probability Arb,2023-01-18T15:00:11.033Z,HIGHCHI-23JAN18-B40.5,Other,no,0.4600,1,0.5200,1,16.000000000000007,"Probability arb: YES legs sum > 100%, fade rich leg (16.0pp)"
+Probability Arb,2023-01-18T19:45:10.505Z,APRPOTUS-23JAN20-T43.0,Other,no,0.5200,1,-0.5200,0,5,"Probability arb: YES legs sum > 100%, fade rich leg (5.0pp)"
+Probability Arb,2023-01-19T03:26:42.401Z,HIGHCHI-23JAN19-B41.5,Other,no,0.5200,1,-0.5200,0,5,"Probability arb: YES legs sum > 100%, fade rich leg (5.0pp)"
+Probability Arb,2023-01-19T15:22:19.338Z,HIGHCHI-23JAN19-B41.5,Other,no,0.5200,1,-0.5200,0,5,"Probability arb: YES legs sum > 100%, fade rich leg (5.0pp)"
+Probability Arb,2023-01-19T15:29:22.955Z,HIGHCHI-23JAN19-B41.5,Other,no,0.5200,1,-0.5200,0,5,"Probability arb: YES legs sum > 100%, fade rich leg (5.0pp)"
+Probability Arb,2023-01-22T13:01:19.974Z,HIGHCHI-23JAN22-B33.5,Other,no,0.5200,1,-0.5200,0,5,"Probability arb: YES legs sum > 100%, fade rich leg (5.0pp)"
+Probability Arb,2023-01-22T13:18:51.366Z,HIGHCHI-23JAN22-B33.5,Other,no,0.5200,1,-0.5200,0,5,"Probability arb: YES legs sum > 100%, fade rich leg (5.0pp)"
+Probability Arb,2023-01-22T13:49:35.362Z,HIGHCHI-23JAN22-B33.5,Other,no,0.5200,1,-0.5200,0,5,"Probability arb: YES legs sum > 100%, fade rich leg (5.0pp)"
+Probability Arb,2023-01-22T16:41:06.595Z,HIGHCHI-23JAN22-B33.5,Other,no,0.5200,1,-0.5200,0,5,"Probability arb: YES legs sum > 100%, fade rich leg (5.0pp)"
+Probability Arb,2023-01-18T13:28:25.614Z,HIGHCHI-23JAN18-B40.5,Other,no,0.4700,1,0.5100,1,14.000000000000007,"Probability arb: YES legs sum > 100%, fade rich leg (14.0pp)"
+Probability Arb,2023-01-19T03:48:47.231Z,HIGHCHI-23JAN19-B41.5,Other,no,0.5100,1,-0.5100,0,6,"Probability arb: YES legs sum > 100%, fade rich leg (6.0pp)"
+Probability Arb,2023-01-19T14:04:45.043Z,APRPOTUS-23JAN20-T43.0,Other,no,0.5100,1,-0.5100,0,6,"Probability arb: YES legs sum > 100%, fade rich leg (6.0pp)"
+Probability Arb,2023-01-19T17:03:15.220Z,HIGHCHI-23JAN19-B41.5,Other,no,0.5000,1,-0.5000,0,8.000000000000002,"Probability arb: YES legs sum > 100%, fade rich leg (8.0pp)"
