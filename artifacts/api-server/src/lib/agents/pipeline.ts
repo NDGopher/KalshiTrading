@@ -630,12 +630,19 @@ export function startPipeline(intervalMinutes: number) {
 }
 
 /**
- * Dead-man's switch / watchdog.
- * Runs every minute and checks whether the pipeline has completed a cycle
- * within the last 15 minutes. If not, it logs a recovery event and restarts
- * the pipeline. This catches the case where a setInterval silently dies due
- * to an unhandled exception that escaped the per-cycle try/catch.
+ * Force-clears all in-progress pipeline state.
+ * Called by the watchdog when it detects a hung cycle — `pipelineRunning`
+ * may be permanently `true` if a cycle threw outside its try/catch and never
+ * reached `finishCycle()`. Without clearing this, every subsequent
+ * `runTradingCycle()` returns "Pipeline already running" — making the
+ * watchdog restart a no-op that never actually starts a new cycle.
  */
+function forceResetPipelineRunningState() {
+  pipelineRunning = false;
+  liveCycleInProgress = false;
+  liveCycleActiveAgent = null;
+}
+
 export function startWatchdog() {
   if (watchdogInterval) {
     clearInterval(watchdogInterval);
@@ -654,14 +661,21 @@ export function startWatchdog() {
 
     if (msSinceLastCycle > STALE_THRESHOLD_MS) {
       const minutesSince = Math.round(msSinceLastCycle / 60000);
-      console.warn(`[Watchdog] No pipeline cycle in ${minutesSince} min — restarting pipeline`);
+      console.warn(`[Watchdog] No pipeline cycle in ${minutesSince} min — force-resetting and restarting`);
+
+      // CRITICAL: clear the pipelineRunning flag BEFORE restarting. If a cycle
+      // hung and never reached finishCycle(), pipelineRunning is stuck as true
+      // and every subsequent runTradingCycle() call immediately returns
+      // "Pipeline already running" — making the restart a no-op. Force-clear it
+      // so the new cycle can actually execute.
+      forceResetPipelineRunningState();
 
       try {
         await db.insert(agentRunsTable).values({
           agentName: "Watchdog",
           status: "error",
           duration: 0,
-          details: `Pipeline stall detected: no cycle for ${minutesSince} min. Auto-restarting.`,
+          details: `Pipeline stall detected: no heartbeat for ${minutesSince} min. Force-reset pipelineRunning + restarted.`,
         });
       } catch {
         // Non-fatal — don't let the watchdog itself crash
