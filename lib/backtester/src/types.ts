@@ -116,6 +116,8 @@ export interface ReplayRiskLimits {
   minConfidence: number;
   positionSizing: PositionSizing;
   cooldownSameTickerMs: number;
+  /** Target notional per trade (USD); Kelly output is clamped toward ~10–20 USD band. */
+  targetBetUsd: number;
 }
 
 export interface SportBucketMetrics {
@@ -172,6 +174,9 @@ export interface MultiStrategyBacktestReport {
     minEdge?: number;
     kellyFraction?: number;
     confidencePenaltyPct?: number;
+    targetBetUsd?: number;
+    enabledStrategies?: string[];
+    paperTradingMode?: boolean;
     rationale: string;
   };
   /** Human-readable post-run notes (console + JSON for dashboards). */

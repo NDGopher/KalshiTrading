@@ -16,7 +16,7 @@ export const probabilityArbReplayStrategy: Strategy = {
     for (const [, legs] of byGame) {
       if (legs.length < 2) continue;
       const sumYes = legs.reduce((s, l) => s + l.yesAsk, 0);
-      if (sumYes > 1.04) {
+      if (sumYes > 1.06) {
         const sorted = [...legs].sort((a, b) => b.yesAsk - a.yesAsk);
         out.push(sorted[0]!);
       }
@@ -24,10 +24,10 @@ export const probabilityArbReplayStrategy: Strategy = {
     return out;
   },
   shouldTrade(analysis) {
-    if (analysis.side === "no" && analysis.edge >= 8 && analysis.confidence >= 0.45) {
+    if (analysis.side === "no" && analysis.edge >= 12 && analysis.confidence >= 0.52) {
       return {
         trade: true,
-        reason: `Probability arb: YES legs sum > 104%, fade rich leg (${analysis.edge.toFixed(1)}pp)`,
+        reason: `Probability arb: YES legs sum > 106%, fade rich leg (${analysis.edge.toFixed(1)}pp)`,
       };
     }
     return { trade: false, reason: "Probability arb: no strong arb setup" };

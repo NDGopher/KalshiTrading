@@ -15,6 +15,11 @@ function loadEnvIds(): string[] {
 
 const SHARP_SET = new Set<string>([...DEFAULT_SHARP_WALLET_IDS, ...loadEnvIds()]);
 
+/** Count of wallet ids in the merged allowlist (defaults + `KALSHI_SHARP_WALLET_IDS`). */
+export function sharpWalletAllowlistCount(): number {
+  return SHARP_SET.size;
+}
+
 export function isKnownSharpWallet(walletId: string | undefined): boolean {
   if (!walletId) return false;
   return SHARP_SET.has(walletId);

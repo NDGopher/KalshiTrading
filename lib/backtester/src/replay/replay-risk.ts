@@ -27,14 +27,33 @@ export class ReplayRiskState {
   }
 }
 
+/** Clamp stake toward [~10, ~20] USD around targetBetUsd while respecting caps. */
+function anchorStakeToTargetBand(
+  stakeUsd: number,
+  equity: number,
+  targetBetUsd: number,
+  capFraction: number,
+): number {
+  const t = Math.max(5, targetBetUsd);
+  const lo = Math.max(8, t * (10 / 15));
+  const hi = Math.min(22, t * (20 / 15));
+  const cap = Math.min(equity * capFraction, equity * 0.25);
+  const pulled = Math.min(Math.max(stakeUsd, lo), hi);
+  return Math.min(pulled, cap);
+}
+
 export function computeStakeUsd(
   equity: number,
   analysis: ReplayAnalysis,
   limits: ReplayRiskLimits,
 ): number {
   const { positionSizing } = limits;
+  const target = limits.targetBetUsd ?? 15;
+  const capF = positionSizing.mode === "kelly" ? positionSizing.capFraction : 0.06;
+
   if (positionSizing.mode === "fixed_fraction") {
-    return Math.min(equity * positionSizing.fraction, equity * 0.25);
+    const raw = Math.min(equity * positionSizing.fraction, equity * 0.25);
+    return anchorStakeToTargetBand(raw, equity, target, capF);
   }
   const edge = Math.min(0.25, Math.max(0, analysis.edge / 100));
   const p = Math.max(0.05, Math.min(0.95, analysis.modelProbability));
@@ -42,5 +61,6 @@ export function computeStakeUsd(
   const kellyFull = (b * p - (1 - p)) / b;
   const k = Math.max(0, kellyFull) * positionSizing.kellyFraction;
   const raw = equity * k;
-  return Math.min(raw, equity * positionSizing.capFraction, equity * 0.25);
+  const capped = Math.min(raw, equity * positionSizing.capFraction, equity * 0.25);
+  return anchorStakeToTargetBand(capped, equity, target, positionSizing.capFraction);
 }

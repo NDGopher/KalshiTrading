@@ -8,7 +8,7 @@ export const whaleFlowReplayStrategy: Strategy = {
   },
   shouldTrade(analysis: ReplayAnalysis) {
     if (!analysis.candidate.replayWhalePrint) return { trade: false, reason: "No whale print" };
-    if (analysis.edge >= 4.25 && analysis.confidence >= 0.34) {
+    if (analysis.edge >= 6 && analysis.confidence >= 0.38) {
       return {
         trade: true,
         reason: `Whale print mid=${(analysis.candidate.yesPrice * 100).toFixed(1)}¢`,

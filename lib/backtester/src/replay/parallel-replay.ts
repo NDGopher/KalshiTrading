@@ -1,5 +1,6 @@
 import type { ArchiveMarketTick } from "../normalize.js";
 import type {
+  BacktestMetrics,
   MultiStrategyBacktestReport,
   MultiStrategyEquitySample,
   RankedStrategyRow,
@@ -7,17 +8,20 @@ import type {
   SimulatedTrade,
   Strategy,
 } from "../types.js";
+import { sortStrategiesByRunOrder } from "../strategies/strategy-run-order.js";
 import { runStrategyReplayWithRisk, type RunReplayParams } from "./replay-engine.js";
 
 /** Half-Kelly multiplier on the analytical Kelly fraction (see `computeStakeUsd`). */
 export const defaultHalfKellySizing = { mode: "kelly" as const, kellyFraction: 0.5, capFraction: 0.06 };
 
+/** Aggressive throttling: fewer trades, higher edge floor, longer per-ticker spacing. */
 export const defaultReplayRiskLimits: ReplayRiskLimits = {
-  maxTradesPerHour: 48,
-  minEdgePp: 4,
-  minConfidence: 0.25,
+  maxTradesPerHour: 7,
+  minEdgePp: 6,
+  minConfidence: 0.32,
   positionSizing: { mode: "fixed_fraction", fraction: 0.02 },
-  cooldownSameTickerMs: 120_000,
+  cooldownSameTickerMs: 180_000,
+  targetBetUsd: 15,
 };
 
 function hoursSpan(ticks: ArchiveMarketTick[]): number {
@@ -68,58 +72,40 @@ function buildCombinedEquitySamples(
   return out;
 }
 
-export function runParallelStrategies(
+function metricsToRankedRow(strategyName: string, m: BacktestMetrics, h: number): RankedStrategyRow {
+  return {
+    rank: 0,
+    strategyName,
+    totalPnlUsd: m.totalPnlUsd,
+    winRate: m.winRate,
+    sharpeApprox: m.sharpeApprox,
+    maxDrawdownPct: m.maxDrawdownPct,
+    trades: m.trades,
+    tradesPerHour: h > 0 ? m.trades / h : 0,
+    usedSyntheticOutcomes: m.usedSyntheticOutcomes,
+    expectancyPerTradeUsd: m.trades ? m.totalPnlUsd / m.trades : 0,
+  };
+}
+
+function buildSnapshotReport(
   ticks: ArchiveMarketTick[],
-  strategies: Strategy[],
-  risk: ReplayRiskLimits = defaultReplayRiskLimits,
-  params?: RunReplayParams & { forbidSyntheticOutcomes?: boolean },
+  risk: ReplayRiskLimits,
+  ordered: Strategy[],
+  perStrategy: MultiStrategyBacktestReport["perStrategy"],
+  rankingInput: RankedStrategyRow[],
+  sourceExtras: Record<string, unknown>,
 ): MultiStrategyBacktestReport {
   const h = hoursSpan(ticks);
-  const perStrategy: MultiStrategyBacktestReport["perStrategy"] = {};
-  const rankingInput: RankedStrategyRow[] = [];
-  const strategyNames = strategies.map((s) => s.name);
-
-  const runParams: RunReplayParams = {
-    initialBankroll: params?.initialBankroll ?? 5000,
-    forbidSyntheticOutcomes: params?.forbidSyntheticOutcomes,
-  };
-
-  for (const s of strategies) {
-    const { metrics, trades, bySport } = runStrategyReplayWithRisk(ticks, s, risk, runParams);
-    const top = [...trades].sort((a, b) => Math.abs(b.pnlUsd) - Math.abs(a.pnlUsd)).slice(0, 50);
-    perStrategy[s.name] = {
-      metrics,
-      bySport,
-      topTrades: top,
-      tradesPreview: trades.slice(0, 150),
-    };
-    rankingInput.push({
-      rank: 0,
-      strategyName: s.name,
-      totalPnlUsd: metrics.totalPnlUsd,
-      winRate: metrics.winRate,
-      sharpeApprox: metrics.sharpeApprox,
-      maxDrawdownPct: metrics.maxDrawdownPct,
-      trades: metrics.trades,
-      tradesPerHour: metrics.trades / h,
-      usedSyntheticOutcomes: metrics.usedSyntheticOutcomes,
-      expectancyPerTradeUsd: metrics.trades ? metrics.totalPnlUsd / metrics.trades : 0,
-    });
-  }
-
-  rankingInput.sort((a, b) => b.totalPnlUsd - a.totalPnlUsd);
-  const rankings = rankingInput.map((r, i) => ({ ...r, rank: i + 1 }));
-
-  const combinedEquitySamples = buildCombinedEquitySamples(strategyNames, perStrategy);
-  const sportTableByStrategy = Object.fromEntries(
-    strategyNames.map((n) => [n, perStrategy[n]?.bySport ?? []]),
-  );
-
+  const sortedInput = [...rankingInput].sort((a, b) => b.totalPnlUsd - a.totalPnlUsd);
+  const rankings = sortedInput.map((r, i) => ({ ...r, rank: i + 1 }));
+  const namesDone = ordered.map((s) => s.name).filter((n) => perStrategy[n] != null);
+  const combinedEquitySamples = buildCombinedEquitySamples(namesDone, perStrategy);
+  const sportTableByStrategy = Object.fromEntries(namesDone.map((n) => [n, perStrategy[n]?.bySport ?? []]));
   const readability = buildReadabilityNotes(perStrategy, rankings);
 
   return {
     generatedAt: new Date().toISOString(),
-    source: { tickCount: ticks.length, hoursApprox: h },
+    source: { tickCount: ticks.length, hoursApprox: h, ...sourceExtras },
     risk,
     rankings,
     perStrategy,
@@ -128,6 +114,97 @@ export function runParallelStrategies(
     suggestedSettingsPatch: buildSuggestedPatch(rankings),
     readability,
   };
+}
+
+export type MultiStrategySequentialParams = RunReplayParams & {
+  forbidSyntheticOutcomes?: boolean;
+  progressWallClockMs?: number;
+  /** Resume / warm-log: pre-filled strategy blocks; those strategies are not replayed. */
+  seedPerStrategy?: MultiStrategyBacktestReport["perStrategy"];
+  /**
+   * Optional ranking rows for seeded strategies (e.g. warm-from-log preserves log trades/h).
+   * If absent, rows are derived from `seedPerStrategy` metrics and tape hour span.
+   */
+  seedRankingOverrides?: Record<string, RankedStrategyRow>;
+  /** Extra fields merged into `report.source` (e.g. warmFromLogStrategies). */
+  sourceExtras?: Record<string, unknown>;
+  /** Called after each strategy (including skipped seeds) with the cumulative report snapshot. */
+  onCheckpoint?: (partial: MultiStrategyBacktestReport) => Promise<void>;
+};
+
+/**
+ * Runs strategies **one at a time** in priority order (see `strategy-run-order.ts`).
+ * Seeds (resume / warm-log) are checkpointed first without replay.
+ */
+export async function runParallelStrategies(
+  ticks: ArchiveMarketTick[],
+  strategies: Strategy[],
+  risk: ReplayRiskLimits = defaultReplayRiskLimits,
+  params?: MultiStrategySequentialParams,
+): Promise<MultiStrategyBacktestReport> {
+  const h = hoursSpan(ticks);
+  const ordered = sortStrategiesByRunOrder(strategies);
+  const allowedNames = new Set(ordered.map((s) => s.name));
+  const perStrategy: MultiStrategyBacktestReport["perStrategy"] = {};
+  if (params?.seedPerStrategy) {
+    for (const n of allowedNames) {
+      const b = params.seedPerStrategy[n];
+      if (b) perStrategy[n] = b;
+    }
+  }
+  const rankingInput: RankedStrategyRow[] = [];
+  const progressMs = params?.progressWallClockMs ?? 0;
+
+  const runParamsBase: RunReplayParams = {
+    initialBankroll: params?.initialBankroll ?? 5000,
+    forbidSyntheticOutcomes: params?.forbidSyntheticOutcomes,
+  };
+
+  for (const s of ordered) {
+    const seeded = perStrategy[s.name] != null;
+
+    if (seeded) {
+      console.log(`\n── Skipping replay (seeded checkpoint/log): ${s.name} ──`);
+      if (!rankingInput.some((r) => r.strategyName === s.name)) {
+        const ovr = params?.seedRankingOverrides?.[s.name];
+        rankingInput.push(ovr ?? metricsToRankedRow(s.name, perStrategy[s.name]!.metrics, h));
+      }
+    } else {
+      console.log(`\n── Running strategy: ${s.name} (${ordered.indexOf(s) + 1}/${ordered.length}) ──`);
+      const runParams: RunReplayParams = {
+        ...runParamsBase,
+        progress:
+          progressMs > 0 && ticks.length > 0
+            ? { everyWallClockMs: progressMs, strategyName: s.name, totalTicks: ticks.length }
+            : undefined,
+      };
+      const { metrics, trades, bySport } = runStrategyReplayWithRisk(ticks, s, risk, runParams);
+      const top = [...trades].sort((a, b) => Math.abs(b.pnlUsd) - Math.abs(a.pnlUsd)).slice(0, 50);
+      perStrategy[s.name] = {
+        metrics,
+        bySport,
+        topTrades: top,
+        tradesPreview: trades.slice(0, 150),
+      };
+      rankingInput.push(metricsToRankedRow(s.name, metrics, h));
+    }
+
+    const partial = [...rankingInput].sort((a, b) => b.totalPnlUsd - a.totalPnlUsd);
+    console.log("\n── Partial rankings (completed strategies) ──");
+    for (let i = 0; i < partial.length; i++) {
+      const r = partial[i]!;
+      console.log(
+        `  ${i + 1}. ${r.strategyName}  PnL $${r.totalPnlUsd.toFixed(2)}  WR ${(r.winRate * 100).toFixed(1)}%  Sharpe ${r.sharpeApprox.toFixed(2)}  trades ${r.trades} (${r.tradesPerHour.toFixed(1)}/h)`,
+      );
+    }
+
+    if (params?.onCheckpoint) {
+      const snap = buildSnapshotReport(ticks, risk, ordered, perStrategy, rankingInput, params.sourceExtras ?? {});
+      await params.onCheckpoint(snap);
+    }
+  }
+
+  return buildSnapshotReport(ticks, risk, ordered, perStrategy, rankingInput, params?.sourceExtras ?? {});
 }
 
 function aggregateReasons(trades: SimulatedTrade[], won: boolean, limit: number) {
@@ -150,9 +227,6 @@ function strategyVerdict(name: string, totalPnl: number, trades: number, sharpe:
   if (trades === 0) return "No trades — filters or risk gates may be too tight for this window.";
   if (trades < 10) return "Very sparse sample — do not draw strong conclusions.";
   const ev = totalPnl / trades;
-  if (name === "Probability Arb" && totalPnl < -40 && trades > 25) {
-    return "Large loss at meaningful count — keep throttled or disable until legs model improves.";
-  }
   if (totalPnl < -60 && trades > 35) return "Sized loss — retire or major retune before live capital.";
   if (totalPnl < 0 && ev < -1.5) return "Negative per-trade expectancy — tighten entry or drop.";
   if (totalPnl > 0 && sharpe > 0.25) return "Positive risk-adjusted — keep; consider narrow follow-up tests.";
@@ -163,11 +237,8 @@ function strategyVerdict(name: string, totalPnl: number, trades: number, sharpe:
 function nextTestHintRow(name: string, trades: number, totalPnl: number): string {
   if (trades === 0) {
     if (name === "Dip Buy") return "Try a volatile week (playoffs) or lower dip % further if still flat.";
-    if (name === "Sharp Wallet") return "Set KALSHI_SHARP_WALLET_IDS or lower WR gates if still empty.";
-    if (name === "Fresh Wallet") return "Check tape wallet coverage; 48h window should help vs prior.";
     return "Loosen one gate at a time and re-run a 1-week slice.";
   }
-  if (name === "Probability Arb" && totalPnl < 0) return "Re-run with sumYes > 1.06 only, or cap 4 trades/day.";
   if (totalPnl > 0) return "Stress-test April–May same sport filter; watch drawdown.";
   return "A/B minEdge ±1pp on this same month.";
 }
@@ -225,11 +296,13 @@ function buildSuggestedPatch(rankings: RankedStrategyRow[]): MultiStrategyBackte
     rationale += " Leader shows positive risk-adjusted return — slight kelly bump (still capped server-side).";
   }
 
-  const prob = rankings.find((r) => r.strategyName === "Probability Arb");
-  if (prob && prob.totalPnlUsd < -25 && prob.trades > 15) {
-    rationale +=
-      " Probability Arb still negative at scale — prefer live off, or require sumYes>1.06 / hard daily cap until revalidated.";
-  }
-
-  return { minEdge, kellyFraction, confidencePenaltyPct, rationale };
+  return {
+    minEdge,
+    kellyFraction,
+    confidencePenaltyPct,
+    targetBetUsd: 15,
+    enabledStrategies: ["Whale Flow", "Volume Imbalance", "Dip Buy", "Pure Value"],
+    paperTradingMode: true,
+    rationale,
+  };
 }

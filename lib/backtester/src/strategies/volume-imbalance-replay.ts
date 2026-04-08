@@ -7,7 +7,7 @@ export const volumeImbalanceReplayStrategy: Strategy = {
     return candidates.filter((c) => {
       const im = c.replayFlowImbalance;
       if (im == null) return false;
-      return Math.abs(im) > 0.35 && c.yesPrice > 0.08 && c.yesPrice < 0.92;
+      return Math.abs(im) > 0.45 && c.yesPrice > 0.08 && c.yesPrice < 0.92;
     });
   },
   shouldTrade(analysis: ReplayAnalysis) {
@@ -16,7 +16,7 @@ export const volumeImbalanceReplayStrategy: Strategy = {
     if (analysis.side !== side) {
       return { trade: false, reason: "Flow not aligned with price signal" };
     }
-    if (analysis.edge >= 4 && analysis.confidence >= 0.33) {
+    if (analysis.edge >= 6 && analysis.confidence >= 0.36) {
       return {
         trade: true,
         reason: `Flow imbalance=${im.toFixed(2)} edge=${analysis.edge.toFixed(1)}pp`,

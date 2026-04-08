@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import fs from "node:fs/promises";
 import path from "node:path";
 import { tryApplyMultiBacktestRankPatch } from "../apply-multi-rank-pg.js";
 import {
@@ -8,10 +9,17 @@ import {
   loadJbeckerTradeTicks,
 } from "../historical/jbecker-loader.js";
 import { jbeckerDownloadInstructions } from "../jbecker-downloader.js";
-import { writeMultiBacktestRankReport } from "../multi-report-writer.js";
+import { backtestResultsDir } from "../paths.js";
+import { writeMultiBacktestRankReport, writePartialMultiBacktestCheckpoint } from "../multi-report-writer.js";
+import {
+  parseLastPartialRankingsFromLog,
+  rankedRowFromParsedLogLine,
+  stubPerStrategyBlockFromParsedLogRow,
+} from "../replay/parse-partial-run-log.js";
+import { readTextFileAutoEncoding } from "../replay/read-text-file.js";
 import { defaultHalfKellySizing, defaultReplayRiskLimits, runParallelStrategies } from "../replay/parallel-replay.js";
 import { filterTicksBySport } from "../replay/sport-bucket.js";
-import type { ReplayRiskLimits } from "../types.js";
+import type { MultiStrategyBacktestReport, RankedStrategyRow, ReplayRiskLimits } from "../types.js";
 import { Backtester } from "../backtester.js";
 import { replayStrategiesByNames } from "../strategies/replay-registry.js";
 
@@ -32,6 +40,16 @@ async function main(): Promise<void> {
   const usePmxt = hasFlag("--pmxt-fallback");
   const strategyArg = arg("--strategies");
   const sportArg = arg("--sport") ?? "all";
+  const strategyNames = strategyArg ? strategyArg.split(",").map((s) => s.trim()) : ["all"];
+  const strategies = replayStrategiesByNames(strategyNames);
+  if (strategies.length === 0) {
+    console.error(
+      "[historical-multi] No strategies matched.",
+      "Use --strategies all or: Whale Flow, Volume Imbalance, Dip Buy, Pure Value.",
+    );
+    process.exit(1);
+  }
+
   const maxTradeRows = Number(arg("--max-trade-rows") ?? "400000");
   const marketRowsPerFile = Number(arg("--market-rows-per-file") ?? "400000");
   const scanArg = arg("--max-trade-scan-rows");
@@ -73,12 +91,18 @@ async function main(): Promise<void> {
     if (!fromDay) {
       console.error(`Usage:
   pnpm --filter @workspace/backtester run historical-multi -- \\
-    --from YYYY-MM-DD [--to YYYY-MM-DD] [--sport NFL|NBA|all] \\
-    [--jbecker-root <path>] [--strategies all|"Pure Value,Dip Buy"] \\
-    [--bankroll 5000] [--kelly] [--kelly-fraction 0.5] \\
+    --from YYYY-MM-DD [--to YYYY-MM-DD] [--sport all|Sports|CRYPTO+OTHER|NFL|NBA|...] \\
+    [--jbecker-root <path>] [--strategies all|"Whale Flow,Pure Value"] \\
+    [--bankroll 5000] [--kelly] [--kelly-fraction 0.5] [--target-bet-usd 15] \\
     [--max-trades-hour N] [--min-edge N] [--min-confidence x] [--cooldown-ms ms] \\
     [--market-rows-per-file N] [--max-trade-scan-rows R] [--max-trade-rows R] \\
+    [--progress-ms 180000] [--no-progress] \\
+    [--resume] [--checkpoint path/to/partial-ranked.json] \\
+    [--warm-from-log path/to/march-2025-full-run.log] \\
+    [--no-checkpoint]   (disables per-strategy JSON/CSV checkpoints) \\
     [--apply-learner]   (needs DATABASE_URL)
+
+  Checkpoints: after each strategy, writes data/backtest-results/multi/last-partial-*.json|csv
 
   Synthetic / orderbook replay (no JBecker):
     --pmxt-fallback --from YYYY-MM-DD [--to YYYY-MM-DD]
@@ -140,12 +164,48 @@ ${jbeckerDownloadInstructions(dataRoot)}
   }
   if (walletHits === 0) {
     console.warn(
-      "[historical-multi] No walletId on sampled ticks — trade parquet likely lacks maker/taker columns. Fresh Wallet & Sharp Wallet will not fire; add ids to the dump or merge wallet-enriched trades.",
+      "[historical-multi] No walletId on sampled ticks — trade parquet may lack maker/taker columns (tape wallet features unused).",
     );
   }
 
-  const names = strategyArg ? strategyArg.split(",").map((s) => s.trim()) : ["all"];
-  const strategies = replayStrategiesByNames(names);
+  const seedPerStrategy: MultiStrategyBacktestReport["perStrategy"] = {};
+  const seedRankingOverrides: Record<string, RankedStrategyRow> = {};
+
+  if (hasFlag("--resume")) {
+    const cp =
+      arg("--checkpoint") ?? path.join(backtestResultsDir(dataRoot), "multi", "last-partial-ranked.json");
+    try {
+      const raw = JSON.parse(await fs.readFile(cp, "utf8")) as MultiStrategyBacktestReport;
+      Object.assign(seedPerStrategy, raw.perStrategy ?? {});
+      console.log("[historical-multi] Resume: loaded checkpoint", cp, "strategies:", Object.keys(seedPerStrategy).join(", "));
+    } catch (e) {
+      console.warn("[historical-multi] Resume failed (starting fresh):", cp, e);
+    }
+  }
+
+  const warmLogPath = arg("--warm-from-log");
+  if (warmLogPath) {
+    const abs = path.resolve(warmLogPath);
+    try {
+      const text = await readTextFileAutoEncoding(abs);
+      const parsed = parseLastPartialRankingsFromLog(text);
+      for (const p of parsed) {
+        if (seedPerStrategy[p.strategyName]) continue;
+        seedPerStrategy[p.strategyName] = stubPerStrategyBlockFromParsedLogRow(p);
+        seedRankingOverrides[p.strategyName] = rankedRowFromParsedLogLine(p);
+      }
+      console.log(
+        "[historical-multi] Warm-from-log:",
+        abs,
+        "parsed rows:",
+        parsed.length,
+        parsed.map((x) => x.strategyName).join(", "),
+      );
+    } catch (e) {
+      console.error("[historical-multi] --warm-from-log read failed:", abs, e);
+      process.exit(6);
+    }
+  }
 
   const bankroll = Number(arg("--bankroll") ?? "5000");
   const kellyFrac = arg("--kelly-fraction");
@@ -158,8 +218,11 @@ ${jbeckerDownloadInstructions(dataRoot)}
       }
     : defaultReplayRiskLimits.positionSizing;
 
+  const targetBetUsd = Number(arg("--target-bet-usd") ?? String(defaultReplayRiskLimits.targetBetUsd));
+
   const risk: ReplayRiskLimits = {
     ...defaultReplayRiskLimits,
+    targetBetUsd: Number.isFinite(targetBetUsd) ? targetBetUsd : defaultReplayRiskLimits.targetBetUsd,
     maxTradesPerHour: Number(arg("--max-trades-hour") ?? defaultReplayRiskLimits.maxTradesPerHour),
     minEdgePp: Number(arg("--min-edge") ?? defaultReplayRiskLimits.minEdgePp),
     minConfidence: Number(arg("--min-confidence") ?? defaultReplayRiskLimits.minConfidence),
@@ -171,13 +234,10 @@ ${jbeckerDownloadInstructions(dataRoot)}
     risk.positionSizing = defaultHalfKellySizing;
   }
 
-  const report = runParallelStrategies(ticks, strategies, risk, {
-    initialBankroll: bankroll,
-    forbidSyntheticOutcomes: !usePmxt,
-  });
+  const progressMs = hasFlag("--no-progress") ? 0 : Number(arg("--progress-ms") ?? "180000");
+  const disableCheckpoint = hasFlag("--no-checkpoint");
 
-  report.source = {
-    ...report.source,
+  const sourceExtras: Record<string, unknown> = {
     mode: usePmxt ? "pmxt_archive_synthetic_outcomes" : "jbecker_kalshi_realized",
     jbeckerRoot: usePmxt ? null : path.resolve(root),
     fromDay: fromDay ?? null,
@@ -185,7 +245,29 @@ ${jbeckerDownloadInstructions(dataRoot)}
     sportFilter: sportArg,
     bankroll,
     halfKellyDefaultNote: "Pass --kelly for half-Kelly-style sizing (kellyFraction=0.5) or set --kelly-fraction.",
+    tuningNote:
+      "Replay defaults: minEdgePp 6, maxTradesPerHour 7, cooldown 180s, targetBetUsd 15, keeper strategies only; per-strategy checkpoints; warm-from-log skips recompute for parsed rows.",
+    resume: hasFlag("--resume"),
+    warmFromLog: warmLogPath ?? null,
+    checkpointsEnabled: !disableCheckpoint,
   };
+
+  const report = await runParallelStrategies(ticks, strategies, risk, {
+    initialBankroll: bankroll,
+    forbidSyntheticOutcomes: !usePmxt,
+    progressWallClockMs: progressMs,
+    seedPerStrategy: Object.keys(seedPerStrategy).length ? seedPerStrategy : undefined,
+    seedRankingOverrides: Object.keys(seedRankingOverrides).length ? seedRankingOverrides : undefined,
+    sourceExtras,
+    onCheckpoint: disableCheckpoint
+      ? undefined
+      : async (partial) => {
+            const w = await writePartialMultiBacktestCheckpoint(dataRoot, partial);
+            console.log("   [checkpoint] wrote", path.relative(dataRoot, w.lastPartialJson));
+          },
+  });
+
+  report.source = { ...report.source, ...sourceExtras };
 
   const { path: outPath, timestampedPath, summaryCsv, tradesCsv } = await writeMultiBacktestRankReport(dataRoot, report);
 

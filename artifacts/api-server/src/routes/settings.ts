@@ -66,7 +66,14 @@ async function settingsToResponse(settings: typeof tradingSettingsTable.$inferSe
     paperBalance: settings.paperBalance,
     dailyBudgetUsd: settings.dailyBudgetUsd,
     monthlyBudgetUsd: settings.monthlyBudgetUsd,
-    enabledStrategies: (settings.enabledStrategies as string[] | null) ?? ["Pure Value", "Sharp Money", "Contrarian Reversal", "Momentum", "Late Efficiency"],
+    enabledStrategies:
+      (settings.enabledStrategies as string[] | null) ?? [
+        "Whale Flow",
+        "Volume Imbalance",
+        "Dip Buy",
+        "Pure Value",
+      ],
+    targetBetUsd: settings.targetBetUsd ?? 15,
     kalshiApiKeySet: !!(settings.kalshiApiKey || process.env.KALSHI_API_KEY),
     kalshiBaseUrl: settings.kalshiBaseUrl || null,
     budgetStatus,
@@ -123,6 +130,8 @@ router.put("/settings", async (req, res): Promise<void> => {
     updateData.monthlyBudgetUsd = clampNum(body.monthlyBudgetUsd, 0, 100000, current.monthlyBudgetUsd);
   if (body.enabledStrategies !== undefined && Array.isArray(body.enabledStrategies))
     updateData.enabledStrategies = body.enabledStrategies.filter((s: unknown) => typeof s === "string");
+  if (body.targetBetUsd !== undefined)
+    updateData.targetBetUsd = clampNum(body.targetBetUsd, 5, 50, current.targetBetUsd ?? 15);
   if (body.kalshiApiKey !== undefined && typeof body.kalshiApiKey === "string")
     updateData.kalshiApiKey = body.kalshiApiKey;
   if (body.kalshiBaseUrl !== undefined)

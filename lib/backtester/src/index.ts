@@ -55,7 +55,13 @@ export {
   runJBeckerDownloadPipeline,
   verifySha256IfPublished,
 } from "./jbecker-downloader.js";
-export { writeMultiBacktestRankReport } from "./multi-report-writer.js";
+export { writeMultiBacktestRankReport, writePartialMultiBacktestCheckpoint } from "./multi-report-writer.js";
+export { sortStrategiesByRunOrder, REPLAY_STRATEGY_RUN_ORDER } from "./strategies/strategy-run-order.js";
+export {
+  parseLastPartialRankingsFromLog,
+  stubPerStrategyBlockFromParsedLogRow,
+  rankedRowFromParsedLogLine,
+} from "./replay/parse-partial-run-log.js";
 export type {
   BacktestMetrics,
   EquityPoint,

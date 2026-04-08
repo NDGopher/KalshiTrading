@@ -50,8 +50,8 @@ export const sharpWalletReplayStrategy: Strategy = {
         ? `this sport WR ${(cur * 100).toFixed(0)}%`
         : `top sport ${c.replayWalletTopSport ?? "?"} WR ${((c.replayWalletTopSportWinRate ?? 0) * 100).toFixed(0)}%`;
 
-    const minEdge = known ? 3.75 : 4;
-    const minConf = known ? 0.28 : 0.3;
+    const minEdge = 6;
+    const minConf = known ? 0.32 : 0.34;
     if (analysis.edge >= minEdge && analysis.confidence >= minConf) {
       return {
         trade: true,

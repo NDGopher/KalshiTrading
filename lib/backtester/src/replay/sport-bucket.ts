@@ -28,6 +28,10 @@ export function kalshiSportLabel(ticker: string): string {
 export function tickerMatchesSportToken(ticker: string, sportToken: string): boolean {
   const s = sportToken.trim().toUpperCase();
   if (s === "" || s === "ALL" || s === "*") return true;
+  if (s === "CRYPTO+OTHER" || s === "CRYPTO_OTHER" || s === "CRYPTOPLUSOTHER") {
+    const b = kalshiSportBucket(ticker);
+    return b === "Crypto" || b === "Other";
+  }
   const label = kalshiSportLabel(ticker).toUpperCase();
   if (label === s) return true;
   const t = ticker.toUpperCase();
@@ -42,7 +46,14 @@ export function tickerMatchesSportToken(ticker: string, sportToken: string): boo
 
 export function filterTicksBySport(ticks: ArchiveMarketTick[], sportToken: string): ArchiveMarketTick[] {
   const raw = sportToken.trim();
-  if (raw.toUpperCase() === "ALL" || raw === "*") return ticks;
+  const up = raw.toUpperCase();
+  if (up === "ALL" || raw === "*") return ticks;
+  if (up === "CRYPTO+OTHER" || up === "CRYPTO_OTHER" || up === "CRYPTOPLUSOTHER") {
+    return ticks.filter((x) => {
+      const b = kalshiSportBucket(x.ticker);
+      return b === "Crypto" || b === "Other";
+    });
+  }
   const parts = raw.split(",").map((s) => s.trim()).filter(Boolean);
   if (parts.length <= 1) {
     return ticks.filter((x) => tickerMatchesSportToken(x.ticker, raw));

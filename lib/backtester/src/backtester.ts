@@ -115,7 +115,8 @@ export class Backtester {
       if (entry <= 0.01 || entry >= 0.99) continue;
 
       const stakeUsd = Math.min(equity * stakePct, equity * 0.25);
-      const contracts = Math.max(1, Math.floor(stakeUsd / entry));
+      const contracts = Math.round(stakeUsd / entry);
+      if (contracts < 1) continue;
       const pnlUsd = pnlKalshiTaker(side, entry, contracts, outcomeYes);
 
       equity += pnlUsd;
@@ -154,14 +155,15 @@ export class Backtester {
 
   /**
    * Run multiple strategies on identical ticks (separate bankrolls). Uses shared risk limits.
+   * Sequential replay with priority ordering; checkpoints are CLI-only (`historical-multi`).
    */
-  runParallelStrategies(
+  async runParallelStrategies(
     ticks: ArchiveMarketTick[],
     strategies: Strategy[],
     risk?: ReplayRiskLimits,
     params?: ParallelReplayParams,
-  ): MultiStrategyBacktestReport {
-    return runParallelStrategiesImpl(ticks, strategies, risk ?? defaultReplayRiskLimits, params);
+  ): Promise<MultiStrategyBacktestReport> {
+    return await runParallelStrategiesImpl(ticks, strategies, risk ?? defaultReplayRiskLimits, params);
   }
 
   runMakerSimulation(_ticks: ArchiveMarketTick[]): never {

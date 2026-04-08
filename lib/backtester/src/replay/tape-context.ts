@@ -184,7 +184,7 @@ export class TapeFlowTracker {
     const imbalance = arr.reduce((a, b) => a + b, 0);
     const sorted = [...cArr].sort((a, b) => a - b);
     const p90 = sorted.length ? sorted[Math.floor((sorted.length - 1) * 0.9)]! : cnt;
-    const whalePrint = cnt >= Math.max(p90, 5) && cnt >= 8;
+    const whalePrint = cnt >= Math.max(p90, 6) && cnt >= 12;
 
     return { imbalance, whalePrint };
   }

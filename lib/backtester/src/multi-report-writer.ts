@@ -110,3 +110,135 @@ export async function writeMultiBacktestRankReport(
     tradesCsv: tradesCsvPath,
   };
 }
+
+/**
+ * After each strategy completes — same shape as the final report, safe to stop/restart.
+ * Writes `last-partial-*.json/csv` plus a timestamped copy for history.
+ */
+export async function writePartialMultiBacktestCheckpoint(
+  dataRoot: string,
+  report: MultiStrategyBacktestReport,
+): Promise<{
+  lastPartialJson: string;
+  stampPartialJson: string;
+  summaryCsv: string;
+  tradesCsv: string;
+}> {
+  const dir = path.join(backtestResultsDir(dataRoot), "multi");
+  await fs.mkdir(dir, { recursive: true });
+
+  const stamp = report.generatedAt.replace(/[:.]/g, "-");
+  const stampPartialJson = path.join(dir, `${stamp}-partial-ranked.json`);
+  const lastPartialJson = path.join(dir, "last-partial-ranked.json");
+  const summaryCsvPath = path.join(dir, `${stamp}-partial-summary.csv`);
+  const lastSummaryCsv = path.join(dir, "last-partial-summary.csv");
+  const tradesCsvPath = path.join(dir, `${stamp}-partial-trades.csv`);
+  const lastTradesCsv = path.join(dir, "last-partial-trades.csv");
+
+  const rankedSorted = [...report.rankings].sort((a, b) => b.totalPnlUsd - a.totalPnlUsd);
+  const withRank = rankedSorted.map((r, i) => ({ ...r, rank: i + 1 }));
+
+  const summaryRows: (string | number)[][] = withRank.map((r) => [
+    r.rank,
+    r.strategyName,
+    r.totalPnlUsd.toFixed(2),
+    (r.winRate * 100).toFixed(2),
+    r.sharpeApprox.toFixed(4),
+    r.maxDrawdownPct.toFixed(2),
+    r.trades,
+    r.tradesPerHour.toFixed(2),
+    (r.expectancyPerTradeUsd ?? 0).toFixed(4),
+    r.usedSyntheticOutcomes,
+  ]);
+
+  await writeCsv(summaryCsvPath, [
+    "rank",
+    "strategy",
+    "total_pnl_usd",
+    "win_rate_pct",
+    "sharpe_approx",
+    "max_dd_pct",
+    "trades",
+    "trades_per_hour",
+    "expectancy_per_trade_usd",
+    "synthetic_outcome_trades",
+  ], summaryRows);
+  await writeCsv(lastSummaryCsv, [
+    "rank",
+    "strategy",
+    "total_pnl_usd",
+    "win_rate_pct",
+    "sharpe_approx",
+    "max_dd_pct",
+    "trades",
+    "trades_per_hour",
+    "expectancy_per_trade_usd",
+    "synthetic_outcome_trades",
+  ], summaryRows);
+
+  const tradeRows: (string | number)[][] = [];
+  for (const r of withRank) {
+    const top = report.perStrategy[r.strategyName]?.topTrades ?? [];
+    for (const t of top) {
+      tradeRows.push([
+        r.strategyName,
+        new Date(t.tsMs).toISOString(),
+        t.ticker,
+        t.sportLabel ?? "",
+        t.side,
+        t.entryPrice.toFixed(4),
+        t.contracts,
+        t.pnlUsd.toFixed(4),
+        t.won ? 1 : 0,
+        t.edgeAtEntry ?? "",
+        t.reason,
+      ]);
+    }
+  }
+
+  await writeCsv(tradesCsvPath, [
+    "strategy",
+    "ts_iso",
+    "ticker",
+    "sport",
+    "side",
+    "entry",
+    "contracts",
+    "pnl_usd",
+    "won",
+    "edge_pp",
+    "reason",
+  ], tradeRows);
+  await writeCsv(lastTradesCsv, [
+    "strategy",
+    "ts_iso",
+    "ticker",
+    "sport",
+    "side",
+    "entry",
+    "contracts",
+    "pnl_usd",
+    "won",
+    "edge_pp",
+    "reason",
+  ], tradeRows);
+
+  const body = JSON.stringify(
+    {
+      ...report,
+      rankings: withRank,
+      source: { ...report.source, checkpointPartial: true },
+    },
+    null,
+    2,
+  );
+  await fs.writeFile(stampPartialJson, body, "utf8");
+  await fs.writeFile(lastPartialJson, body, "utf8");
+
+  return {
+    lastPartialJson,
+    stampPartialJson,
+    summaryCsv: summaryCsvPath,
+    tradesCsv: tradesCsvPath,
+  };
+}

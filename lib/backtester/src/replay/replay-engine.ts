@@ -5,7 +5,6 @@ import {
   resolveOutcomeForTick,
 } from "../synthetic-analysis.js";
 import { pnlKalshiTaker } from "../kalshi-fees.js";
-import { CONSERVATIVE_LIP_USD_PER_CONTRACT } from "../kalshi-fees.js";
 import type {
   BacktestMetrics,
   EquityPoint,
@@ -16,14 +15,12 @@ import type {
   SportBucketMetrics,
   Strategy,
 } from "../types.js";
-import { GameLegBook } from "./game-legs.js";
 import { aggregateSportBuckets, kalshiSportLabel } from "./sport-bucket.js";
 import { TickerPriceRolling } from "./price-history.js";
 import { ReplayRiskState, computeStakeUsd } from "./replay-risk.js";
 import { effectiveRiskForStrategy } from "./strategy-risk-merge.js";
 import {
   FreshWalletTracker,
-  MarketMakerSim,
   TapeFlowTracker,
   WalletActivityTracker,
   WalletSettlementProfiler,
@@ -92,20 +89,18 @@ function decorateCandidate(
   };
 }
 
-const PROB_ARB = "Probability Arb";
-const MARKET_MAKER = "Market Maker";
-const PROB_ARB_MIN_GAME_GAP_MS = 22 * 60_000;
-
-function gameKeyFromTicker(ticker: string): string | null {
-  const parts = ticker.split("-");
-  if (parts.length < 3) return null;
-  return parts.slice(0, 2).join("-");
+export interface ReplayProgressTickConfig {
+  everyWallClockMs: number;
+  strategyName: string;
+  totalTicks: number;
 }
 
 export interface RunReplayParams {
   initialBankroll?: number;
   /** When true, skip any tick whose outcome would be synthetic (JBecker real-only). */
   forbidSyntheticOutcomes?: boolean;
+  /** Optional wall-clock progress lines (long month replays). */
+  progress?: ReplayProgressTickConfig;
 }
 
 /**
@@ -126,12 +121,8 @@ export function runStrategyReplayWithRisk(
   const fresh = new FreshWalletTracker();
   const walletAct = new WalletActivityTracker();
   const walletProf = new WalletSettlementProfiler();
-  const legs = new GameLegBook();
   const effectiveRisk = effectiveRiskForStrategy(risk, strategy.name);
   const riskState = new ReplayRiskState(effectiveRisk);
-  const mmSim = new MarketMakerSim();
-  const prevMidMm = new Map<string, number>();
-  const lastProbArbByGame = new Map<string, number>();
 
   const trades: SimulatedTrade[] = [];
   const equityCurve: EquityPoint[] = [
@@ -139,7 +130,36 @@ export function runStrategyReplayWithRisk(
   ];
   let equity = initialBankroll;
 
-  for (const tick of sorted) {
+  const prog = params?.progress;
+  let lastProgressWall = 0;
+  if (prog && sorted.length > 0) {
+    console.log(
+      `\n── [${prog.strategyName}] starting replay: ${prog.totalTicks.toLocaleString()} ticks, progress every ~${Math.round(prog.everyWallClockMs / 60000)}m wall ──`,
+    );
+    lastProgressWall = Date.now();
+  }
+
+  for (let ti = 0; ti < sorted.length; ti++) {
+    const tick = sorted[ti]!;
+
+    if (prog && sorted.length > 0) {
+      const nowW = Date.now();
+      const due = nowW - lastProgressWall >= prog.everyWallClockMs;
+      const lastTick = ti === sorted.length - 1;
+      if (due || lastTick) {
+        lastProgressWall = nowW;
+        const pct = ((ti + 1) / sorted.length) * 100;
+        const top3 = [...trades].sort((a, b) => Math.abs(b.pnlUsd) - Math.abs(a.pnlUsd)).slice(0, 3);
+        console.log(
+          `   [${prog.strategyName}] ${pct.toFixed(1)}% ticks (${(ti + 1).toLocaleString()}/${sorted.length.toLocaleString()})  equity $${equity.toFixed(2)}  trades ${trades.length}`,
+        );
+        for (const t of top3) {
+          const tag = t.won ? "W" : "L";
+          const r = t.reason.length > 90 ? `${t.reason.slice(0, 87)}…` : t.reason;
+          console.log(`      ${tag} $${t.pnlUsd.toFixed(2)}  ${t.ticker}  ${r}`);
+        }
+      }
+    }
     const { yes: outcomeYes, synthetic } = resolveOutcome(tick);
     if (forbidSynth && synthetic) continue;
 
@@ -152,87 +172,32 @@ export function runStrategyReplayWithRisk(
 
       const baseCand = buildBlindReplayCandidate(tick, rolling);
       const candidate = decorateCandidate(baseCand, tick, flow, fresh, walletAct, walletProf);
-      legs.update(candidate);
 
-      const batch: ReplayCandidate[] =
-        strategy.name === PROB_ARB ? legs.legsForTicker(tick.ticker) : [candidate];
-
-      if (strategy.name === PROB_ARB && batch.length < 2) continue;
-
-      const pool = strategy.selectCandidates(batch);
+      const pool = strategy.selectCandidates([candidate]);
       const active = pool.find((c) => c.market.ticker === tick.ticker);
       if (!active) continue;
 
-      const analysis: ReplayAnalysis =
-        strategy.name === PROB_ARB ? buildProbArbAnalysis(active, batch) : blindReplayAnalysisForTick(tick, rolling);
+      const analysis: ReplayAnalysis = blindReplayAnalysisForTick(tick, rolling);
 
-      mergeReplayDecorators(analysis, strategy.name === PROB_ARB ? active : candidate);
-
-      if (strategy.name === PROB_ARB) {
-        const gk = gameKeyFromTicker(tick.ticker);
-        if (gk != null) {
-          const lastG = lastProbArbByGame.get(gk);
-          if (lastG != null && tick.tsMs - lastG < PROB_ARB_MIN_GAME_GAP_MS) continue;
-        }
-      }
+      mergeReplayDecorators(analysis, candidate);
 
       if (!riskState.allowsTrade(tick.tsMs, tick.ticker, analysis)) continue;
 
       const decision = strategy.shouldTrade(analysis);
       if (!decision.trade) continue;
 
-      if (strategy.name === MARKET_MAKER) {
-        if (!mmSim.deterministicFill(tick.ticker, tick.tsMs)) continue;
-        const prev = prevMidMm.get(tick.ticker) ?? tick.yesMid;
-        prevMidMm.set(tick.ticker, tick.yesMid);
-        const halfSpread = Math.max(0.005, (tick.yesAsk - tick.yesBid) / 2);
-        const adverse = Math.abs(tick.yesMid - prev);
-        const stakeUsd = computeStakeUsd(equity, analysis, effectiveRisk);
-        const unitCost = Math.max(0.15, tick.yesMid * 0.5);
-        const contracts = Math.max(1, Math.floor(stakeUsd / unitCost));
-        const spreadEarn = contracts * halfSpread * 0.35;
-        const lip = contracts * CONSERVATIVE_LIP_USD_PER_CONTRACT;
-        const pnlUsd = spreadEarn + lip - contracts * adverse * 0.22;
-
-        equity += pnlUsd;
-        equityCurve.push({ tsMs: tick.tsMs, equity });
-        riskState.recordTrade(tick.tsMs, tick.ticker);
-
-        const sportLabel = kalshiSportLabel(tick.ticker);
-        trades.push({
-          ticker: tick.ticker,
-          side: "yes",
-          entryPrice: tick.yesMid,
-          stakeUsd: contracts * unitCost,
-          contracts,
-          pnlUsd,
-          won: pnlUsd > 0,
-          usedSyntheticOutcome: synthetic,
-          reason: decision.reason,
-          tsMs: tick.tsMs,
-          sportLabel,
-          edgeAtEntry: analysis.edge,
-          modelProbability: analysis.modelProbability,
-          strategyName: strategy.name,
-        });
-        continue;
-      }
-
       const side = analysis.side;
       const entry = side === "yes" ? analysis.candidate.yesAsk : analysis.candidate.noAsk;
       if (entry <= 0.01 || entry >= 0.99) continue;
 
       const stakeUsd = computeStakeUsd(equity, analysis, effectiveRisk);
-      const contracts = Math.max(1, Math.floor(stakeUsd / entry));
+      const contracts = Math.round(stakeUsd / entry);
+      if (contracts < 1) continue;
       const pnlUsd = pnlKalshiTaker(side, entry, contracts, outcomeYes);
 
       equity += pnlUsd;
       equityCurve.push({ tsMs: tick.tsMs, equity });
       riskState.recordTrade(tick.tsMs, tick.ticker);
-      if (strategy.name === PROB_ARB) {
-        const gk = gameKeyFromTicker(tick.ticker);
-        if (gk != null) lastProbArbByGame.set(gk, tick.tsMs);
-      }
 
       const sportLabel = kalshiSportLabel(tick.ticker);
       trades.push({
@@ -288,36 +253,5 @@ function mergeReplayDecorators(target: ReplayAnalysis, from: ReplayCandidate): v
     replayWalletTopSport: from.replayWalletTopSport,
     replayWalletTopSportWinRate: from.replayWalletTopSportWinRate,
     replayWalletCurrentSportWinRate: from.replayWalletCurrentSportWinRate,
-  };
-}
-
-/** Synthetic analyst signal for probability arb from leg prices alone (no outcomes). */
-function buildProbArbAnalysis(target: ReplayCandidate, legs: ReplayCandidate[]): ReplayAnalysis {
-  const sumYes = legs.reduce((s, l) => s + l.yesAsk, 0);
-  const over = sumYes > 1.04;
-  const sorted = [...legs].sort((a, b) => b.yesAsk - a.yesAsk);
-  const richest = sorted[0]!;
-  const isTarget = richest.market.ticker === target.market.ticker;
-  const yesPrice = target.yesPrice;
-  let modelProb = yesPrice;
-  let side: "yes" | "no" = "yes";
-  let edge = Math.abs(modelProb - yesPrice) * 100;
-  let confidence = 0.3;
-  if (over && isTarget) {
-    modelProb = Math.max(0.04, 1 - target.yesAsk - 0.06);
-    side = "no";
-    edge = Math.abs(modelProb - yesPrice) * 100;
-    confidence = 0.52;
-  }
-
-  const edgeFloor = over && isTarget ? 8 : 0;
-
-  return {
-    candidate: target,
-    modelProbability: modelProb,
-    edge: Math.max(edge, edgeFloor),
-    confidence,
-    side,
-    reasoning: `Prob arb replay: sumYesAsk=${sumYes.toFixed(3)}`,
   };
 }

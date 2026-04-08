@@ -10,9 +10,10 @@ import {
   type KalshiMarket,
 } from "../kalshi-client.js";
 import { db, historicalMarketsTable } from "@workspace/db";
-import { ne, desc, inArray } from "drizzle-orm";
+import { ne, desc } from "drizzle-orm";
 import { batchGetPriceHistory, type PriceHistory } from "../price-history.js";
 import { batchGetSharpLines, type SharpLine } from "../sharp-odds.js";
+import { updateLiveTapeFlow } from "../live-tape-flow.js";
 
 export interface ScanCandidate {
   market: KalshiMarket;
@@ -37,6 +38,9 @@ export interface ScanCandidate {
   priceHistory?: PriceHistory | null;
   /** Sharp book comparison vs Pinnacle (null if no API key or not a game market) */
   sharpLine?: SharpLine | null;
+  /** Scan-to-scan signed flow proxy (replay-style); only meaningful with live API volume. */
+  replayFlowImbalance?: number;
+  replayWhalePrint?: boolean;
 }
 
 // Sports markets rarely list games > 2 weeks out; non-sports (politics, crypto,
@@ -113,7 +117,21 @@ function buildCandidateFromKalshi(market: KalshiMarket): ScanCandidate | null {
   // Near-expiry illiquid ghost markets — spread is meaningless and fills are impossible
   if (hoursToExpiry < 4 && volume24h < 10 && liquidity < 100) return null;
 
-  return { market, yesPrice, noPrice, yesAsk, noAsk, spread, volume24h, liquidity, hoursToExpiry, hasLiveData: true };
+  const { imbalance, whalePrint } = updateLiveTapeFlow(market.ticker, yesPrice, volume24h);
+  return {
+    market,
+    yesPrice,
+    noPrice,
+    yesAsk,
+    noAsk,
+    spread,
+    volume24h,
+    liquidity,
+    hoursToExpiry,
+    hasLiveData: true,
+    replayFlowImbalance: imbalance,
+    replayWhalePrint: whalePrint,
+  };
 }
 
 async function scanFromCachedDb(): Promise<{ candidates: ScanCandidate[]; totalScanned: number }> {
@@ -177,103 +195,14 @@ async function scanFromCachedDb(): Promise<{ candidates: ScanCandidate[]; totalS
       volume24h: row.volume24h || typicalVolume,
       liquidity: typicalLiquidity,
       hoursToExpiry,
-      // DB-sourced candidates use synthetic liquidity estimates — volume-flow
-      // signals like Sharp Money must not fire on these.
       hasLiveData: false,
+      replayFlowImbalance: 0,
+      replayWhalePrint: false,
     });
   }
 
   candidates.sort((a, b) => compositeScore(b) - compositeScore(a));
   return { candidates: candidates.slice(0, 50), totalScanned: rows.length };
-}
-
-/**
- * Probability Arb needs ALL legs of a multi-outcome soccer game to compute the
- * YES-sum overpricing. The main scan cuts to top-50, which may include only 1 of
- * the 3 legs. This function finds those missing sibling legs in the DB and injects
- * them into the candidate list so Probability Arb can detect the full overpricing.
- *
- * A "game key" is the first two dash-separated ticker segments:
- *   KXLALIGAGAME-26MAR20RVCLEV-RVC → key = "KXLALIGAGAME-26MAR20RVCLEV"
- */
-async function injectSiblingLegs(candidates: ScanCandidate[]): Promise<void> {
-  const now = new Date();
-  // Collect game keys from existing soccer candidates
-  const gameKeys = new Set<string>();
-  const existingTickers = new Set(candidates.map((c) => c.market.ticker));
-
-  for (const c of candidates) {
-    const parts = c.market.ticker.split("-");
-    // Soccer multi-outcome markets have ≥3 dash-separated segments
-    if (parts.length >= 3 && (c.market.category === "Sports" || c.market.ticker.includes("GAME"))) {
-      gameKeys.add(parts.slice(0, 2).join("-"));
-    }
-  }
-  if (gameKeys.size === 0) return;
-
-  // Fetch recent snapshots for tickers matching these game keys
-  const allRows = await db
-    .select()
-    .from(historicalMarketsTable)
-    .where(ne(historicalMarketsTable.status, "settled"))
-    .orderBy(desc(historicalMarketsTable.snapshotAt))
-    .limit(500)
-    .catch(() => []);
-
-  const seen = new Set<string>();
-  for (const row of allRows) {
-    if (!row.kalshiTicker || seen.has(row.kalshiTicker)) continue;
-    seen.add(row.kalshiTicker);
-
-    const parts = row.kalshiTicker.split("-");
-    if (parts.length < 3) continue;
-    const gameKey = parts.slice(0, 2).join("-");
-    if (!gameKeys.has(gameKey)) continue;
-    if (existingTickers.has(row.kalshiTicker)) continue;
-
-    const price = row.lastPrice || 0;
-    if (price < 0.10 || price > 0.90) continue;
-    const expiresAt = new Date(row.closeTime || row.expirationTime || now);
-    const hoursToExpiry = (expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60);
-    if (hoursToExpiry < 0.5) continue;
-
-    const yesAsk = row.yesAsk || price + 0.02;
-    const yesBid = row.yesBid || price - 0.02;
-    const spread = Math.min(0.05, Math.max(0.01, Math.abs(yesAsk - yesBid)));
-    const typicalLiquidity = 15000;
-    const typicalVolume = row.volume24h || 2000;
-
-    const market = {
-      ...(row.rawData as object),
-      ticker: row.kalshiTicker,
-      title: row.title || row.kalshiTicker,
-      category: row.category || "Sports",
-      last_price_dollars: String(price),
-      yes_ask: Math.round(yesAsk * 100),
-      yes_bid: Math.round(yesBid * 100),
-      volume_24h: typicalVolume,
-      liquidity: typicalLiquidity,
-      liquidity_dollars: String(typicalLiquidity),
-      status: row.status || "active",
-      result: row.result || null,
-      close_time: row.closeTime?.toISOString() || expiresAt.toISOString(),
-      expiration_time: row.expirationTime?.toISOString() || expiresAt.toISOString(),
-    } as KalshiMarket;
-
-    candidates.push({
-      market,
-      yesPrice: price,
-      noPrice: 1 - price,
-      yesAsk,
-      noAsk: 1 - yesBid,
-      spread,
-      volume24h: typicalVolume,
-      liquidity: typicalLiquidity,
-      hoursToExpiry,
-      hasLiveData: false,
-    });
-    existingTickers.add(row.kalshiTicker);
-  }
 }
 
 /**
@@ -384,7 +313,7 @@ export async function scanMarkets(_sportFilters?: string[]): Promise<{
       const snapshots = topCandidates.map((c) => {
         // Store only compact metadata in rawData — omit large text fields (rules, descriptions)
         const { rules_primary: _r1, rules_secondary: _r2, ...compactMarket } =
-          c.market as Record<string, unknown>;
+          c.market as unknown as Record<string, unknown>;
         return {
           kalshiTicker: c.market.ticker,
           title: (c.market.title || c.market.ticker).slice(0, 200),
@@ -419,9 +348,7 @@ export async function scanMarkets(_sportFilters?: string[]): Promise<{
       console.warn(`[Scanner] Enrichment failed (non-fatal):`, (e as Error).message?.slice(0, 80));
     });
 
-    // Inject missing sibling legs for Probability Arb (soccer 3-way games)
-    await injectSiblingLegs(topCandidates).catch(() => {});
-    console.info(`[Scanner] Enrichment done. Total candidates after sibling injection: ${topCandidates.length}`);
+    console.info(`[Scanner] Enrichment done. Total candidates: ${topCandidates.length}`);
 
     // Re-sort after enrichment so dip/sharp signals bubble up
     topCandidates.sort((a, b) => compositeScore(b) - compositeScore(a));

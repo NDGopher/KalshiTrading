@@ -38,6 +38,9 @@ export async function tryApplyMultiBacktestRankPatch(dataRoot: string): Promise<
       minEdge?: number;
       kellyFraction?: number;
       confidencePenaltyPct?: number;
+      targetBetUsd?: number;
+      enabledStrategies?: string[];
+      paperTradingMode?: boolean;
       rationale?: string;
     };
   };
@@ -60,7 +63,10 @@ export async function tryApplyMultiBacktestRankPatch(dataRoot: string): Promise<
       min_edge: number;
       kelly_fraction: number;
       confidence_penalty_pct: number;
-    }>("SELECT id, min_edge, kelly_fraction, confidence_penalty_pct FROM trading_settings LIMIT 1");
+      target_bet_usd: number | null;
+    }>(
+      "SELECT id, min_edge, kelly_fraction, confidence_penalty_pct, target_bet_usd FROM trading_settings LIMIT 1",
+    );
 
     const current = rows[0];
     if (!current) return { applied: false, detail: "no trading_settings row" };
@@ -77,6 +83,10 @@ export async function tryApplyMultiBacktestRankPatch(dataRoot: string): Promise<
       patch.confidencePenaltyPct !== undefined
         ? clampNum(patch.confidencePenaltyPct, 0, 40, current.confidence_penalty_pct)
         : undefined;
+    const targetBetUsd =
+      patch.targetBetUsd !== undefined
+        ? clampNum(patch.targetBetUsd, 5, 50, current.target_bet_usd ?? 15)
+        : undefined;
 
     const sets: string[] = [];
     const vals: unknown[] = [];
@@ -92,6 +102,21 @@ export async function tryApplyMultiBacktestRankPatch(dataRoot: string): Promise<
     if (confidencePenaltyPct !== undefined) {
       sets.push(`confidence_penalty_pct = $${i++}`);
       vals.push(confidencePenaltyPct);
+    }
+    if (targetBetUsd !== undefined) {
+      sets.push(`target_bet_usd = $${i++}`);
+      vals.push(targetBetUsd);
+    }
+    if (patch.enabledStrategies !== undefined && Array.isArray(patch.enabledStrategies)) {
+      const names = patch.enabledStrategies.filter((s) => typeof s === "string" && s.trim().length > 0);
+      if (names.length > 0) {
+        sets.push(`enabled_strategies = $${i++}::jsonb`);
+        vals.push(JSON.stringify(names));
+      }
+    }
+    if (patch.paperTradingMode !== undefined && typeof patch.paperTradingMode === "boolean") {
+      sets.push(`paper_trading_mode = $${i++}`);
+      vals.push(patch.paperTradingMode);
     }
 
     if (sets.length === 0) {

@@ -16,7 +16,7 @@ export const pureValueStrategy: Strategy = {
         reason: `Edge claim ${analysis.edge.toFixed(0)}pp exceeds 20pp sanity cap`,
       };
     }
-    if (analysis.edge >= 4.5 && analysis.confidence >= 0.36) {
+    if (analysis.edge >= 6 && analysis.confidence >= 0.4) {
       return {
         trade: true,
         reason: `Pure value: ${analysis.edge.toFixed(1)}pp edge, ${(analysis.confidence * 100).toFixed(0)}% confidence`,

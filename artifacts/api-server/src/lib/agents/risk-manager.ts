@@ -19,6 +19,8 @@ export interface RiskParams {
   maxConsecutiveLosses: number;
   maxDrawdownPct: number;
   maxSimultaneousPositions: number;
+  /** Center of ~$10–$20 notional band (half-Kelly still capped at 6% bankroll). */
+  targetBetUsd?: number;
 }
 
 export interface CoreRiskResult {
@@ -118,10 +120,17 @@ export function computeRisk(
 
   const rawP = analysis.modelProbability;
   const p = analysis.side === "yes" ? rawP : 1 - rawP;
-  // Kelly uses actual ask prices — what you pay per contract at the order book
-  const marketPrice = analysis.side === "yes"
-    ? (analysis.candidate.yesAsk || analysis.candidate.yesPrice)
-    : (analysis.candidate.noAsk || analysis.candidate.noPrice);
+  const marketPrice = analysis.side === "yes" ? analysis.candidate.yesAsk : analysis.candidate.noAsk;
+  if (marketPrice == null || marketPrice < 0.01 || marketPrice > 0.99) {
+    return {
+      approved: false,
+      positionSize: 0,
+      kellyFraction: 0,
+      riskScore: 0.2,
+      rejectReason: "Missing or invalid taker ask (YES/NO) — cannot size Kelly at realistic fill",
+    };
+  }
+
   const b = (1 / marketPrice) - 1;
   const q = 1 - p;
   const fullKelly = b > 0 ? (b * p - q) / b : 0;
@@ -129,20 +138,29 @@ export function computeRisk(
 
   const maxPositionDollars = bankroll * (params.maxPositionPct / 100);
   const kellyPositionDollars = bankroll * quarterKelly;
-  // Hard cap: never risk more than $30 in a single paper trade.
-  // Kelly on a miscalibrated model can produce catastrophically large positions
-  // (e.g. 1,000+ contracts at $0.12 = $120 on a wrong-side call).
-  // $30 is enough to generate meaningful P&L signal while keeping drawdowns bounded
-  // until the model's calibration has been validated over ≥200 closed trades.
-  const HARD_MAX_TRADE_DOLLARS = 30;
-  const positionDollars = Math.min(kellyPositionDollars, maxPositionDollars, HARD_MAX_TRADE_DOLLARS);
+  const target = params.targetBetUsd ?? 15;
+  const bandLo = Math.max(8, (target * 10) / 15);
+  const bandHi = Math.min(22, (target * 20) / 15);
+  let positionDollars = Math.min(kellyPositionDollars, maxPositionDollars);
+  positionDollars = Math.min(Math.max(positionDollars, bandLo), bandHi);
+  positionDollars = Math.min(positionDollars, bankroll * 0.06);
   const costPerContract = Math.max(0.01, marketPrice);
-  const positionSize = Math.max(1, Math.floor(positionDollars / costPerContract));
+  const positionSize = Math.round(positionDollars / costPerContract);
 
   const riskScore = Math.min(1,
     (context.consecutiveLosses / params.maxConsecutiveLosses) * 0.4 +
     (context.drawdownPct / params.maxDrawdownPct) * 0.4 +
     (1 - context.adjustedConfidence) * 0.2);
+
+  if (positionSize < 1) {
+    return {
+      approved: false,
+      positionSize: 0,
+      kellyFraction: quarterKelly,
+      riskScore,
+      rejectReason: "Kelly sizing rounds to < 1 contract at current ask",
+    };
+  }
 
   return {
     approved: quarterKelly > 0 && context.auditApproved,
@@ -160,6 +178,7 @@ export async function assessRisk(
     maxConsecutiveLosses: number;
     maxDrawdownPct: number;
     maxSimultaneousPositions?: number;
+    targetBetUsd?: number;
   },
   bankroll: number,
   options?: {
@@ -238,6 +257,7 @@ export async function assessRisk(
       maxConsecutiveLosses: settings.maxConsecutiveLosses,
       maxDrawdownPct: settings.maxDrawdownPct,
       maxSimultaneousPositions: settings.maxSimultaneousPositions ?? 0,
+      targetBetUsd: settings.targetBetUsd ?? 15,
     },
     bankroll,
     {

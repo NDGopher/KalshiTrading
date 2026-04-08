@@ -1,4 +1,5 @@
-import { createOrder, getOrder } from "../kalshi-client.js";
+import { kalshiSportLabel } from "@workspace/backtester";
+import { createOrder } from "../kalshi-client.js";
 import { db, tradesTable, paperTradesTable, tradingSettingsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import type { RiskDecision } from "./risk-manager.js";
@@ -26,10 +27,15 @@ async function executePaperTrade(decision: RiskDecision): Promise<ExecutionResul
 
   const [settings] = await db.select().from(tradingSettingsTable).limit(1);
   const currentBalance = settings?.paperBalance || 5000;
-  // Execution at best ask: YES buy costs yesAsk, NO buy costs noAsk
-  const entryPrice = analysis.side === "yes"
-    ? (candidate.yesAsk || candidate.yesPrice)
-    : (candidate.noAsk || candidate.noPrice);
+  const entryPrice = analysis.side === "yes" ? candidate.yesAsk : candidate.noAsk;
+  if (entryPrice == null || entryPrice < 0.01 || entryPrice > 0.99) {
+    return {
+      decision,
+      executed: false,
+      error: `Paper trade blocked: no valid taker ask for ${analysis.side.toUpperCase()} on ${candidate.market.ticker}`,
+      paper: true,
+    };
+  }
   const cost = decision.positionSize * entryPrice;
 
   const [existingOpen] = await db
@@ -82,6 +88,27 @@ async function executePaperTrade(decision: RiskDecision): Promise<ExecutionResul
     .set({ paperBalance: currentBalance - cost })
     .where(eq(tradingSettingsTable.id, settings!.id));
 
+  const sport = kalshiSportLabel(candidate.market.ticker);
+  const winProb = analysis.side === "yes" ? analysis.modelProbability : 1 - analysis.modelProbability;
+  const expectedEdgePerContract = winProb - entryPrice;
+  const expectedPnlUsdApprox = expectedEdgePerContract * decision.positionSize;
+  console.info(
+    "[PAPER_TRADE]",
+    JSON.stringify({
+      timestamp: new Date().toISOString(),
+      ticker: candidate.market.ticker,
+      sport,
+      side: analysis.side,
+      entryAsk: entryPrice,
+      contracts: decision.positionSize,
+      strategyName: decision.strategyName ?? null,
+      edgeReason: analysis.reasoning,
+      edgePp: analysis.edge,
+      expectedPnlUsdApprox,
+      actualFillPrice: entryPrice,
+    }),
+  );
+
   return {
     decision,
     executed: true,
@@ -107,13 +134,22 @@ export async function executeTrade(decision: RiskDecision, paperMode?: boolean):
   const { analysis } = audit;
   const { candidate } = analysis;
 
+  const liveAsk = analysis.side === "yes" ? candidate.yesAsk : candidate.noAsk;
+  if (liveAsk == null || liveAsk < 0.01 || liveAsk > 0.99) {
+    return {
+      decision,
+      executed: false,
+      error: `Live order blocked: missing taker ask for ${analysis.side} on ${candidate.market.ticker}`,
+    };
+  }
+
   const [pendingTrade] = await db
     .insert(tradesTable)
     .values({
       kalshiTicker: candidate.market.ticker,
       title: candidate.market.title || candidate.market.ticker,
       side: analysis.side,
-      entryPrice: analysis.side === "yes" ? (candidate.yesAsk || candidate.yesPrice) : (candidate.noAsk || candidate.noPrice),
+      entryPrice: liveAsk,
       quantity: decision.positionSize,
       status: "pending",
       strategyName: decision.strategyName || null,
@@ -131,11 +167,7 @@ export async function executeTrade(decision: RiskDecision, paperMode?: boolean):
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
-      const priceInCents = Math.round(
-        (analysis.side === "yes"
-          ? (candidate.yesAsk || candidate.yesPrice)
-          : (candidate.noAsk || candidate.noPrice)) * 100
-      );
+      const priceInCents = Math.round(liveAsk * 100);
 
       const orderParams: Parameters<typeof createOrder>[0] = {
         ticker: candidate.market.ticker,

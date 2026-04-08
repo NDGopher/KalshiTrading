@@ -1,35 +1,23 @@
 import type { Strategy } from "../types.js";
 import { dipBuyReplayStrategy } from "./dip-buy-replay.js";
-import { freshWalletReplayStrategy } from "./fresh-wallet-replay.js";
-import { marketMakerReplayStrategy } from "./market-maker-replay.js";
-import { probabilityArbReplayStrategy } from "./probability-arb-replay.js";
 import { pureValueStrategy } from "./pure-value.js";
-import { sharpWalletReplayStrategy } from "./sharp-wallet-replay.js";
 import { volumeImbalanceReplayStrategy } from "./volume-imbalance-replay.js";
 import { whaleFlowReplayStrategy } from "./whale-flow-replay.js";
 
+/** Same order as `strategy-run-order.ts` (best-first for checkpoints). Keeper stack only. */
 export const DEFAULT_PARALLEL_REPLAY_STRATEGIES: Strategy[] = [
-  pureValueStrategy,
-  dipBuyReplayStrategy,
-  volumeImbalanceReplayStrategy,
   whaleFlowReplayStrategy,
-  freshWalletReplayStrategy,
-  sharpWalletReplayStrategy,
-  probabilityArbReplayStrategy,
-  marketMakerReplayStrategy,
+  volumeImbalanceReplayStrategy,
+  dipBuyReplayStrategy,
+  pureValueStrategy,
 ];
 
 const ALIASES: Record<string, string> = {
   "dip buyer": "Dip Buy",
   "dip buy": "Dip Buy",
   "pure value": "Pure Value",
-  "probability arb": "Probability Arb",
   "volume imbalance": "Volume Imbalance",
   "whale flow": "Whale Flow",
-  "fresh wallet": "Fresh Wallet",
-  "sharp wallet": "Sharp Wallet",
-  "sharp money": "Sharp Wallet",
-  "market maker": "Market Maker",
 };
 
 export function replayStrategiesByNames(names: string[]): Strategy[] {

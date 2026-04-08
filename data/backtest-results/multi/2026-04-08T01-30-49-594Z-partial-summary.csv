@@ -1,0 +1,2 @@
+rank,strategy,total_pnl_usd,win_rate_pct,sharpe_approx,max_dd_pct,trades,trades_per_hour,expectancy_per_trade_usd,synthetic_outcome_trades
+1,Pure Value,188.91,54.69,7.3267,0.30,3895,5.24,0.0485,0

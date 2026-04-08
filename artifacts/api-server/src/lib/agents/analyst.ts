@@ -16,6 +16,14 @@ export interface AnalysisResult {
   reasoning: string;
 }
 
+function deterministicHash(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) {
+    h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+  }
+  return Math.abs(h);
+}
+
 const HAIKU_INPUT_COST_PER_M = 0.25;
 const HAIKU_OUTPUT_COST_PER_M = 0.80;
 
@@ -508,6 +516,39 @@ Respond in EXACTLY this JSON format (no other text):
   }
 }
 
+/** Paper / keeper path: blind pricing math aligned with JBecker replay (`blindReplayAnalysisForTick`). No Anthropic. */
+export function analyzeMarketRuleBased(candidate: ScanCandidate): AnalysisResult {
+  const yesPrice = candidate.yesPrice;
+  const ph = candidate.priceHistory;
+  const hourBucket = Math.floor(Date.now() / 3_600_000);
+  const hash = deterministicHash(candidate.market.ticker + String(hourBucket));
+  const hashFrac = (hash % 1000) / 1000;
+
+  let skew = 0;
+  if (ph) {
+    skew = -(ph.currentVsMeanPct / 100) * 0.12;
+  }
+  const noise = ((hash % 100) - 50) / 2200;
+  const modelProb = Math.max(0.04, Math.min(0.96, yesPrice + skew + noise + (hashFrac - 0.5) * 0.06));
+  const side: "yes" | "no" = modelProb > yesPrice ? "yes" : "no";
+  const edge = Math.abs(modelProb - yesPrice) * 100;
+  const volumeBoost = Math.min(0.1, Math.max(0, candidate.volume24h) / 7000);
+  const confidence = Math.min(0.88, 0.34 + edge / 110 + volumeBoost + hashFrac * 0.05);
+
+  return {
+    candidate,
+    modelProbability: modelProb,
+    edge,
+    confidence,
+    side,
+    reasoning: `Rule-based (no AI): mid=${(yesPrice * 100).toFixed(1)}¢ model=${(modelProb * 100).toFixed(1)}¢ edge=${edge.toFixed(1)}pp`,
+  };
+}
+
+export function analyzeMarketsRuleBased(candidates: ScanCandidate[]): AnalysisResult[] {
+  return candidates.map(analyzeMarketRuleBased);
+}
+
 function createDefaultResult(candidate: ScanCandidate): AnalysisResult {
   return {
     candidate,
@@ -532,9 +573,7 @@ export async function analyzeMarkets(candidates: ScanCandidate[]): Promise<Analy
   return results;
 }
 
-// Paper mode now uses the same real AI analysis as live mode.
-// This allows us to accurately measure AI performance in paper trading,
-// so the system genuinely learns before risking real capital.
+/** @deprecated Use `analyzeMarketsRuleBased` — paper stack is rule-based only. */
 export async function analyzeMarketsSimulated(candidates: ScanCandidate[]): Promise<AnalysisResult[]> {
-  return analyzeMarkets(candidates);
+  return analyzeMarketsRuleBased(candidates);
 }

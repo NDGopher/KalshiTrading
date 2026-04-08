@@ -1,7 +1,7 @@
 import { db, agentRunsTable, marketOpportunitiesTable, tradingSettingsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { scanMarkets } from "./scanner.js";
-import { analyzeMarkets } from "./analyst.js";
+import { analyzeMarkets, analyzeMarketsRuleBased } from "./analyst.js";
 import { auditTrades } from "./auditor.js";
 import { assessRisk, type RiskDecision } from "./risk-manager.js";
 import { executeTrade } from "./executor.js";
@@ -252,19 +252,17 @@ export async function runTradingCycle(): Promise<CycleResult> {
       return { marketsScanned: scanResult.totalScanned, opportunitiesFound: 0, tradesExecuted: 0, tradesSkipped: 0, totalDuration: (Date.now() - cycleStart) / 1000, agentResults };
     }
 
-    // Analyze top 35 candidates with real AI in both paper and live mode.
-    // 35 gives enough room for diverse categories (sports + crypto + politics +
-    // weather) after the scanner's diversity-reservation pass fills non-sports slots.
+    // Top 35: diverse categories after scanner diversity pass. Paper = rule-based replay math (no Anthropic).
     const topCandidates = scanResult.candidates.slice(0, 35);
 
     let analysisStart = Date.now();
     updateAgentStatus("Analyst", "running");
     let analyses;
     try {
-      analyses = await analyzeMarkets(topCandidates);
+      analyses = paperMode ? analyzeMarketsRuleBased(topCandidates) : await analyzeMarkets(topCandidates);
       const analysisDuration = (Date.now() - analysisStart) / 1000;
       const withEdge = analyses.filter((a) => a.edge > 0);
-      const modeLabel = paperMode ? " [paper]" : "";
+      const modeLabel = paperMode ? " [paper rule-based]" : "";
       updateAgentStatus("Analyst", "idle", `Analyzed ${analyses.length} markets${modeLabel}, ${withEdge.length} with edge`);
       agentResults.push({ agentName: "Analyst", status: "success", duration: analysisDuration, details: `${withEdge.length}/${analyses.length} markets have edge${modeLabel}` });
     } catch (err: unknown) {
@@ -428,13 +426,17 @@ export async function runTradingCycle(): Promise<CycleResult> {
         maxConsecutiveLosses: settings.maxConsecutiveLosses,
         maxDrawdownPct: settings.maxDrawdownPct,
         maxSimultaneousPositions: settings.maxSimultaneousPositions,
+        targetBetUsd: settings.targetBetUsd ?? 15,
       }, effectiveBankroll, { strategyName, paperMode, additionalOpenPositions: approvedThisCycle, intraCycleTrades });
       riskDecisions.push(decision);
       if (decision.approved) {
-        const entryPrice = decision.audit.analysis.side === "yes"
-          ? (decision.audit.analysis.candidate.yesAsk || decision.audit.analysis.candidate.yesPrice)
-          : (decision.audit.analysis.candidate.noAsk || decision.audit.analysis.candidate.noPrice);
-        effectiveBankroll -= decision.positionSize * entryPrice;
+        const entryPrice =
+          decision.audit.analysis.side === "yes"
+            ? decision.audit.analysis.candidate.yesAsk
+            : decision.audit.analysis.candidate.noAsk;
+        if (entryPrice != null) {
+          effectiveBankroll -= decision.positionSize * entryPrice;
+        }
         approvedThisCycle++;
         intraCycleTrades.push({
           kalshiTicker: audit.analysis.candidate.market.ticker,
@@ -736,7 +738,9 @@ export async function scanAndDiscover(): Promise<ScanDiscoverResult> {
   const topCandidates = scanResult.candidates.slice(0, 20);
 
   updateAgentStatus("Analyst", "running");
-  const analyses = await analyzeMarkets(topCandidates);
+  const analyses = settings.paperTradingMode
+    ? analyzeMarketsRuleBased(topCandidates)
+    : await analyzeMarkets(topCandidates);
   updateAgentStatus("Analyst", "idle", `Analyzed ${analyses.length} markets`);
 
   updateAgentStatus("Auditor", "running");
