@@ -51,7 +51,18 @@ function marketToCandidate(market: KalshiMarket, simulatedTimeBeforeClose?: numb
   const hoursToExpiry = simulatedTimeBeforeClose ??
     Math.max(0.5, (new Date(market.expected_expiration_time || market.expiration_time || market.close_time).getTime() - Date.now()) / (1000 * 60 * 60));
 
-  return { market, yesPrice, noPrice, yesAsk: yesAsk > 0 ? yesAsk : yesPrice, noAsk: noPrice, spread, volume24h, liquidity, hoursToExpiry };
+  return {
+    market,
+    yesPrice,
+    noPrice,
+    yesAsk: yesAsk > 0 ? yesAsk : yesPrice,
+    noAsk: noPrice,
+    spread,
+    volume24h,
+    liquidity,
+    hoursToExpiry,
+    hasLiveData: false,
+  };
 }
 
 function simulateHoursBeforeClose(market: KalshiMarket): number {
@@ -368,12 +379,13 @@ export async function runBacktest(config: BacktestConfig, existingRunId?: number
           market,
           yesPrice: snapshot.yesPrice,
           noPrice: snapshot.noPrice,
-          yesAsk: snapshot.yesAsk ?? snapshot.yesPrice + 0.02,
+          yesAsk: snapshot.yesPrice + 0.02,
           noAsk: snapshot.noPrice,
           spread,
           volume24h: getMarketVolume24h(market),
           liquidity: getMarketLiquidity(market),
           hoursToExpiry: snapshot.hoursToExpiry,
+          hasLiveData: false,
         };
       } else {
         candidate = marketToCandidate(market, simHours);
@@ -437,7 +449,7 @@ export async function runBacktest(config: BacktestConfig, existingRunId?: number
           consecutiveLosses,
           drawdownPct,
           openPositions: 0,
-          correlatedPositions: 0,
+          reverseMiddleDetected: false,
           adjustedConfidence: analysis.confidence,
           auditApproved: auditResult.approved,
         },

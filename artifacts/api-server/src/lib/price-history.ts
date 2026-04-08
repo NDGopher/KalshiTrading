@@ -65,7 +65,7 @@ export interface PriceHistory {
   series: PriceSnapshot[];
 }
 
-const DIP_THRESHOLD_PCT = 8;    // current < mean by ≥8% → dip
+const DIP_THRESHOLD_PCT = 6;    // current < mean by ≥6% → dip (aligned with live paper volume vs backtests)
 const SURGE_THRESHOLD_PCT = 10; // current > mean by ≥10% → surge (potential fade)
 const MIN_SNAPSHOTS = 8;        // need ≥8 points to trust the mean (40 min at 5-min cadence)
 
@@ -189,7 +189,7 @@ export async function batchGetPriceHistory(
   lookbackHours = 12
 ): Promise<Map<string, PriceHistory>> {
   const result = new Map<string, PriceHistory>();
-  const batchSize = 10;
+  const batchSize = 20;
 
   for (let i = 0; i < tickers.length; i += batchSize) {
     const batch = tickers.slice(i, i + batchSize);

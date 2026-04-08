@@ -1,2 +1,2 @@
 export * from "./generated/api";
-export * from "./generated/types";
+/** Plain TS types live in `./generated/types` — import from that path if needed (not re-exported: names collide with zod schemas). */

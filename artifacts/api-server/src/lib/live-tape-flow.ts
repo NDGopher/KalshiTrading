@@ -46,3 +46,15 @@ export function updateLiveTapeFlow(
 
   return { imbalance, whalePrint };
 }
+
+/** Debug: how many tickers have tape state + recent keys (for pipeline logs). */
+export function getLiveTapeSnapshot(sampleLimit = 15): {
+  trackedTickers: number;
+  sampleTickers: string[];
+} {
+  const keys = [...states.keys()];
+  return {
+    trackedTickers: keys.length,
+    sampleTickers: keys.slice(-sampleLimit),
+  };
+}

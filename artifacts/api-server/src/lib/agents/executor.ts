@@ -3,6 +3,7 @@ import { createOrder } from "../kalshi-client.js";
 import { db, tradesTable, paperTradesTable, tradingSettingsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import type { RiskDecision } from "./risk-manager.js";
+import { compactKeeperReasoning } from "./analyst.js";
 
 export interface ExecutionResult {
   decision: RiskDecision;
@@ -37,6 +38,7 @@ async function executePaperTrade(decision: RiskDecision): Promise<ExecutionResul
     };
   }
   const cost = decision.positionSize * entryPrice;
+  const keeperReason = compactKeeperReasoning(analysis, decision.strategyReason ?? null);
 
   const [existingOpen] = await db
     .select({ id: paperTradesTable.id })
@@ -75,7 +77,7 @@ async function executePaperTrade(decision: RiskDecision): Promise<ExecutionResul
       modelProbability: analysis.modelProbability,
       edge: analysis.edge,
       confidence: audit.adjustedConfidence,
-      analystReasoning: analysis.reasoning,
+      analystReasoning: keeperReason,
       auditorFlags: audit.flags,
       riskScore: decision.riskScore,
       kellyFraction: decision.kellyFraction,
@@ -92,8 +94,13 @@ async function executePaperTrade(decision: RiskDecision): Promise<ExecutionResul
   const winProb = analysis.side === "yes" ? analysis.modelProbability : 1 - analysis.modelProbability;
   const expectedEdgePerContract = winProb - entryPrice;
   const expectedPnlUsdApprox = expectedEdgePerContract * decision.positionSize;
+  const dollarSize = cost;
   console.info(
-    "[PAPER_TRADE]",
+    `[PAPER_TRADE] strategy=${decision.strategyName ?? "?"} ticker=${candidate.market.ticker} sport=${sport} side=${analysis.side.toUpperCase()} ` +
+      `ask=${entryPrice.toFixed(4)} contracts=${decision.positionSize} dollars=$${dollarSize.toFixed(2)} edge_pp=${analysis.edge.toFixed(2)} expectedPnlUsd~=${expectedPnlUsdApprox.toFixed(3)} | ${keeperReason}`,
+  );
+  console.info(
+    "[PAPER_TRADE_JSON]",
     JSON.stringify({
       timestamp: new Date().toISOString(),
       ticker: candidate.market.ticker,
@@ -101,8 +108,9 @@ async function executePaperTrade(decision: RiskDecision): Promise<ExecutionResul
       side: analysis.side,
       entryAsk: entryPrice,
       contracts: decision.positionSize,
+      dollarNotional: dollarSize,
       strategyName: decision.strategyName ?? null,
-      edgeReason: analysis.reasoning,
+      edgeReason: keeperReason,
       edgePp: analysis.edge,
       expectedPnlUsdApprox,
       actualFillPrice: entryPrice,
@@ -133,6 +141,7 @@ export async function executeTrade(decision: RiskDecision, paperMode?: boolean):
   const { audit } = decision;
   const { analysis } = audit;
   const { candidate } = analysis;
+  const liveKeeperReason = compactKeeperReasoning(analysis, decision.strategyReason ?? null);
 
   const liveAsk = analysis.side === "yes" ? candidate.yesAsk : candidate.noAsk;
   if (liveAsk == null || liveAsk < 0.01 || liveAsk > 0.99) {
@@ -156,7 +165,7 @@ export async function executeTrade(decision: RiskDecision, paperMode?: boolean):
       modelProbability: analysis.modelProbability,
       edge: analysis.edge,
       confidence: audit.adjustedConfidence,
-      analystReasoning: analysis.reasoning,
+      analystReasoning: liveKeeperReason,
       auditorFlags: audit.flags,
       riskScore: decision.riskScore,
       kellyFraction: decision.kellyFraction,

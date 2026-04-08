@@ -114,7 +114,7 @@ function usePaperTrades() {
   return useQuery({
     queryKey: ["/api/paper-trades"],
     queryFn: async () => {
-      const res = await fetch(`${API_BASE}/paper-trades?limit=200`);
+      const res = await fetch(`${API_BASE}/paper-trades?limit=200&enrichLive=1`);
       const data = await res.json();
       return (data.trades || data) as PaperTrade[];
     },
@@ -126,7 +126,7 @@ function usePaperStats() {
   return useQuery({
     queryKey: ["/api/paper-trades/stats"],
     queryFn: async () => {
-      const res = await fetch(`${API_BASE}/paper-trades/stats`);
+      const res = await fetch(`${API_BASE}/paper-trades/stats?liveOpen=1`);
       return res.json() as Promise<PaperStats>;
     },
     refetchInterval: 20000,

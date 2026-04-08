@@ -111,6 +111,12 @@ export async function reconcileOpenTrades(): Promise<ReconciliationResult> {
   return { reconciled, settled, errors };
 }
 
+/**
+ * Settles open paper rows when Kalshi `market.result` is final: writes status won/lost, `pnl`,
+ * `closedAt`. **Open** positions stay `status=open` until then. On win, `paperBalance` gets
+ * `quantity - takerFee` (stake was already deducted at fill); cumulative equity = starting
+ * capital + sum(settled `pnl`) aligns with that accounting.
+ */
 export async function reconcilePaperTrades(): Promise<{ settled: number; errors: number }> {
   const openPaperTrades = await db
     .select()
@@ -131,25 +137,25 @@ export async function reconcilePaperTrades(): Promise<{ settled: number; errors:
 
         const grossProfit = trade.quantity * (1 - trade.entryPrice);
         const fee = won ? kalshiTakerFee(trade.quantity, trade.entryPrice) : 0;
-        const payout = won ? grossProfit - fee : -trade.quantity * trade.entryPrice;
+        const pnl = won ? grossProfit - fee : -trade.quantity * trade.entryPrice;
 
         await db
           .update(paperTradesTable)
           .set({
             status: won ? "won" : "lost",
             exitPrice: won ? 1.0 : 0.0,
-            pnl: payout,
+            pnl,
             closedAt: new Date(),
           })
           .where(eq(paperTradesTable.id, trade.id));
 
         const [settings] = await db.select().from(tradingSettingsTable).limit(1);
-        if (settings && won && payout > 0) {
-          // Add back only the net profit (stake is never deducted when placing,
-          // so only profit is added on win). This keeps balance = start + cumulative_profit.
+        if (settings && won) {
+          // Executor already deducted entry cost at open. On win, credit $1/contract minus taker fee.
+          const creditToBalance = trade.quantity - fee;
           await db
             .update(tradingSettingsTable)
-            .set({ paperBalance: settings.paperBalance + payout })
+            .set({ paperBalance: settings.paperBalance + creditToBalance })
             .where(eq(tradingSettingsTable.id, settings.id));
         }
 

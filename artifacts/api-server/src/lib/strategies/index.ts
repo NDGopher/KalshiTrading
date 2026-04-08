@@ -6,6 +6,7 @@ export interface StrategyMetadata {
   priceDropPct?: number;
   hoursRemaining?: number;
   bidAskSpread?: number;
+  distanceFromPeak?: number | null;
 }
 
 export interface Strategy {
@@ -15,12 +16,18 @@ export interface Strategy {
   shouldTrade(analysis: AnalysisResult): { trade: boolean; reason: string; metadata?: StrategyMetadata };
 }
 
+/** Matches paper-mode auditor floor `max(3, settings.minEdge - 2)` so approved rows can match a keeper. */
+const KEEPER_EDGE_PP = 4;
+/** Rule-based floor aligned with paper tuning / backtests (edge still gated by KEEPER_EDGE_PP). */
+const PURE_VALUE_MIN_CONFIDENCE = 0.35;
+
 // ─── Pure Value ─────────────────────────────────────────────────────────────
 const pureValue: Strategy = {
   name: "Pure Value",
   description: "Trades when rule-based model probability diverges from mid with sufficient edge (paper: no Claude).",
   selectCandidates(candidates) {
-    return candidates.filter((c) => c.yesPrice >= 0.12 && c.yesPrice <= 0.88);
+    // Slightly wider than 0.12–0.88 so live paper volume tracks backtests on mid-tail prices.
+    return candidates.filter((c) => c.yesPrice >= 0.1 && c.yesPrice <= 0.9);
   },
   shouldTrade(analysis) {
     if (analysis.edge > 20) {
@@ -29,10 +36,10 @@ const pureValue: Strategy = {
         reason: `Edge claim ${analysis.edge.toFixed(0)}pp exceeds 20pp sanity cap`,
       };
     }
-    if (analysis.edge >= 6 && analysis.confidence >= 0.4) {
+    if (analysis.edge >= KEEPER_EDGE_PP && analysis.confidence >= PURE_VALUE_MIN_CONFIDENCE) {
       return {
         trade: true,
-        reason: `Pure value: ${analysis.edge.toFixed(1)}pp edge, ${(analysis.confidence * 100).toFixed(0)}% confidence`,
+        reason: `Pure Value: ${analysis.edge.toFixed(1)}pp edge, ${(analysis.confidence * 100).toFixed(0)}% confidence`,
       };
     }
     return {
@@ -53,10 +60,10 @@ const whaleFlow: Strategy = {
   },
   shouldTrade(analysis) {
     if (!analysis.candidate.replayWhalePrint) return { trade: false, reason: "No whale print" };
-    if (analysis.edge >= 6 && analysis.confidence >= 0.38) {
+    if (analysis.edge >= KEEPER_EDGE_PP && analysis.confidence >= 0.38) {
       return {
         trade: true,
-        reason: `Whale print mid=${(analysis.candidate.yesPrice * 100).toFixed(1)}¢`,
+        reason: `Whale Flow: ${analysis.edge.toFixed(1)}pp edge, ${(analysis.confidence * 100).toFixed(0)}% conf, whale print`,
       };
     }
     return { trade: false, reason: "Whale print but weak edge/conf" };
@@ -80,10 +87,10 @@ const volumeImbalance: Strategy = {
     if (analysis.side !== side) {
       return { trade: false, reason: "Flow not aligned with price signal" };
     }
-    if (analysis.edge >= 6 && analysis.confidence >= 0.36) {
+    if (analysis.edge >= KEEPER_EDGE_PP && analysis.confidence >= 0.36) {
       return {
         trade: true,
-        reason: `Flow imbalance=${im.toFixed(2)} edge=${analysis.edge.toFixed(1)}pp`,
+        reason: `Volume Imbalance: ${analysis.edge.toFixed(1)}pp flow edge, imb=${im.toFixed(2)}`,
       };
     }
     return { trade: false, reason: "Flow edge/conf below threshold" };
@@ -98,7 +105,7 @@ const dipBuy: Strategy = {
     return candidates.filter((c) => {
       const h = c.priceHistory;
       if (!h?.isDip) return false;
-      if (h.snapshots < 9) return false;
+      if (h.snapshots < 8) return false;
       return c.hoursToExpiry > 4 && c.yesPrice > 0.1 && c.yesPrice < 0.9;
     });
   },
@@ -110,32 +117,32 @@ const dipBuy: Strategy = {
     const hoursLeft = analysis.candidate.hoursToExpiry;
     const hoursSinceDrop = h.hoursSincePeak;
 
-    if (h.isLiquidityFlush && analysis.edge >= 6 && analysis.confidence >= 0.34 && hoursLeft > 4) {
+    if (h.isLiquidityFlush && analysis.edge >= KEEPER_EDGE_PP && analysis.confidence >= 0.34 && hoursLeft > 4) {
       return {
         trade: true,
-        reason: `Liquidity flush dip: ${priceDropPct.toFixed(1)}% below mean (${h.recentMean.toFixed(2)}→${analysis.candidate.yesPrice.toFixed(2)}), ${hoursLeft.toFixed(1)}h left`,
+        reason: `Dip Buy: ${analysis.edge.toFixed(1)}pp edge, flush −${priceDropPct.toFixed(0)}% vs mean`,
         metadata: { dipCatch: true, priceDropPct, hoursRemaining: hoursLeft },
       };
     }
 
-    if (hoursSinceDrop !== null && hoursSinceDrop < 0.2) {
+    if (hoursSinceDrop !== null && hoursSinceDrop < 0.12) {
       return {
         trade: false,
-        reason: `Dip is only ${(hoursSinceDrop * 60).toFixed(0)} min old — waiting for confirmation (need ≥12 min).`,
+        reason: `Dip Buy: wait — dip only ${(hoursSinceDrop * 60).toFixed(0)}m old`,
       };
     }
 
-    if (analysis.edge >= 7 && analysis.confidence >= 0.4 && hoursLeft > 4) {
+    if (analysis.edge >= KEEPER_EDGE_PP && analysis.confidence >= 0.35 && hoursLeft > 4) {
       return {
         trade: true,
-        reason: `Dip buy: ${priceDropPct.toFixed(1)}% below ${h.snapshots}-snapshot mean, edge=${analysis.edge.toFixed(1)}pp`,
+        reason: `Dip Buy: ${analysis.edge.toFixed(1)}pp edge, −${priceDropPct.toFixed(0)}% vs ${h.snapshots}pt mean`,
         metadata: { dipCatch: true, priceDropPct, hoursRemaining: hoursLeft },
       };
     }
 
     return {
       trade: false,
-      reason: `Dip (${priceDropPct.toFixed(1)}%) — edge=${analysis.edge.toFixed(1)}pp conf=${(analysis.confidence * 100).toFixed(0)}% insufficient`,
+      reason: `Dip Buy: skip — ${priceDropPct.toFixed(0)}% dip, edge=${analysis.edge.toFixed(1)}pp`,
     };
   },
 };
@@ -171,4 +178,40 @@ export function evaluateStrategies(
     }
   }
   return matches;
+}
+
+/** Snapshot of candidate gates for skip logs (tape / dip / price band). */
+export function selectGateSummary(c: ScanCandidate): string {
+  const h = c.priceHistory;
+  return [
+    `yesMid=${c.yesPrice.toFixed(3)}`,
+    `yesAsk=${c.yesAsk != null ? c.yesAsk.toFixed(3) : "?"}`,
+    `noAsk=${c.noAsk != null ? c.noAsk.toFixed(3) : "?"}`,
+    `live=${c.hasLiveData}`,
+    `dip=${h?.isDip ?? false}`,
+    `snapshots=${h?.snapshots ?? "—"}`,
+    `whale=${c.replayWhalePrint === true}`,
+    `imb=${c.replayFlowImbalance != null ? c.replayFlowImbalance.toFixed(2) : "—"}`,
+    `hrs=${c.hoursToExpiry.toFixed(1)}`,
+  ].join(" ");
+}
+
+/** Per-enabled-strategy explanation when no keeper fires (for pipeline logging). */
+export function diagnoseStrategyMiss(analysis: AnalysisResult, enabledStrategyNames?: string[]): string {
+  const activeStrategies = enabledStrategyNames
+    ? strategies.filter((s) => enabledStrategyNames.includes(s.name))
+    : strategies;
+  const parts: string[] = [];
+  for (const strategy of activeStrategies) {
+    const candidateMatch = strategy.selectCandidates([analysis.candidate]);
+    if (candidateMatch.length === 0) {
+      parts.push(`${strategy.name}: failed selectCandidates (${selectGateSummary(analysis.candidate)})`);
+      continue;
+    }
+    const result = strategy.shouldTrade(analysis);
+    if (!result.trade) {
+      parts.push(`${strategy.name}: ${result.reason}`);
+    }
+  }
+  return parts.join(" || ");
 }

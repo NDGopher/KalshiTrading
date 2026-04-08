@@ -11,6 +11,8 @@ export interface RiskDecision {
   riskScore: number;
   rejectReason?: string;
   strategyName?: string;
+  /** Keeper one-liner (e.g. "Pure Value: 8.2pp edge, 53% confidence") for logs / DB. */
+  strategyReason?: string | null;
 }
 
 export interface RiskParams {
@@ -183,6 +185,7 @@ export async function assessRisk(
   bankroll: number,
   options?: {
     strategyName?: string;
+    strategyReason?: string | null;
     paperMode?: boolean;
     additionalOpenPositions?: number;
     /** Trades approved earlier within the same pipeline cycle (not yet in DB) */
@@ -274,5 +277,6 @@ export async function assessRisk(
     audit,
     ...result,
     strategyName: options?.strategyName,
+    strategyReason: options?.strategyReason ?? null,
   };
 }

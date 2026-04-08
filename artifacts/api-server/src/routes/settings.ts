@@ -1,19 +1,21 @@
 import { Router, type IRouter } from "express";
-import { db, tradingSettingsTable, apiCostsTable } from "@workspace/db";
-import { eq, gte, sql } from "drizzle-orm";
+import { tradingSettingsTable, apiCostsTable, withTransactionStatementTimeout, type DbClient } from "@workspace/db";
+import { eq, sql } from "drizzle-orm";
 import { getBalance } from "../lib/kalshi-client.js";
+import { startPipeline, stopPipeline } from "../lib/agents/pipeline.js";
 
 const router: IRouter = Router();
 
-async function ensureSettings() {
-  const [existing] = await db.select().from(tradingSettingsTable).limit(1);
-  if (existing) return existing;
+const SETTINGS_DB_MS = Math.min(120_000, Number(process.env.DB_ROUTE_STATEMENT_TIMEOUT_MS) || 30_000);
 
-  const [created] = await db
-    .insert(tradingSettingsTable)
-    .values({})
-    .returning();
-  return created;
+async function ensureSettings() {
+  return withTransactionStatementTimeout(SETTINGS_DB_MS, async (tx: DbClient) => {
+    const [existing] = await tx.select().from(tradingSettingsTable).limit(1);
+    if (existing) return existing;
+
+    const [created] = await tx.insert(tradingSettingsTable).values({}).returning();
+    return created;
+  });
 }
 
 async function computeBudgetStatus(settings: typeof tradingSettingsTable.$inferSelect) {
@@ -21,17 +23,17 @@ async function computeBudgetStatus(settings: typeof tradingSettingsTable.$inferS
   const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
-  const [dailyResult] = await db
-    .select({ total: sql<number>`coalesce(sum(${apiCostsTable.costUsd}), 0)` })
-    .from(apiCostsTable)
-    .where(gte(apiCostsTable.createdAt, startOfDay));
-  const dailySpend = Number(dailyResult?.total || 0);
+  const [row] = await withTransactionStatementTimeout(SETTINGS_DB_MS, async (tx: DbClient) =>
+    tx
+      .select({
+        dailySpend: sql<number>`coalesce(sum(case when ${apiCostsTable.createdAt} >= ${startOfDay} then ${apiCostsTable.costUsd} else 0 end), 0)::double precision`,
+        monthlySpend: sql<number>`coalesce(sum(case when ${apiCostsTable.createdAt} >= ${startOfMonth} then ${apiCostsTable.costUsd} else 0 end), 0)::double precision`,
+      })
+      .from(apiCostsTable),
+  );
 
-  const [monthlyResult] = await db
-    .select({ total: sql<number>`coalesce(sum(${apiCostsTable.costUsd}), 0)` })
-    .from(apiCostsTable)
-    .where(gte(apiCostsTable.createdAt, startOfMonth));
-  const monthlySpend = Number(monthlyResult?.total || 0);
+  const dailySpend = Number(row?.dailySpend ?? 0);
+  const monthlySpend = Number(row?.monthlySpend ?? 0);
 
   const dailyExceeded = settings.dailyBudgetUsd > 0 && dailySpend >= settings.dailyBudgetUsd;
   const monthlyExceeded = settings.monthlyBudgetUsd > 0 && monthlySpend >= settings.monthlyBudgetUsd;
@@ -117,7 +119,7 @@ router.put("/settings", async (req, res): Promise<void> => {
   if (body.sportFilters !== undefined && Array.isArray(body.sportFilters))
     updateData.sportFilters = body.sportFilters.filter((s: unknown) => typeof s === "string");
   if (body.scanIntervalMinutes !== undefined)
-    updateData.scanIntervalMinutes = clampNum(body.scanIntervalMinutes, 5, 1440, current.scanIntervalMinutes);
+    updateData.scanIntervalMinutes = clampNum(body.scanIntervalMinutes, 1, 1440, current.scanIntervalMinutes);
   if (body.pipelineActive !== undefined && typeof body.pipelineActive === "boolean")
     updateData.pipelineActive = body.pipelineActive;
   if (body.paperTradingMode !== undefined && typeof body.paperTradingMode === "boolean")
@@ -137,11 +139,21 @@ router.put("/settings", async (req, res): Promise<void> => {
   if (body.kalshiBaseUrl !== undefined)
     updateData.kalshiBaseUrl = typeof body.kalshiBaseUrl === "string" ? body.kalshiBaseUrl : null;
 
-  const [updated] = await db
-    .update(tradingSettingsTable)
-    .set(updateData)
-    .where(eq(tradingSettingsTable.id, current.id))
-    .returning();
+  const [updated] = await withTransactionStatementTimeout(SETTINGS_DB_MS, async (tx: DbClient) =>
+    tx
+      .update(tradingSettingsTable)
+      .set(updateData)
+      .where(eq(tradingSettingsTable.id, current.id))
+      .returning(),
+  );
+
+  if (updated.pipelineActive) {
+    stopPipeline();
+    startPipeline(updated.scanIntervalMinutes ?? 3);
+    console.log(`[Settings] Pipeline restarted from PUT: ${updated.scanIntervalMinutes ?? 3} min, keepers=${JSON.stringify(updated.enabledStrategies)}`);
+  } else {
+    stopPipeline();
+  }
 
   res.json(await settingsToResponse(updated));
 });

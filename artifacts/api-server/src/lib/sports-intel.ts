@@ -157,7 +157,7 @@ async function fetchMLBProbablePitchers(): Promise<MLBGamePitchers[]> {
         if (!t?.probablePitcher?.fullName) return null;
         const p = t.probablePitcher;
         return {
-          fullName: p.fullName,
+          fullName: p.fullName ?? "Unknown",
           throwingHand: p.pitchHand?.description ?? p.pitchHand?.code,
           note: p.note,
         };

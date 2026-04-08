@@ -1,31 +1,104 @@
 import { Router, type IRouter } from "express";
-import { db, tradesTable, positionsTable, tradingSettingsTable, paperTradesTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import {
+  db,
+  tradesTable,
+  positionsTable,
+  tradingSettingsTable,
+  paperTradesTable,
+  withTransactionStatementTimeout,
+  type DbClient,
+} from "@workspace/db";
+import { desc, sql, and, gte, inArray, isNotNull } from "drizzle-orm";
 import { getBalance, getPositions, getMarket } from "../lib/kalshi-client.js";
 import { isPipelineActive } from "../lib/agents/pipeline.js";
 
 const router: IRouter = Router();
 
+const DASH_DB_MS = Math.min(120_000, Number(process.env.DB_ROUTE_STATEMENT_TIMEOUT_MS) || 30_000);
+
 router.get("/dashboard/overview", async (_req, res): Promise<void> => {
-  const [settings] = await db.select().from(tradingSettingsTable).limit(1);
+  const settingsRows = await withTransactionStatementTimeout(DASH_DB_MS, async (tx: DbClient) =>
+    tx.select().from(tradingSettingsTable).limit(1),
+  );
+  const [settings] = settingsRows;
   const paperMode = settings?.paperTradingMode || false;
 
-  const tradeSource = paperMode
-    ? await db.select().from(paperTradesTable)
-    : await db.select().from(tradesTable);
+  let totalTrades = 0;
+  let wins = 0;
+  let winRate = 0;
+  let totalPnl = 0;
+  let todayPnl = 0;
+  let openPositions = 0;
+  let lastRunAt: string | null = null;
 
-  const completedTrades = tradeSource.filter((t) => t.status === "won" || t.status === "lost");
-  const totalTrades = completedTrades.length;
-  const wins = completedTrades.filter((t) => t.status === "won").length;
-  const winRate = totalTrades > 0 ? (wins / totalTrades) * 100 : 0;
-  const totalPnl = tradeSource.reduce((sum, t) => sum + (t.pnl || 0), 0);
+  if (paperMode) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const todayTrades = tradeSource.filter((t) => new Date(t.createdAt) >= today);
-  const todayPnl = todayTrades.reduce((sum, t) => sum + (t.pnl || 0), 0);
+    const [agg] = await withTransactionStatementTimeout(DASH_DB_MS, async (tx: DbClient) =>
+      tx
+        .select({
+          totalCompleted: sql<number>`count(*) filter (where ${paperTradesTable.status} in ('won','lost'))::int`,
+          wins: sql<number>`count(*) filter (where ${paperTradesTable.status} = 'won')::int`,
+          totalPnl: sql<string>`coalesce(sum(${paperTradesTable.pnl}) filter (where ${paperTradesTable.status} in ('won','lost')), 0)::text`,
+          openPositions: sql<number>`count(*) filter (where ${paperTradesTable.status} = 'open')::int`,
+        })
+        .from(paperTradesTable),
+    );
 
-  const openPositions = tradeSource.filter((t) => t.status === "open").length;
+    totalTrades = Number(agg?.totalCompleted ?? 0);
+    wins = Number(agg?.wins ?? 0);
+    winRate = totalTrades > 0 ? (wins / totalTrades) * 100 : 0;
+    totalPnl = parseFloat(String(agg?.totalPnl ?? "0")) || 0;
+    openPositions = Number(agg?.openPositions ?? 0);
+
+    const [tday] = await withTransactionStatementTimeout(DASH_DB_MS, async (tx: DbClient) =>
+      tx
+        .select({
+          todayPnl: sql<string>`coalesce(sum(${paperTradesTable.pnl}), 0)::text`,
+        })
+        .from(paperTradesTable)
+        .where(
+          and(
+            isNotNull(paperTradesTable.closedAt),
+            gte(paperTradesTable.closedAt, today),
+            inArray(paperTradesTable.status, ["won", "lost"]),
+          ),
+        ),
+    );
+    todayPnl = parseFloat(String(tday?.todayPnl ?? "0")) || 0;
+
+    const [last] = await withTransactionStatementTimeout(DASH_DB_MS, async (tx: DbClient) =>
+      tx
+        .select({ createdAt: paperTradesTable.createdAt })
+        .from(paperTradesTable)
+        .orderBy(desc(paperTradesTable.createdAt))
+        .limit(1),
+    );
+    lastRunAt = last?.createdAt?.toISOString() ?? null;
+  } else {
+    const tradeSource = await withTransactionStatementTimeout(DASH_DB_MS, async (tx: DbClient) =>
+      tx.select().from(tradesTable),
+    );
+
+    const completedTrades = tradeSource.filter((t) => t.status === "won" || t.status === "lost");
+    totalTrades = completedTrades.length;
+    wins = completedTrades.filter((t) => t.status === "won").length;
+    winRate = totalTrades > 0 ? (wins / totalTrades) * 100 : 0;
+    totalPnl = tradeSource.reduce((sum, t) => sum + (t.pnl || 0), 0);
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayTrades = tradeSource.filter((t) => new Date(t.createdAt) >= today);
+    todayPnl = todayTrades.reduce((sum, t) => sum + (t.pnl || 0), 0);
+
+    openPositions = tradeSource.filter((t) => t.status === "open").length;
+
+    const lastTrade = tradeSource.sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    )[0];
+    lastRunAt = lastTrade?.createdAt?.toISOString() || null;
+  }
 
   let balance = 0;
   let balanceError = false;
@@ -41,8 +114,6 @@ router.get("/dashboard/overview", async (_req, res): Promise<void> => {
     }
   }
 
-  const lastTrade = tradeSource.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
-
   res.json({
     balance,
     balanceError,
@@ -52,7 +123,7 @@ router.get("/dashboard/overview", async (_req, res): Promise<void> => {
     totalTrades,
     openPositions,
     pipelineActive: isPipelineActive(),
-    lastRunAt: lastTrade?.createdAt?.toISOString() || null,
+    lastRunAt,
     paperTradingMode: paperMode,
   });
 });

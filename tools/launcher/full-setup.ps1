@@ -89,11 +89,16 @@ if (-not $ok) {
 }
 
 $body = @{
-  paperTradingMode  = $true
-  targetBetUsd      = 15
-  enabledStrategies = @("Whale Flow", "Volume Imbalance", "Dip Buy", "Pure Value")
-  minEdge           = 6
-  kellyFraction     = 0.5
+  paperTradingMode     = $true
+  pipelineActive       = $true
+  scanIntervalMinutes  = 3
+  targetBetUsd         = 15
+  maxSimultaneousPositions = 0
+  enabledStrategies    = @("Whale Flow", "Volume Imbalance", "Dip Buy", "Pure Value")
+  minEdge              = 6
+  kellyFraction        = 0.5
+  dailyBudgetUsd       = 0
+  monthlyBudgetUsd     = 0
 } | ConvertTo-Json
 
 try {
@@ -103,6 +108,22 @@ try {
 } catch {
   Write-Host "[WARN] PUT settings failed: $_" -ForegroundColor Yellow
   Write-Host "Apply manually in the UI: http://localhost:5173/settings" -ForegroundColor Yellow
+}
+
+if ($env:FULL_SETUP_RESET_PAPER -eq "1") {
+  try {
+    Invoke-RestMethod -Uri "$apiBase/api/paper-trades/reset" -Method Post -TimeoutSec 30 | Out-Null
+    Write-Host "`nPaper trading reset to `$5,000 (FULL_SETUP_RESET_PAPER=1)." -ForegroundColor Green
+  } catch {
+    Write-Host "[WARN] Paper reset failed: $_" -ForegroundColor Yellow
+  }
+}
+
+try {
+  $cycle = Invoke-RestMethod -Uri "$apiBase/api/agents/run-cycle" -Method Post -TimeoutSec 300
+  Write-Host "`nInitial pipeline cycle finished: scanned=$($cycle.marketsScanned) trades=$($cycle.tradesExecuted)" -ForegroundColor Green
+} catch {
+  Write-Host "[WARN] run-cycle failed (API may still be warming up): $_" -ForegroundColor Yellow
 }
 
 Write-Host "`n--- Done ---" -ForegroundColor Cyan

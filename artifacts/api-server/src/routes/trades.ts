@@ -45,7 +45,7 @@ router.get("/trades", async (req, res): Promise<void> => {
         modelProbability: t.modelProbability,
         edge: t.edge,
         confidence: t.confidence,
-        clv: t.clv,
+        clv: !paperMode && "clv" in t ? (t as { clv: number | null }).clv : null,
         analystReasoning: t.analystReasoning,
         auditorFlags: (t.auditorFlags as string[]) || [],
         riskScore: t.riskScore,

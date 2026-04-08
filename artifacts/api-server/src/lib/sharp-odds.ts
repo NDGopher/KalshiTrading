@@ -396,21 +396,26 @@ export async function getSharpLine(
   };
 }
 
+/** Small chunks avoid bursting The Odds API / Pinnacle fetch path (live + future quota safety). */
+const SHARP_LINE_CONCURRENCY = 8;
+
 export async function batchGetSharpLines(
   candidates: Array<{ ticker: string; yesPrice: number }>
 ): Promise<Map<string, SharpLine>> {
   const result = new Map<string, SharpLine>();
   if (!process.env.ODDS_API_KEY) return result;
 
-  const results = await Promise.all(
-    candidates.map(async ({ ticker, yesPrice }) => {
-      const line = await getSharpLine(ticker, yesPrice).catch(() => null);
-      return { ticker, line };
-    })
-  );
-
-  for (const { ticker, line } of results) {
-    if (line) result.set(ticker, line);
+  for (let i = 0; i < candidates.length; i += SHARP_LINE_CONCURRENCY) {
+    const chunk = candidates.slice(i, i + SHARP_LINE_CONCURRENCY);
+    const results = await Promise.all(
+      chunk.map(async ({ ticker, yesPrice }) => {
+        const line = await getSharpLine(ticker, yesPrice).catch(() => null);
+        return { ticker, line };
+      }),
+    );
+    for (const { ticker, line } of results) {
+      if (line) result.set(ticker, line);
+    }
   }
 
   return result;

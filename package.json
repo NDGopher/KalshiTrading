@@ -5,6 +5,9 @@
   "scripts": {
     "preinstall": "node scripts/preinstall.cjs",
     "setup:paper-stack": "powershell -ExecutionPolicy Bypass -File ./tools/launcher/full-setup.ps1",
+    "paper:reset": "curl -s -X POST http://127.0.0.1:3000/api/paper-trades/reset",
+    "paper:reset:async": "curl -s -X POST \"http://127.0.0.1:3000/api/paper-trades/reset?async=1\"",
+    "pipeline:cycle": "curl -s -X POST http://127.0.0.1:3000/api/agents/run-cycle",
     "build": "pnpm run typecheck && pnpm -r --if-present run build",
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm --filter @workspace/backtester run typecheck && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"

@@ -1,10 +1,28 @@
+import { useQuery } from "@tanstack/react-query";
 import { useGetDashboardOverview, useGetPositions, getGetDashboardOverviewQueryKey, getGetPositionsQueryKey } from "@workspace/api-client-react";
 import { Layout } from "@/components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency, formatPercent } from "@/lib/utils";
-import { Activity, ArrowUpRight, ArrowDownRight, Target, Wallet, BarChart3 } from "lucide-react";
+import { Activity, ArrowUpRight, ArrowDownRight, Target, Wallet, BarChart3, FileText } from "lucide-react";
 import { motion } from "framer-motion";
+import { format } from "date-fns";
+import { Link } from "wouter";
+
+const API_BASE = `${import.meta.env.BASE_URL}api`;
+
+interface RecentPaperRow {
+  id: number;
+  kalshiTicker: string;
+  title: string;
+  side: string;
+  entryPrice: number;
+  quantity: number;
+  status: string;
+  strategyName: string | null;
+  edge: number | null;
+  createdAt: string;
+}
 
 export default function Dashboard() {
   const { data: overview, isLoading: overviewLoading } = useGetDashboardOverview({
@@ -13,6 +31,16 @@ export default function Dashboard() {
   
   const { data: positions, isLoading: positionsLoading } = useGetPositions({
     query: { queryKey: getGetPositionsQueryKey(), refetchInterval: 10000 }
+  });
+
+  const { data: recentPaper, isLoading: paperLoading } = useQuery({
+    queryKey: ["dashboard-recent-paper"],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/paper-trades?limit=12&enrichLive=1`);
+      const data = await res.json();
+      return (data.trades || []) as RecentPaperRow[];
+    },
+    refetchInterval: 15000,
   });
 
   const positionList = Array.isArray(positions) ? positions : [];
@@ -141,6 +169,77 @@ export default function Dashboard() {
                         </td>
                         <td className={`px-6 py-4 font-mono font-bold text-right ${isPositive(pos.unrealizedPnl) ? 'text-success' : 'text-destructive'}`}>
                           {isPositive(pos.unrealizedPnl) ? '+' : ''}{formatCurrency(pos.unrealizedPnl)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Recent paper trades (keeper strategies) */}
+        <Card className="border-white/10 glass-panel">
+          <CardHeader className="border-b border-white/5 bg-black/20">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-xl flex items-center gap-2">
+                <FileText className="w-5 h-5 text-muted-foreground" />
+                Recent paper trades
+              </CardTitle>
+              <Link href="/paper" className="text-sm text-accent hover:underline">
+                Open Paper →
+              </Link>
+            </div>
+            <p className="text-sm text-muted-foreground mt-1">
+              Live ASK taker fills · rule-based keepers only
+            </p>
+          </CardHeader>
+          <CardContent className="p-0">
+            {paperLoading ? (
+              <div className="p-8 text-center text-muted-foreground">Loading trades...</div>
+            ) : !recentPaper?.length ? (
+              <div className="p-10 text-center text-muted-foreground">
+                No paper trades yet. After the next pipeline cycle, executions appear here.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm text-left">
+                  <thead className="text-xs text-muted-foreground uppercase bg-white/[0.02]">
+                    <tr>
+                      <th className="px-6 py-3 font-semibold">Time</th>
+                      <th className="px-6 py-3 font-semibold">Market</th>
+                      <th className="px-6 py-3 font-semibold">Strategy</th>
+                      <th className="px-6 py-3 font-semibold">Side</th>
+                      <th className="px-6 py-3 font-semibold text-right">ASK / Size</th>
+                      <th className="px-6 py-3 font-semibold text-right">Edge</th>
+                      <th className="px-6 py-3 font-semibold rounded-tr-lg">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/5">
+                    {recentPaper.map((t) => (
+                      <tr key={t.id} className="hover:bg-white/[0.02]">
+                        <td className="px-6 py-3 font-mono text-xs text-muted-foreground whitespace-nowrap">
+                          {format(new Date(t.createdAt), "MMM d HH:mm")}
+                        </td>
+                        <td className="px-6 py-3 max-w-[220px]">
+                          <div className="font-medium text-white truncate" title={t.title}>{t.title}</div>
+                          <div className="text-xs font-mono text-muted-foreground truncate">{t.kalshiTicker}</div>
+                        </td>
+                        <td className="px-6 py-3 text-muted-foreground">{t.strategyName ?? "—"}</td>
+                        <td className="px-6 py-3">
+                          <Badge variant={t.side === "yes" ? "success" : "destructive"} className="uppercase">
+                            {t.side}
+                          </Badge>
+                        </td>
+                        <td className="px-6 py-3 font-mono text-right text-white">
+                          {formatCurrency(t.entryPrice)} × {t.quantity}
+                        </td>
+                        <td className="px-6 py-3 font-mono text-right text-muted-foreground">
+                          {t.edge != null ? `${t.edge.toFixed(1)}pp` : "—"}
+                        </td>
+                        <td className="px-6 py-3">
+                          <Badge variant="outline" className="capitalize">{t.status}</Badge>
                         </td>
                       </tr>
                     ))}

@@ -67,36 +67,6 @@ const AGENT_PIPELINE = [
   { name: "Reconciler", icon: RefreshCw, description: "Settles & tracks outcomes", color: "text-orange-400", bg: "from-orange-500/20 to-orange-600/10" },
 ];
 
-function TypewriterText({ text, active, speed = 18 }: { text: string; active: boolean; speed?: number }) {
-  const [displayed, setDisplayed] = useState(active ? "" : text);
-  const posRef = useRef(active ? 0 : text.length);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  useEffect(() => {
-    if (!active) { setDisplayed(text); return; }
-    posRef.current = 0;
-    setDisplayed("");
-    timerRef.current = setInterval(() => {
-      posRef.current += 1;
-      setDisplayed(text.slice(0, posRef.current));
-      if (posRef.current >= text.length && timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
-    }, speed);
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [text, active, speed]);
-
-  return (
-    <span>
-      {displayed}
-      {active && displayed.length < text.length && (
-        <span className="inline-block w-[6px] h-[11px] bg-primary/70 ml-[1px] animate-pulse align-middle" />
-      )}
-    </span>
-  );
-}
-
 function DispositionBadge({ d }: { d: LastCycleMarket["disposition"] }) {
   if (d === "executed") return <Badge className="bg-success/20 text-success border-success/30 text-[10px]">EXECUTED</Badge>;
   if (d === "skipped_risk") return <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30 text-[10px]">RISK BLOCKED</Badge>;
@@ -230,7 +200,7 @@ function MarketCard({ market, index, isLive }: { market: LastCycleMarket; index:
                 className="text-[10px] text-muted-foreground/50 hover:text-muted-foreground transition-colors flex items-center gap-1"
                 onClick={() => setReasoningExpanded(e => !e)}
               >
-                {reasoningExpanded ? "▲" : "▼"} {isLive ? "Live AI Reasoning" : "AI Reasoning"}
+                {reasoningExpanded ? "▲" : "▼"} {isLive ? "Live keeper reasoning" : "Keeper reasoning"}
               </button>
               <AnimatePresence>
                 {reasoningExpanded && (
@@ -242,7 +212,7 @@ function MarketCard({ market, index, isLive }: { market: LastCycleMarket; index:
                     className="overflow-hidden"
                   >
                     <div className="mt-1.5 text-[10px] text-muted-foreground/70 leading-relaxed bg-black/20 rounded p-2 border border-white/5 font-mono">
-                      <TypewriterText text={market.reasoning} active={isLive} speed={12} />
+                      {market.reasoning}
                     </div>
                   </motion.div>
                 )}

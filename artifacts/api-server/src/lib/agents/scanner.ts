@@ -12,8 +12,21 @@ import {
 import { db, historicalMarketsTable } from "@workspace/db";
 import { ne, desc } from "drizzle-orm";
 import { batchGetPriceHistory, type PriceHistory } from "../price-history.js";
-import { batchGetSharpLines, type SharpLine } from "../sharp-odds.js";
 import { updateLiveTapeFlow } from "../live-tape-flow.js";
+import { kalshiSportBucket } from "@workspace/backtester";
+
+/**
+ * Scanner sizing (live paper + future live) — **no Odds API / sharp lines**.
+ * - **Pool 500**: sports-heavy core + **ticker-bucket** non-sports injection (Politics/Crypto/Economics/Other).
+ * - **Enrich top 250**: price-history only (DB, batched 20 tickers → ~13 rounds).
+ *
+ * **Cycle budget:** Kalshi ~12–22s; persist 500 rows; enrich ~13 DB batches; analyst 250 ~2–6s.
+ * **Target: full trading cycle under 40s** when Kalshi is healthy.
+ */
+export const SCANNER_POOL_SIZE = 500;
+export const SCANNER_ENRICH_TOP_N = 250;
+/** Ranked candidates passed to rule-based analyst (same slice as price-history enrichment). */
+export const SCANNER_ANALYSIS_SLICE = 250;
 
 export interface ScanCandidate {
   market: KalshiMarket;
@@ -30,14 +43,12 @@ export interface ScanCandidate {
   /**
    * True when volume24h and liquidity came from the live Kalshi API order book.
    * False when sourced from the DB cache with synthetic/estimated volume numbers.
-   * Strategies that depend on real volume flow (Sharp Money, Late Efficiency spread)
+   * Strategies that depend on real volume flow (Whale Flow, Volume Imbalance)
    * must gate on this flag — synthetic numbers produce direction-blind noise signals.
    */
   hasLiveData: boolean;
   /** Price dip/surge signal from recent snapshot history (null if insufficient data) */
   priceHistory?: PriceHistory | null;
-  /** Sharp book comparison vs Pinnacle (null if no API key or not a game market) */
-  sharpLine?: SharpLine | null;
   /** Scan-to-scan signed flow proxy (replay-style); only meaningful with live API volume. */
   replayFlowImbalance?: number;
   replayWhalePrint?: boolean;
@@ -45,7 +56,7 @@ export interface ScanCandidate {
 
 // Sports markets rarely list games > 2 weeks out; non-sports (politics, crypto,
 // economics) can run 30-90 days. 720 h (30 days) lets both through. The vol/liq
-// floor in buildCandidateFromKalshi and the Sharp Money strategy gate dead markets.
+// floor in buildCandidateFromKalshi; tape strategies gate on hasLiveData.
 const MAX_HOURS_TO_EXPIRY = 720;
 
 function proximityScore(hoursToExpiry: number): number {
@@ -59,11 +70,28 @@ function proximityScore(hoursToExpiry: number): number {
   return 0.0;
 }
 
-const NON_SPORTS_CATEGORIES = ["Politics", "Economics", "Financials", "Entertainment", "Weather", "Crypto", "Finance"];
+const NON_SPORTS_CATEGORIES = [
+  "Politics",
+  "Economics",
+  "Financials",
+  "Entertainment",
+  "Weather",
+  "Crypto",
+  "Finance",
+  "Digital",
+];
 
 function isNonSportsCategory(candidate: ScanCandidate): boolean {
   const cat = candidate.market.category || "";
   return NON_SPORTS_CATEGORIES.some((nc) => cat.includes(nc));
+}
+
+/** Coarse bucket for diversity quotas (ticker-based — works when API category is missing). */
+function diversityQuotaBucket(c: ScanCandidate): "Politics" | "Crypto" | "Economics" | "Other" | "Sports" {
+  const b = kalshiSportBucket(c.market.ticker);
+  if (b === "Politics" || b === "Crypto" || b === "Economics") return b;
+  if (b === "Sports") return "Sports";
+  return "Other";
 }
 
 function compositeScore(candidate: ScanCandidate): number {
@@ -74,13 +102,13 @@ function compositeScore(candidate: ScanCandidate): number {
   const spreadQuality = Math.max(0, 1 - candidate.spread / 0.2);
   // Bonus for dip/surge signals — bump these up in priority
   const dipBonus = candidate.priceHistory?.isDip || candidate.priceHistory?.isSurge ? 0.8 : 0;
-  // Bonus when sharp book comparison shows an edge
-  const sharpBonus = candidate.sharpLine && candidate.sharpLine.edgeSide !== "NONE" ? 1.5 : 0;
-  // Non-sports bonus: sports markets dominate proximity scoring (games are today/tomorrow).
-  // Add a flat bonus for non-sports markets that have real active trading volume so they
-  // can compete with sports in the composite ranking. No bonus for dead markets (vol=0).
-  const nonSportsBonus = isNonSportsCategory(candidate) && candidate.volume24h > 100 ? 2.5 : 0;
-  return proximity * 3 + volNorm * 1.5 + liqNorm * 0.5 + spreadQuality * 0.5 + dipBonus + sharpBonus + nonSportsBonus;
+  // Non-sports bonus: use ticker bucket so politics/crypto compete even if category string is empty.
+  const bucket = kalshiSportBucket(candidate.market.ticker);
+  const nonSportsBonus =
+    bucket !== "Sports" && (candidate.volume24h > 50 || candidate.liquidity > 200) ? 2.5 : 0;
+  const categoryBonus =
+    isNonSportsCategory(candidate) && candidate.volume24h > 30 ? 0.4 : 0;
+  return proximity * 3 + volNorm * 1.5 + liqNorm * 0.5 + spreadQuality * 0.5 + dipBonus + nonSportsBonus + categoryBonus;
 }
 
 function buildCandidateFromKalshi(market: KalshiMarket): ScanCandidate | null {
@@ -143,7 +171,7 @@ async function scanFromCachedDb(): Promise<{ candidates: ScanCandidate[]; totalS
     .from(historicalMarketsTable)
     .where(ne(historicalMarketsTable.status, "settled"))
     .orderBy(desc(historicalMarketsTable.snapshotAt))
-    .limit(200);
+    .limit(500);
 
   const seen = new Set<string>();
   const candidates: ScanCandidate[] = [];
@@ -202,29 +230,20 @@ async function scanFromCachedDb(): Promise<{ candidates: ScanCandidate[]; totalS
   }
 
   candidates.sort((a, b) => compositeScore(b) - compositeScore(a));
-  return { candidates: candidates.slice(0, 50), totalScanned: rows.length };
+  const cap = Math.min(SCANNER_POOL_SIZE, candidates.length);
+  return { candidates: candidates.slice(0, cap), totalScanned: rows.length };
 }
 
 /**
- * Enrich top candidates with price history (dip detection) and sharp book lines.
- * Only applied to top N candidates to avoid excessive DB load on each scan cycle.
+ * Enrich top candidates with price history only (Dip Buy + ranking dip bonus).
+ * No external odds APIs — keepers use rule-based model + live tape + asks.
  */
 async function enrichCandidates(candidates: ScanCandidate[]): Promise<void> {
-  const TOP_N = 40;
-  const toEnrich = candidates.slice(0, TOP_N);
+  const toEnrich = candidates.slice(0, SCANNER_ENRICH_TOP_N);
   const tickers = toEnrich.map((c) => c.market.ticker);
-
-  const [priceHistories, sharpLines] = await Promise.all([
-    batchGetPriceHistory(tickers, 24).catch(() => new Map<string, PriceHistory>()),
-    batchGetSharpLines(tickers.map((t) => ({
-      ticker: t,
-      yesPrice: toEnrich.find((c) => c.market.ticker === t)?.yesPrice ?? 0.5,
-    }))).catch(() => new Map<string, SharpLine>()),
-  ]);
-
+  const priceHistories = await batchGetPriceHistory(tickers, 24).catch(() => new Map<string, PriceHistory>());
   for (const candidate of toEnrich) {
     candidate.priceHistory = priceHistories.get(candidate.market.ticker) ?? null;
-    candidate.sharpLine = sharpLines.get(candidate.market.ticker) ?? null;
   }
 }
 
@@ -253,47 +272,46 @@ export async function scanMarkets(_sportFilters?: string[]): Promise<{
 
     candidates.sort((a, b) => compositeScore(b) - compositeScore(a));
 
-    // Category-diversity selection:
-    // 1. Take top-60 by compositeScore (will be heavily sports-dominated)
-    // 2. Guarantee up to 5 slots per non-sports category from the remainder
-    //    — but only inject markets with REAL trading activity (volume > 50 or liq > 500)
-    //    to avoid wasting AI budget on dead placeholder markets.
-    // 3. CRITICAL: put diversity extras FIRST in the returned list so the pipeline's
-    //    top-35 slice always includes them. Without this, non-sports candidates append
-    //    after 60+ sports markets and never reach the analyst.
-    const POOL_SIZE = 60;
-    const DIVERSITY_SLOTS_PER_CAT = 5;
-    const diversityPool = candidates.slice(0, POOL_SIZE);
-    const diversityExtras: ScanCandidate[] = [];
-    const includedTickers = new Set(diversityPool.map((c) => c.market.ticker));
+    // Diversity: prepend **ticker-bucket** non-sports (Politics / Crypto / Economics / Other) so they
+    // are not crowded out when API `category` is "Unknown". Sports core unchanged: top SCANNER_POOL_SIZE
+    // by score after removing injected tickers from the tail build.
+    const POOL_SIZE = SCANNER_POOL_SIZE;
+    /** Per non-sports bucket, how many of the best-scoring markets to force into the pool head. */
+    const DIVERSITY_PER_BUCKET = 16;
+    const diversityBuckets = ["Politics", "Crypto", "Economics", "Other"] as const;
 
-    for (const cat of NON_SPORTS_CATEGORIES) {
-      const catCandidates = candidates
-        .filter((c) =>
-          !includedTickers.has(c.market.ticker) &&
-          (c.market.category || "").toLowerCase().includes(cat.toLowerCase()) &&
-          // Volume floor: must have some trading activity to be worth AI analysis.
-          // Kept low (10/100) so lightly-traded non-sports markets (politics near-term,
-          // active crypto) get analyzed. Sharp Money's own vol/liq ≥ 1.4× filter
-          // gates actual execution — this is just the "is the market alive?" check.
-          (c.volume24h > 10 || c.liquidity > 100)
+    const diversityPoolIds = new Set<string>();
+    const diversityExtras: ScanCandidate[] = [];
+
+    for (const dk of diversityBuckets) {
+      const picked = candidates
+        .filter(
+          (c) =>
+            !diversityPoolIds.has(c.market.ticker) &&
+            diversityQuotaBucket(c) === dk &&
+            (c.volume24h > 0 || c.liquidity > 25),
         )
-        .slice(0, DIVERSITY_SLOTS_PER_CAT);
-      for (const dc of catCandidates) {
+        .sort((a, b) => compositeScore(b) - compositeScore(a))
+        .slice(0, DIVERSITY_PER_BUCKET);
+      for (const dc of picked) {
         diversityExtras.push(dc);
-        includedTickers.add(dc.market.ticker);
+        diversityPoolIds.add(dc.market.ticker);
       }
     }
 
-    // Sort diversity extras by compositeScore so the best non-sports markets lead.
-    // Then interleave: first 7 non-sports slots (1 per category max), then sports pool.
-    // This guarantees non-sports reach the pipeline's top-35 analysis slice.
+    const diversityPool = candidates.filter((c) => !diversityPoolIds.has(c.market.ticker)).slice(0, POOL_SIZE);
+
     diversityExtras.sort((a, b) => compositeScore(b) - compositeScore(a));
-    const topCandidates = [...diversityExtras, ...diversityPool].slice(0, 100);
+    const topCandidates = [...diversityExtras, ...diversityPool].slice(0, SCANNER_POOL_SIZE);
 
     if (diversityExtras.length > 0) {
-      const catLog = diversityExtras.map((c) => `${c.market.category || "?"}(vol=${c.volume24h})`).join(", ");
-      console.info(`[Scanner] Diversity injection: +${diversityExtras.length} non-sports candidates → ${catLog}`);
+      const counts = new Map<string, number>();
+      for (const c of diversityExtras) {
+        const d = diversityQuotaBucket(c);
+        counts.set(d, (counts.get(d) ?? 0) + 1);
+      }
+      const bucketLog = [...counts.entries()].map(([k, v]) => `${k}=${v}`).join(", ");
+      console.info(`[Scanner] Diversity injection: +${diversityExtras.length} non-sports (ticker bucket) → ${bucketLog}`);
     } else {
       console.info(`[Scanner] No non-sports candidates with sufficient volume found this cycle`);
     }
@@ -305,7 +323,9 @@ export async function scanMarkets(_sportFilters?: string[]): Promise<{
       return { ...cached, source: "cached" };
     }
 
-    console.info(`[Scanner] Top ${topCandidates.length} candidates selected. Enriching top 40...`);
+    console.info(
+      `[Scanner] Top ${topCandidates.length} candidates (pool≤${SCANNER_POOL_SIZE} + diversity). Enriching top ${SCANNER_ENRICH_TOP_N} with price history only...`,
+    );
 
     // Persist snapshots to DB in small batches (best-effort warm cache)
     console.info(`[Scanner] Persisting ${topCandidates.length} snapshots to DB...`);
@@ -342,15 +362,18 @@ export async function scanMarkets(_sportFilters?: string[]): Promise<{
       console.warn(`[Scanner] DB persist failed (non-fatal):`, msg.slice(0, 200));
     }
 
-    // Enrich with price history and sharp odds (best-effort, non-blocking)
     console.info(`[Scanner] Enriching candidates...`);
     await enrichCandidates(topCandidates).catch((e) => {
       console.warn(`[Scanner] Enrichment failed (non-fatal):`, (e as Error).message?.slice(0, 80));
     });
 
-    console.info(`[Scanner] Enrichment done. Total candidates: ${topCandidates.length}`);
+    const enrichSample = topCandidates.slice(0, 10).map((c) => {
+      const ph = c.priceHistory ? `dip=${c.priceHistory.isDip}` : "no-ph";
+      return `${c.market.ticker}(${ph})`;
+    });
+    console.info(`[Scanner] Enrichment done. ${topCandidates.length} candidates | sample: ${enrichSample.join("; ")}`);
 
-    // Re-sort after enrichment so dip/sharp signals bubble up
+    // Re-sort after enrichment so dip/surge signals bubble up
     topCandidates.sort((a, b) => compositeScore(b) - compositeScore(a));
 
     return { candidates: topCandidates, totalScanned: markets.length, source: "live" };

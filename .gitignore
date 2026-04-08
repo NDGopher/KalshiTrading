@@ -75,3 +75,7 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+
+# Launcher scratch / local CLI captures (do not commit)
+tools/launcher/_*.txt
+tools/launcher/grok-run-output.txt

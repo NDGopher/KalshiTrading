@@ -1,10 +1,19 @@
 import { Router } from "express";
-import { db, paperTradesTable, tradingSettingsTable } from "@workspace/db";
-import { desc, eq } from "drizzle-orm";
+import {
+  paperTradesTable,
+  tradingSettingsTable,
+  withTransactionStatementTimeout,
+  type DbClient,
+} from "@workspace/db";
+import { desc, eq, sql } from "drizzle-orm";
 import { getMarket, getMarketYesAsk, getMarketYesBid } from "../lib/kalshi-client.js";
 import { reconcilePaperTrades } from "../lib/agents/reconciler.js";
 
 const router = Router();
+
+const RESET_TIMEOUT_MS = Math.min(120_000, Number(process.env.DB_RESET_STATEMENT_TIMEOUT_MS) || 45_000);
+const ROUTE_DB_TIMEOUT_MS = Math.min(120_000, Number(process.env.DB_ROUTE_STATEMENT_TIMEOUT_MS) || 60_000);
+const LIVE_ENRICH_CONCURRENCY = Math.min(8, Math.max(1, Number(process.env.PAPER_LIVE_ENRICH_CONCURRENCY) || 4));
 
 interface LivePrice {
   currentPrice: number;
@@ -17,54 +26,103 @@ async function fetchLivePrice(ticker: string, side: string, entryPrice: number):
     const bid = getMarketYesBid(market);
     const ask = getMarketYesAsk(market);
     if (side === "yes") {
-      const mid = bid > 0 && ask > 0 ? (bid + ask) / 2 : (ask > 0 ? ask : bid > 0 ? bid : 0);
+      const mid = bid > 0 && ask > 0 ? (bid + ask) / 2 : ask > 0 ? ask : bid > 0 ? bid : 0;
       if (mid > 0.005 && mid < 0.995) return { currentPrice: mid, priceSource: "live" };
     } else {
-      const yesMid = bid > 0 && ask > 0 ? (bid + ask) / 2 : (ask > 0 ? ask : bid > 0 ? bid : 0);
+      const yesMid = bid > 0 && ask > 0 ? (bid + ask) / 2 : ask > 0 ? ask : bid > 0 ? bid : 0;
       if (yesMid > 0.005 && yesMid < 0.995) return { currentPrice: 1 - yesMid, priceSource: "live" };
     }
   } catch {
+    /* Kalshi slow / rate limit */
   }
   return { currentPrice: entryPrice, priceSource: "entry_fallback" };
 }
 
-router.get("/paper-trades", async (req, res) => {
-  try {
-    const limit = parseInt(req.query.limit as string) || 50;
-    const trades = await db
-      .select()
-      .from(paperTradesTable)
-      .orderBy(desc(paperTradesTable.createdAt))
-      .limit(limit);
-
-    const enriched = await Promise.all(
-      trades.map(async (t) => {
+async function enrichTradesWithLivePrices<T extends { status: string; kalshiTicker: string; side: string; entryPrice: number; quantity: number }>(
+  trades: T[],
+): Promise<Array<T & { currentPrice: number; priceSource: "live" | "entry_fallback" | "settled"; unrealizedPnl?: number }>> {
+  const out: Array<T & { currentPrice: number; priceSource: "live" | "entry_fallback" | "settled"; unrealizedPnl?: number }> = [];
+  for (let i = 0; i < trades.length; i += LIVE_ENRICH_CONCURRENCY) {
+    const slice = trades.slice(i, i + LIVE_ENRICH_CONCURRENCY);
+    const batch = await Promise.all(
+      slice.map(async (t) => {
         if (t.status !== "open") {
-          return { ...t, currentPrice: t.exitPrice ?? t.entryPrice, priceSource: "settled" as const };
+          return {
+            ...t,
+            currentPrice: (t as { exitPrice?: number | null }).exitPrice ?? t.entryPrice,
+            priceSource: "settled" as const,
+          };
         }
         const lp = await fetchLivePrice(t.kalshiTicker, t.side, t.entryPrice);
         const cost = t.quantity * t.entryPrice;
         const currentValue = t.quantity * lp.currentPrice;
         const unrealizedPnl = currentValue - cost;
         return { ...t, currentPrice: lp.currentPrice, priceSource: lp.priceSource, unrealizedPnl };
-      })
+      }),
+    );
+    out.push(...batch);
+  }
+  return out;
+}
+
+router.get("/paper-trades", async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit as string) || 50;
+    // Default: DB-only (fast). Pass enrichLive=1 for Kalshi mark-to-market on open rows.
+    const enrichLive = req.query.enrichLive === "1" || req.query.enrichLive === "true";
+
+    const trades = await withTransactionStatementTimeout(ROUTE_DB_TIMEOUT_MS, async (tx: DbClient) =>
+      tx
+        .select()
+        .from(paperTradesTable)
+        .orderBy(desc(paperTradesTable.createdAt))
+        .limit(limit),
     );
 
-    res.json({ trades: enriched });
+    if (!enrichLive) {
+      const slim = trades.map((t) => {
+        if (t.status !== "open") {
+          return { ...t, currentPrice: t.exitPrice ?? t.entryPrice, priceSource: "settled" as const };
+        }
+        return { ...t, currentPrice: t.entryPrice, priceSource: "entry_fallback" as const, unrealizedPnl: 0 };
+      });
+      return res.json({ trades: slim, enrichLive: false });
+    }
+
+    const enriched = await enrichTradesWithLivePrices(trades);
+    return res.json({ trades: enriched, enrichLive: true });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Unknown error";
-    res.status(500).json({ error: msg });
+    return res.status(500).json({ error: msg });
   }
 });
 
-router.get("/paper-trades/stats", async (_req, res) => {
+router.get("/paper-trades/stats", async (req, res) => {
   try {
-    const allTrades = await db.select().from(paperTradesTable);
-    const closed = allTrades.filter((t) => t.status === "won" || t.status === "lost");
-    const open = allTrades.filter((t) => t.status === "open");
-    const wins = closed.filter((t) => t.status === "won");
-    const totalPnl = closed.reduce((s, t) => s + (t.pnl || 0), 0);
-    const winRate = closed.length > 0 ? wins.length / closed.length : 0;
+    let skipLive =
+      req.query.skipLive === "1" ||
+      req.query.skipLive === "true" ||
+      req.query.fast === "1";
+    const forceLiveOpen = req.query.liveOpen === "1" || req.query.liveOpen === "true";
+
+    const [agg] = await withTransactionStatementTimeout(ROUTE_DB_TIMEOUT_MS, async (tx: DbClient) =>
+      tx
+        .select({
+          totalTrades: sql<number>`count(*)::int`,
+          openTrades: sql<number>`count(*) filter (where ${paperTradesTable.status} = 'open')::int`,
+          closedTrades: sql<number>`count(*) filter (where ${paperTradesTable.status} in ('won','lost'))::int`,
+          wins: sql<number>`count(*) filter (where ${paperTradesTable.status} = 'won')::int`,
+          totalPnl: sql<string>`coalesce(sum(${paperTradesTable.pnl}) filter (where ${paperTradesTable.status} in ('won','lost')), 0)::text`,
+        })
+        .from(paperTradesTable),
+    );
+
+    const totalTrades = Number(agg?.totalTrades ?? 0);
+    const openCount = Number(agg?.openTrades ?? 0);
+    const closedCount = Number(agg?.closedTrades ?? 0);
+    const wins = Number(agg?.wins ?? 0);
+    const totalPnl = parseFloat(String(agg?.totalPnl ?? "0")) || 0;
+    const winRate = closedCount > 0 ? wins / closedCount : 0;
 
     const START_BALANCE = 5000;
 
@@ -72,70 +130,98 @@ router.get("/paper-trades/stats", async (_req, res) => {
     let openCostBasis = 0;
     let livePricesAvailable = true;
 
-    for (const t of open) {
-      const lp = await fetchLivePrice(t.kalshiTicker, t.side, t.entryPrice);
-      openPositionValue += t.quantity * lp.currentPrice;
-      openCostBasis += t.quantity * t.entryPrice;
-      if (lp.priceSource === "entry_fallback") livePricesAvailable = false;
+    // Many open legs → skip sequential Kalshi calls so /stats stays fast and does not hold the pool.
+    const OPEN_LIVE_MAX = Math.min(100, Math.max(5, Number(process.env.PAPER_STATS_OPEN_LIVE_MAX) || 25));
+    if (!forceLiveOpen && openCount > OPEN_LIVE_MAX) {
+      skipLive = true;
+    }
+
+    if (!skipLive && openCount > 0) {
+      const openRows = await withTransactionStatementTimeout(ROUTE_DB_TIMEOUT_MS, async (tx: DbClient) =>
+        tx
+          .select({
+            kalshiTicker: paperTradesTable.kalshiTicker,
+            side: paperTradesTable.side,
+            entryPrice: paperTradesTable.entryPrice,
+            quantity: paperTradesTable.quantity,
+          })
+          .from(paperTradesTable)
+          .where(eq(paperTradesTable.status, "open"))
+          .limit(500),
+      );
+
+      for (let i = 0; i < openRows.length; i += LIVE_ENRICH_CONCURRENCY) {
+        const slice = openRows.slice(i, i + LIVE_ENRICH_CONCURRENCY);
+        await Promise.all(
+          slice.map(async (t) => {
+            const lp = await fetchLivePrice(t.kalshiTicker, t.side, t.entryPrice);
+            openPositionValue += t.quantity * lp.currentPrice;
+            openCostBasis += t.quantity * t.entryPrice;
+            if (lp.priceSource === "entry_fallback") livePricesAvailable = false;
+          }),
+        );
+      }
+    } else if (skipLive && openCount > 0) {
+      const [costRow] = await withTransactionStatementTimeout(ROUTE_DB_TIMEOUT_MS, async (tx: DbClient) =>
+        tx
+          .select({
+            openCost: sql<string>`coalesce(sum((${paperTradesTable.entryPrice} * ${paperTradesTable.quantity})::double precision), 0)::text`,
+          })
+          .from(paperTradesTable)
+          .where(eq(paperTradesTable.status, "open")),
+      );
+      openCostBasis = parseFloat(String(costRow?.openCost ?? "0")) || 0;
+      openPositionValue = openCostBasis;
+      livePricesAvailable = false;
     }
 
     const unrealizedPnl = openPositionValue - openCostBasis;
-
-    // Anchor portfolio value to $5,000 start + all cash flows — same formula
-    // used by the equity graph so stat card and graph always agree.
-    // "Cash" = available cash = start + realized P&L - deployed capital.
     const totalPortfolioValue = START_BALANCE + totalPnl + unrealizedPnl;
     const cashBalance = START_BALANCE + totalPnl - openCostBasis;
 
-    res.json({
+    return res.json({
       paperBalance: cashBalance,
       totalPortfolioValue,
       unrealizedPnl,
       openPositionValue,
       livePricesAvailable,
-      totalTrades: allTrades.length,
-      openTrades: open.length,
-      closedTrades: closed.length,
-      wins: wins.length,
-      losses: closed.length - wins.length,
+      totalTrades,
+      openTrades: openCount,
+      closedTrades: closedCount,
+      wins,
+      losses: closedCount - wins,
       totalPnl,
       winRate,
+      skipLive: !!skipLive,
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Unknown error";
-    res.status(500).json({ error: msg });
+    return res.status(500).json({ error: msg });
   }
 });
 
 router.post("/paper-trades/reconcile", async (_req, res) => {
   try {
     const result = await reconcilePaperTrades();
-    res.json(result);
+    return res.json(result);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Unknown error";
-    res.status(500).json({ error: msg });
+    return res.status(500).json({ error: msg });
   }
 });
 
-/**
- * GET /paper-trades/equity
- * Returns a time-ordered equity curve built from actual trade open/close events.
- * Two cash-flow events per closed trade (debit at open, credit at close).
- * Open positions are held at cost-basis (no mark-to-market since we lack historical prices).
- */
 router.get("/paper-trades/equity", async (_req, res) => {
   try {
-    const START_BALANCE = 5000;
-    const allTrades = await db
-      .select()
-      .from(paperTradesTable)
-      .orderBy(paperTradesTable.createdAt);
+    const allTrades = await withTransactionStatementTimeout(ROUTE_DB_TIMEOUT_MS * 2, async (tx: DbClient) =>
+      tx.select().from(paperTradesTable).orderBy(paperTradesTable.createdAt),
+    );
 
-    // Build a flat list of cash-flow events
+    const START_BALANCE = 5000;
+
     interface CfEvent {
       ts: number;
       label: string;
-      delta: number; // positive = cash in, negative = cash out
+      delta: number;
       tradeId: number;
       type: "open" | "close";
     }
@@ -144,7 +230,6 @@ router.get("/paper-trades/equity", async (_req, res) => {
 
     for (const t of allTrades) {
       const cost = t.entryPrice * t.quantity;
-      // Opening event: cash goes out
       events.push({
         ts: new Date(t.createdAt).getTime(),
         label: `${t.side.toUpperCase()} ${t.quantity}ct @ $${t.entryPrice.toFixed(2)} — ${t.title.slice(0, 40)}`,
@@ -152,19 +237,15 @@ router.get("/paper-trades/equity", async (_req, res) => {
         tradeId: t.id,
         type: "open",
       });
-      // Closing event (if resolved): cash comes back in based on result.
-      // On WIN: return the original stake PLUS net profit (which is already
-      // fee-adjusted in t.pnl). Using cost + pnl keeps the graph consistent
-      // with the stats endpoint which also uses t.pnl for realized P&L.
-      // On LOSS: return 0 — stake is already gone from the open event.
       if ((t.status === "won" || t.status === "lost") && t.closedAt) {
         const netPnl = t.pnl ?? 0;
         const payout = t.status === "won" ? cost + netPnl : 0;
         events.push({
           ts: new Date(t.closedAt).getTime(),
-          label: t.status === "won"
-            ? `WON +$${netPnl.toFixed(2)} — ${t.title.slice(0, 40)}`
-            : `LOST -$${cost.toFixed(2)} — ${t.title.slice(0, 40)}`,
+          label:
+            t.status === "won"
+              ? `WON +$${netPnl.toFixed(2)} — ${t.title.slice(0, 40)}`
+              : `LOST -$${cost.toFixed(2)} — ${t.title.slice(0, 40)}`,
           delta: payout,
           tradeId: t.id,
           type: "close",
@@ -172,13 +253,9 @@ router.get("/paper-trades/equity", async (_req, res) => {
       }
     }
 
-    // Sort all events by timestamp
     events.sort((a, b) => a.ts - b.ts);
 
-    // Build equity curve — track which trades are "open" at each event
-    // for a more accurate portfolio value (cash + cost-basis of open positions)
-    const openSet = new Map<number, number>(); // tradeId → cost
-
+    const openSet = new Map<number, number>();
     let cash = START_BALANCE;
     const points: { date: string; portfolioValue: number; cashBalance: number; pnl: number; label: string }[] = [
       { date: "Start", portfolioValue: START_BALANCE, cashBalance: START_BALANCE, pnl: 0, label: "Starting balance" },
@@ -187,7 +264,7 @@ router.get("/paper-trades/equity", async (_req, res) => {
     for (const ev of events) {
       cash += ev.delta;
       if (ev.type === "open") {
-        openSet.set(ev.tradeId, -ev.delta); // cost = |delta|
+        openSet.set(ev.tradeId, -ev.delta);
       } else {
         openSet.delete(ev.tradeId);
       }
@@ -202,15 +279,13 @@ router.get("/paper-trades/equity", async (_req, res) => {
       });
     }
 
-    // Analytics: category and edge-vs-outcome
-    const closed = allTrades.filter(t => t.status === "won" || t.status === "lost");
+    const closed = allTrades.filter((t) => t.status === "won" || t.status === "lost");
 
-    // Median helper — avoids mean being wrecked by outlier edge claims
     const median = (vals: number[]): number => {
       if (vals.length === 0) return 0;
       const sorted = [...vals].sort((a, b) => a - b);
       const mid = Math.floor(sorted.length / 2);
-      return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+      return sorted.length % 2 === 0 ? (sorted[mid - 1]! + sorted[mid]!) / 2 : sorted[mid]!;
     };
 
     interface StrategyAgg {
@@ -232,7 +307,7 @@ router.get("/paper-trades/equity", async (_req, res) => {
       if (t.pnl != null) s.totalPnl += t.pnl;
       if (t.status === "won") s.wins++;
     }
-    const strategyStats = Array.from(stratMap.values()).map(s => ({
+    const strategyStats = Array.from(stratMap.values()).map((s) => ({
       name: s.name,
       trades: s.trades,
       wins: s.wins,
@@ -243,56 +318,83 @@ router.get("/paper-trades/equity", async (_req, res) => {
       roi: s.invested > 0 ? s.totalPnl / s.invested : 0,
     }));
 
-    // Edge buckets for calibration — use median within each bucket
     const edgeBuckets: { bucket: string; count: number; wins: number; medianEdge: number; winRate: number }[] = [];
-    const buckets = [[0,5],[5,10],[10,15],[15,20],[20,30],[30,50],[50,999]];
+    const buckets = [
+      [0, 5],
+      [5, 10],
+      [10, 15],
+      [15, 20],
+      [20, 30],
+      [30, 50],
+      [50, 999],
+    ];
     for (const [lo, hi] of buckets) {
-      const b = closed.filter(t => (t.edge ?? 0) >= lo && (t.edge ?? 0) < hi);
+      const b = closed.filter((t) => (t.edge ?? 0) >= lo && (t.edge ?? 0) < hi);
       if (b.length === 0) continue;
       edgeBuckets.push({
         bucket: lo === 50 ? `50pp+` : `${lo}–${hi}pp`,
         count: b.length,
-        wins: b.filter(t => t.status === "won").length,
-        medianEdge: median(b.map(t => t.edge ?? 0)),
-        winRate: b.filter(t => t.status === "won").length / b.length,
+        wins: b.filter((t) => t.status === "won").length,
+        medianEdge: median(b.map((t) => t.edge ?? 0)),
+        winRate: b.filter((t) => t.status === "won").length / b.length,
       });
     }
 
-    // Confidence buckets
     const confBuckets: { bucket: string; count: number; wins: number; winRate: number }[] = [];
-    const confRanges = [[0,40],[40,60],[60,75],[75,90],[90,100]];
+    const confRanges = [
+      [0, 40],
+      [40, 60],
+      [60, 75],
+      [75, 90],
+      [90, 100],
+    ];
     for (const [lo, hi] of confRanges) {
-      const b = closed.filter(t => ((t.confidence ?? 0) * 100) >= lo && ((t.confidence ?? 0) * 100) < hi);
+      const b = closed.filter((t) => ((t.confidence ?? 0) * 100) >= lo && ((t.confidence ?? 0) * 100) < hi);
       if (b.length === 0) continue;
       confBuckets.push({
         bucket: `${lo}–${hi}%`,
         count: b.length,
-        wins: b.filter(t => t.status === "won").length,
-        winRate: b.filter(t => t.status === "won").length / b.length,
+        wins: b.filter((t) => t.status === "won").length,
+        winRate: b.filter((t) => t.status === "won").length / b.length,
       });
     }
 
-    res.json({ points, strategyStats, edgeBuckets, confBuckets, startBalance: START_BALANCE });
+    return res.json({ points, strategyStats, edgeBuckets, confBuckets, startBalance: START_BALANCE });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Unknown error";
-    res.status(500).json({ error: msg });
+    return res.status(500).json({ error: msg });
   }
 });
 
-router.post("/paper-trades/reset", async (_req, res) => {
+router.post("/paper-trades/reset", async (req, res) => {
+  const asyncMode = req.query.async === "1" || req.query.async === "true";
+
+  const runReset = () =>
+    withTransactionStatementTimeout(RESET_TIMEOUT_MS, async (tx: DbClient) => {
+      await tx.execute(sql`TRUNCATE TABLE paper_trades RESTART IDENTITY`);
+      const [settings] = await tx.select().from(tradingSettingsTable).limit(1);
+      if (settings) {
+        await tx
+          .update(tradingSettingsTable)
+          .set({ paperBalance: 5000 })
+          .where(eq(tradingSettingsTable.id, settings.id));
+      }
+    });
+
+  if (asyncMode) {
+    void runReset().catch((err: unknown) => console.error("[paper-trades/reset async]", err));
+    return res.status(202).json({
+      message: "Paper reset queued (async). TRUNCATE + balance update run in background.",
+      async: true,
+    });
+  }
+
   try {
-    await db.delete(paperTradesTable);
-    const [settings] = await db.select().from(tradingSettingsTable).limit(1);
-    if (settings) {
-      await db
-        .update(tradingSettingsTable)
-        .set({ paperBalance: 5000 })
-        .where(eq(tradingSettingsTable.id, settings.id));
-    }
-    res.json({ message: "Paper trading reset. Balance restored to $5,000." });
+    await runReset();
+    return res.json({ message: "Paper trading reset. Balance restored to $5,000." });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Unknown error";
-    res.status(500).json({ error: msg });
+    return res.status(500).json({ error: msg });
   }
 });
 

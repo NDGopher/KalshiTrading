@@ -1,15 +1,26 @@
-import { db, agentRunsTable, marketOpportunitiesTable, tradingSettingsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
-import { scanMarkets } from "./scanner.js";
-import { analyzeMarkets, analyzeMarketsRuleBased } from "./analyst.js";
-import { auditTrades } from "./auditor.js";
+import {
+  db,
+  agentRunsTable,
+  marketOpportunitiesTable,
+  paperTradesTable,
+  tradesTable,
+  tradingSettingsTable,
+  withTransactionStatementTimeout,
+  type DbClient,
+} from "@workspace/db";
+import { eq, sql, inArray } from "drizzle-orm";
+import { scanMarkets, SCANNER_ANALYSIS_SLICE } from "./scanner.js";
+import { analyzeMarketsRuleBased, compactKeeperReasoning } from "./analyst.js";
+import { auditTrades, type AuditResult } from "./auditor.js";
 import { assessRisk, type RiskDecision } from "./risk-manager.js";
 import { executeTrade } from "./executor.js";
 import { reconcileOpenTrades, reconcilePaperTrades } from "./reconciler.js";
 import { checkBudget } from "./analyst.js";
 import { getBalance } from "../kalshi-client.js";
-import { evaluateStrategies } from "../strategies/index.js";
+import { kalshiSportBucket, kalshiSportLabel } from "@workspace/backtester";
+import { diagnoseStrategyMiss, evaluateStrategies } from "../strategies/index.js";
 import { startNewsFetcher, getNewsFetcherStatus } from "./news-fetcher.js";
+import { getLiveTapeSnapshot } from "../live-tape-flow.js";
 import { runLearner } from "./learner.js";
 
 interface AgentRunLog {
@@ -59,11 +70,10 @@ const CONFIDENCE_CEILING = 0.75;
 // This cap keeps us off the chalk and forces strategies to find meaningful edges.
 const NO_MAX_ENTRY_PRICE = 0.80;
 
-// Per-game position limit: max number of open bets on the SAME game (same game ID
-// extracted from the ticker). Prevents correlated spread stacking — e.g., 7 bets on
-// MIL/POR at different spread lines where ONE outcome resolves ALL of them the same way.
-// March 2026: Late Efficiency stacked 7 POR bets in one night → -$208 from one game.
-const MAX_POSITIONS_PER_GAME = 2;
+// Per-game: at most **one** open paper/live position per gameKey (same event), so we never
+// stack MIL YES + BOS NO + spreads on the same game. Auditor may approve many legs; we
+// also pre-filter to the single highest-edge approval per gameKey before execution.
+const MAX_POSITIONS_PER_GAME = 1;
 
 /**
  * Extracts a stable game key from a Kalshi ticker.
@@ -74,6 +84,29 @@ const MAX_POSITIONS_PER_GAME = 2;
 function extractGameKey(ticker: string): string | null {
   const parts = ticker.split("-");
   return parts.length >= 2 ? parts[1] : null;
+}
+
+/** One execution candidate per gameKey: highest edge (tie → higher adjusted confidence). */
+function dedupeApprovedOnePerGame(approved: AuditResult[]): AuditResult[] {
+  const bestByGame = new Map<string, AuditResult>();
+  const noGameKey: AuditResult[] = [];
+  for (const a of approved) {
+    const ticker = a.analysis.candidate.market.ticker;
+    const gk = extractGameKey(ticker);
+    if (!gk) {
+      noGameKey.push(a);
+      continue;
+    }
+    const prev = bestByGame.get(gk);
+    if (
+      !prev ||
+      a.analysis.edge > prev.analysis.edge ||
+      (a.analysis.edge === prev.analysis.edge && a.adjustedConfidence > prev.adjustedConfidence)
+    ) {
+      bestByGame.set(gk, a);
+    }
+  }
+  return [...noGameKey, ...bestByGame.values()];
 }
 
 let lastCycleMarkets: LastCycleMarket[] = [];
@@ -121,6 +154,10 @@ const agentStatuses: Record<string, {
 const LEARNER_CYCLE_INTERVAL = 10;
 let pipelineCycleCount = 0;
 
+/** Bound Neon latency so one slow statement cannot wedge the pool for minutes. */
+const PIPELINE_DB_MS = Math.min(120_000, Number(process.env.PIPELINE_STATEMENT_TIMEOUT_MS) || 90_000);
+const PIPELINE_AGENT_LOG_MS = Math.min(60_000, Number(process.env.PIPELINE_AGENT_LOG_TIMEOUT_MS) || 25_000);
+
 export function getAgentStatuses() {
   return Object.entries(agentStatuses).map(([name, s]) => ({
     name,
@@ -131,13 +168,23 @@ export function getAgentStatuses() {
   }));
 }
 
-async function logAgentRun(run: AgentRunLog): Promise<void> {
-  await db.insert(agentRunsTable).values({
-    agentName: run.agentName,
-    status: run.status,
-    duration: run.duration,
-    details: run.details,
-  });
+async function flushAgentRuns(runs: AgentRunLog[]): Promise<void> {
+  if (runs.length === 0) return;
+  try {
+    await withTransactionStatementTimeout(PIPELINE_AGENT_LOG_MS, async (tx: DbClient) => {
+      await tx.insert(agentRunsTable).values(
+        runs.map((run) => ({
+          agentName: run.agentName,
+          status: run.status,
+          duration: run.duration,
+          details: run.details,
+        })),
+      );
+    });
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("[Pipeline] flushAgentRuns failed:", msg);
+  }
 }
 
 function updateAgentStatus(name: string, status: "idle" | "running" | "error", result?: string, error?: string) {
@@ -180,13 +227,38 @@ export async function runTradingCycle(): Promise<CycleResult> {
   const agentResults: AgentRunLog[] = [];
 
   try {
-    const [settings] = await db.select().from(tradingSettingsTable).limit(1);
+    let settings: typeof tradingSettingsTable.$inferSelect | undefined;
+    try {
+      const rows = await withTransactionStatementTimeout(PIPELINE_DB_MS, async (tx: DbClient) =>
+        tx.select().from(tradingSettingsTable).limit(1),
+      );
+      settings = rows[0];
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error("[Pipeline] Failed to load trading_settings:", msg);
+      finishCycle();
+      return {
+        marketsScanned: 0,
+        opportunitiesFound: 0,
+        tradesExecuted: 0,
+        tradesSkipped: 0,
+        totalDuration: (Date.now() - cycleStart) / 1000,
+        agentResults: [
+          {
+            agentName: "Pipeline",
+            status: "error",
+            duration: 0,
+            details: `DB timeout loading settings: ${msg}`,
+          },
+        ],
+      };
+    }
     if (!settings) {
       const noSettingsResult: AgentRunLog = {
         agentName: "Pipeline", status: "error", duration: 0,
         details: "No trading settings found. Please save settings first.",
       };
-      await logAgentRun(noSettingsResult);
+      await flushAgentRuns([noSettingsResult]);
       finishCycle();
       return {
         marketsScanned: 0, opportunitiesFound: 0, tradesExecuted: 0,
@@ -196,6 +268,11 @@ export async function runTradingCycle(): Promise<CycleResult> {
 
     const paperMode = settings.paperTradingMode;
     const enabledStrategies = (settings.enabledStrategies as string[] | null) ?? undefined;
+    const intervalMin = settings.scanIntervalMinutes ?? 3;
+
+    console.log(
+      `[Pipeline] Cycle ${liveCycleId} started | paperMode=${paperMode} | scanIntervalMin=${intervalMin} | keepers=${JSON.stringify(enabledStrategies ?? ["default"])}`,
+    );
 
     const budgetCheck = await checkBudget();
     if (!budgetCheck.allowed) {
@@ -203,7 +280,7 @@ export async function runTradingCycle(): Promise<CycleResult> {
         agentName: "Pipeline", status: "skipped", duration: 0,
         details: `Budget exceeded: ${budgetCheck.reason}. Pipeline paused.`,
       };
-      await logAgentRun(budgetResult);
+      await flushAgentRuns([budgetResult]);
       finishCycle();
       return {
         marketsScanned: 0, opportunitiesFound: 0, tradesExecuted: 0,
@@ -234,6 +311,14 @@ export async function runTradingCycle(): Promise<CycleResult> {
     try {
       scanResult = await scanMarkets(settings.sportFilters as string[]);
       const scanDuration = (Date.now() - scanStart) / 1000;
+      const sample = scanResult.candidates.slice(0, 12).map((c) => c.market.ticker);
+      console.log(
+        `[Scanner] ${scanResult.totalScanned} markets → ${scanResult.candidates.length} candidates (pool) | sample: ${sample.join(", ")}`,
+      );
+      const tapeSnap = getLiveTapeSnapshot(12);
+      console.log(
+        `[Tape] tracked=${tapeSnap.trackedTickers} tickers with flow state | recent: ${tapeSnap.sampleTickers.slice(-8).join(", ") || "(none yet)"}`,
+      );
       updateAgentStatus("Scanner", "idle", `Scanned ${scanResult.totalScanned} markets, found ${scanResult.candidates.length} candidates`);
       agentResults.push({ agentName: "Scanner", status: "success", duration: scanDuration, details: `Scanned ${scanResult.totalScanned} markets, ${scanResult.candidates.length} candidates` });
     } catch (err: unknown) {
@@ -241,36 +326,37 @@ export async function runTradingCycle(): Promise<CycleResult> {
       const scanDuration = (Date.now() - scanStart) / 1000;
       updateAgentStatus("Scanner", "error", undefined, errMsg);
       agentResults.push({ agentName: "Scanner", status: "error", duration: scanDuration, details: errMsg });
-      for (const run of agentResults) await logAgentRun(run);
+      await flushAgentRuns(agentResults);
       finishCycle();
       return { marketsScanned: 0, opportunitiesFound: 0, tradesExecuted: 0, tradesSkipped: 0, totalDuration: (Date.now() - cycleStart) / 1000, agentResults };
     }
 
     if (scanResult.candidates.length === 0) {
-      for (const run of agentResults) await logAgentRun(run);
+      await flushAgentRuns(agentResults);
       finishCycle();
       return { marketsScanned: scanResult.totalScanned, opportunitiesFound: 0, tradesExecuted: 0, tradesSkipped: 0, totalDuration: (Date.now() - cycleStart) / 1000, agentResults };
     }
 
-    // Top 35: diverse categories after scanner diversity pass. Paper = rule-based replay math (no Anthropic).
-    const topCandidates = scanResult.candidates.slice(0, 35);
+    // Top N matches scanner price-history enrichment slice. Rule-based only (no Anthropic).
+    const topCandidates = scanResult.candidates.slice(0, SCANNER_ANALYSIS_SLICE);
 
     let analysisStart = Date.now();
     updateAgentStatus("Analyst", "running");
     let analyses;
     try {
-      analyses = paperMode ? analyzeMarketsRuleBased(topCandidates) : await analyzeMarkets(topCandidates);
+      analyses = analyzeMarketsRuleBased(topCandidates);
       const analysisDuration = (Date.now() - analysisStart) / 1000;
       const withEdge = analyses.filter((a) => a.edge > 0);
-      const modeLabel = paperMode ? " [paper rule-based]" : "";
-      updateAgentStatus("Analyst", "idle", `Analyzed ${analyses.length} markets${modeLabel}, ${withEdge.length} with edge`);
-      agentResults.push({ agentName: "Analyst", status: "success", duration: analysisDuration, details: `${withEdge.length}/${analyses.length} markets have edge${modeLabel}` });
+      const topForLog = topCandidates.slice(0, 8).map((c) => `${c.market.ticker}@${(c.yesPrice * 100).toFixed(0)}¢`);
+      console.log(`[Enrichment] Using rule-based model on top ${topCandidates.length} candidates (pipeline slice ${topCandidates.length}). Snapshot: ${topForLog.join(" | ")}`);
+      updateAgentStatus("Analyst", "idle", `Analyzed ${analyses.length} markets [rule-based], ${withEdge.length} with edge`);
+      agentResults.push({ agentName: "Analyst", status: "success", duration: analysisDuration, details: `${withEdge.length}/${analyses.length} markets have edge [rule-based]` });
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : "Unknown error";
       const analysisDuration = (Date.now() - analysisStart) / 1000;
       updateAgentStatus("Analyst", "error", undefined, errMsg);
       agentResults.push({ agentName: "Analyst", status: "error", duration: analysisDuration, details: errMsg });
-      for (const run of agentResults) await logAgentRun(run);
+      await flushAgentRuns(agentResults);
       finishCycle();
       return { marketsScanned: scanResult.totalScanned, opportunitiesFound: 0, tradesExecuted: 0, tradesSkipped: 0, totalDuration: (Date.now() - cycleStart) / 1000, agentResults };
     }
@@ -285,31 +371,60 @@ export async function runTradingCycle(): Promise<CycleResult> {
       confidencePenaltyPct: settings.confidencePenaltyPct,
       minEdge: auditMinEdge,
     });
-    const approved = auditResults.filter((a) => a.approved);
+    const approvedRaw = auditResults.filter((a) => a.approved);
+    const approved = dedupeApprovedOnePerGame(approvedRaw);
+    if (approvedRaw.length > approved.length) {
+      console.log(
+        `[Pipeline] Same-game dedupe: ${approvedRaw.length} auditor-approved -> ${approved.length} ` +
+          `(1 per gameKey, kept higher edge / tie-break confidence)`,
+      );
+    }
     const auditDuration = (Date.now() - auditStart) / 1000;
-    updateAgentStatus("Auditor", "idle", `${approved.length}/${auditResults.length} trades approved`);
-    agentResults.push({ agentName: "Auditor", status: "success", duration: auditDuration, details: `${approved.length}/${auditResults.length} approved` });
+    updateAgentStatus(
+      "Auditor",
+      "idle",
+      `${approved.length} after game-dedupe (${approvedRaw.length} raw) / ${auditResults.length} analyzed`,
+    );
+    agentResults.push({
+      agentName: "Auditor",
+      status: "success",
+      duration: auditDuration,
+      details: `${approved.length} post-dedupe (${approvedRaw.length} raw approved, 1/gameKey) / ${auditResults.length} analyzed`,
+    });
 
-    await db.delete(marketOpportunitiesTable);
-    for (const audit of auditResults) {
-      const { analysis } = audit;
-      const strategyMatches = evaluateStrategies(analysis, enabledStrategies);
-      await db.insert(marketOpportunitiesTable).values({
-        kalshiTicker: analysis.candidate.market.ticker,
-        title: analysis.candidate.market.title || analysis.candidate.market.ticker,
-        category: analysis.candidate.market.category || "Sports",
-        currentYesPrice: analysis.candidate.yesPrice,
-        modelProbability: analysis.modelProbability,
-        edge: analysis.edge,
-        confidence: audit.adjustedConfidence,
-        side: analysis.side,
-        volume24h: analysis.candidate.volume24h,
-        expiresAt: new Date(analysis.candidate.market.expected_expiration_time || analysis.candidate.market.expiration_time || analysis.candidate.market.close_time),
+    try {
+      await withTransactionStatementTimeout(PIPELINE_DB_MS, async (tx: DbClient) => {
+        await tx.delete(marketOpportunitiesTable);
+        if (auditResults.length > 0) {
+          const rows = auditResults.map((audit) => {
+            const { analysis } = audit;
+            return {
+              kalshiTicker: analysis.candidate.market.ticker,
+              title: analysis.candidate.market.title || analysis.candidate.market.ticker,
+              category: analysis.candidate.market.category || "Sports",
+              currentYesPrice: analysis.candidate.yesPrice,
+              modelProbability: analysis.modelProbability,
+              edge: analysis.edge,
+              confidence: audit.adjustedConfidence,
+              side: analysis.side,
+              volume24h: analysis.candidate.volume24h,
+              expiresAt: new Date(
+                analysis.candidate.market.expected_expiration_time ||
+                  analysis.candidate.market.expiration_time ||
+                  analysis.candidate.market.close_time,
+              ),
+            };
+          });
+          await tx.insert(marketOpportunitiesTable).values(rows);
+        }
       });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error("[Pipeline] market_opportunities refresh failed:", msg);
     }
 
     if (approved.length === 0) {
-      for (const run of agentResults) await logAgentRun(run);
+      await flushAgentRuns(agentResults);
       finishCycle();
       return { marketsScanned: scanResult.totalScanned, opportunitiesFound: auditResults.length, tradesExecuted: 0, tradesSkipped: auditResults.length, totalDuration: (Date.now() - cycleStart) / 1000, agentResults, paperMode };
     }
@@ -318,16 +433,19 @@ export async function runTradingCycle(): Promise<CycleResult> {
     updateAgentStatus("Risk Manager", "running");
     let bankroll: number;
     if (paperMode) {
-      // Compute true paper bankroll from trade history rather than using the
-      // stale DB paper_balance field (which drifts when executor deducts stakes
-      // but reconciler only credits net profit rather than full stake recovery).
+      // True paper bankroll: $5,000 + sum of settled P&L (pnl column). Open stakes are
+      // deducted from paper_balance in the executor; wins credit full $1/contract (minus fee) on settle.
       // Formula: $5,000 starting capital + all settled net P&L.
       // Open positions don't reduce available cash in paper mode — they are
       // virtual, so we only anchor on realised results.
       try {
-        const { paperTradesTable: ptbl } = await import("@workspace/db");
-        const allSettled = await db.select({ pnl: ptbl.pnl }).from(ptbl);
-        const settledPnl = allSettled.reduce((s, t) => s + (t.pnl || 0), 0);
+        const [sumRow] = await withTransactionStatementTimeout(PIPELINE_DB_MS, async (tx: DbClient) =>
+          tx
+            .select({ total: sql<string>`coalesce(sum(${paperTradesTable.pnl}), 0)::text` })
+            .from(paperTradesTable)
+            .where(inArray(paperTradesTable.status, ["won", "lost"])),
+        );
+        const settledPnl = parseFloat(String(sumRow?.total ?? "0")) || 0;
         bankroll = 5000 + settledPnl;
       } catch {
         bankroll = settings.paperBalance || 5000;
@@ -353,18 +471,28 @@ export async function runTradingCycle(): Promise<CycleResult> {
     const confidenceCappedTickers = new Set<string>();
     const noPriceCappedTickers = new Set<string>();
     const gameCapTickers = new Set<string>();
+    const duplicateTickerSkips = new Set<string>();
     const intraCycleTrades: Array<{ kalshiTicker: string; side: string }> = [];
 
     // Build a game-key → count map from currently open DB positions.
     // This prevents adding a 3rd bet on a game where we already have 2 open.
     const openGameCounts = new Map<string, number>();
+    const openTickers = new Set<string>();
     try {
-      const { paperTradesTable } = await import("@workspace/db");
-      const openTrades = await db
-        .select({ kalshiTicker: paperTradesTable.kalshiTicker })
-        .from(paperTradesTable)
-        .where(eq(paperTradesTable.status, "open"));
+      const openTrades = await withTransactionStatementTimeout(PIPELINE_DB_MS, async (tx: DbClient) => {
+        if (paperMode) {
+          return tx
+            .select({ kalshiTicker: paperTradesTable.kalshiTicker })
+            .from(paperTradesTable)
+            .where(eq(paperTradesTable.status, "open"));
+        }
+        return tx
+          .select({ kalshiTicker: tradesTable.kalshiTicker })
+          .from(tradesTable)
+          .where(eq(tradesTable.status, "open"));
+      });
       for (const t of openTrades) {
+        openTickers.add(t.kalshiTicker);
         const gk = extractGameKey(t.kalshiTicker);
         if (gk) openGameCounts.set(gk, (openGameCounts.get(gk) ?? 0) + 1);
       }
@@ -376,6 +504,20 @@ export async function runTradingCycle(): Promise<CycleResult> {
       const strategyMatches = evaluateStrategies(audit.analysis, enabledStrategies);
       if (strategyMatches.length === 0) {
         strategySkipped++;
+        const c = audit.analysis.candidate;
+        const m = c.market;
+        const cat = m.category || "Unknown";
+        const sportFine = kalshiSportLabel(m.ticker);
+        const sportBucket = kalshiSportBucket(m.ticker);
+        const diag = diagnoseStrategyMiss(audit.analysis, enabledStrategies);
+        const ya = c.yesAsk != null ? c.yesAsk.toFixed(4) : "?";
+        const na = c.noAsk != null ? c.noAsk.toFixed(4) : "?";
+        console.log(
+          `[Pipeline] No-strategy skip: ticker=${m.ticker} sportBucket=${sportBucket} sportLabel=${sportFine} category=${cat} ` +
+            `side=${audit.analysis.side} edge=${audit.analysis.edge.toFixed(2)}pp ` +
+            `modelConf=${(audit.analysis.confidence * 100).toFixed(1)}% adjConf=${(audit.adjustedConfidence * 100).toFixed(1)}% ` +
+            `yesMid=${(c.yesPrice ?? 0).toFixed(3)} yesAsk=${ya} noAsk=${na} | ${diag}`,
+        );
         continue;
       }
 
@@ -414,12 +556,28 @@ export async function runTradingCycle(): Promise<CycleResult> {
         if (totalGamePositions >= MAX_POSITIONS_PER_GAME) {
           gameCapSkipped++;
           gameCapTickers.add(ticker);
-          console.log(`[Pipeline] Game cap: ${ticker} already has ${totalGamePositions} positions on game ${gameKey} (max ${MAX_POSITIONS_PER_GAME}) — skipped`);
+          const cat = audit.analysis.candidate.market.category || "Unknown";
+          const strat = strategyMatches[0]?.strategyName ?? "?";
+          const sf = kalshiSportLabel(ticker);
+          const sb = kalshiSportBucket(ticker);
+          console.log(
+            `[Pipeline] Game-cap skip: ticker=${ticker} sportBucket=${sb} sportLabel=${sf} category=${cat} ` +
+              `side=${audit.analysis.side} gameKey=${gameKey} strategy=${strat} ` +
+              `dbPositionsOnGame=${dbCount} queuedThisCycle=${cycleCount} total=${totalGamePositions} max=${MAX_POSITIONS_PER_GAME} ` +
+              `edge=${audit.analysis.edge.toFixed(2)}pp conf=${(audit.adjustedConfidence * 100).toFixed(1)}% — per-game open limit`,
+          );
           continue;
         }
       }
 
+      if (openTickers.has(ticker) || intraCycleTrades.some((x) => x.kalshiTicker === ticker)) {
+        duplicateTickerSkips.add(ticker);
+        console.log(`[Pipeline] Same-ticker skip: already open or queued ${ticker}`);
+        continue;
+      }
+
       const strategyName = strategyMatches[0].strategyName;
+      const strategyReason = strategyMatches[0].reason;
       const decision = await assessRisk(audit, {
         maxPositionPct: settings.maxPositionPct,
         kellyFraction: settings.kellyFraction,
@@ -427,7 +585,13 @@ export async function runTradingCycle(): Promise<CycleResult> {
         maxDrawdownPct: settings.maxDrawdownPct,
         maxSimultaneousPositions: settings.maxSimultaneousPositions,
         targetBetUsd: settings.targetBetUsd ?? 15,
-      }, effectiveBankroll, { strategyName, paperMode, additionalOpenPositions: approvedThisCycle, intraCycleTrades });
+      }, effectiveBankroll, {
+        strategyName,
+        strategyReason,
+        paperMode,
+        additionalOpenPositions: approvedThisCycle,
+        intraCycleTrades,
+      });
       riskDecisions.push(decision);
       if (decision.approved) {
         const entryPrice =
@@ -497,16 +661,19 @@ export async function runTradingCycle(): Promise<CycleResult> {
         disposition = "executed";
       } else if (confidenceCappedTickers.has(c.market.ticker)) {
         disposition = "skipped_confidence";
-        rejectionReason = `Confidence ${((analysis?.confidence ?? 0) * 100).toFixed(0)}% exceeds ${(CONFIDENCE_CEILING * 100).toFixed(0)}% ceiling — historically 30% win rate above this level`;
+        rejectionReason = `Conf ${((analysis?.confidence ?? 0) * 100).toFixed(0)}% > ${(CONFIDENCE_CEILING * 100).toFixed(0)}% cap`;
       } else if (noPriceCappedTickers.has(c.market.ticker)) {
         disposition = "skipped_no_price";
         const candidate = c;
         const noAsk = candidate.noAsk ?? candidate.noPrice ?? (1 - (candidate.yesPrice ?? 0));
-        rejectionReason = `NO entry ${(noAsk * 100).toFixed(0)}¢ exceeds ${(NO_MAX_ENTRY_PRICE * 100).toFixed(0)}¢ cap — requires >83% win rate to break even at this price`;
+        rejectionReason = `NO ask ${(noAsk * 100).toFixed(0)}¢ > ${(NO_MAX_ENTRY_PRICE * 100).toFixed(0)}¢ max`;
       } else if (gameCapTickers.has(c.market.ticker)) {
         disposition = "skipped_game_cap";
         const gk = extractGameKey(c.market.ticker);
-        rejectionReason = `Game position limit reached — already have ${MAX_POSITIONS_PER_GAME} bets on game ${gk ?? "this game"} (correlated spread stacking blocked)`;
+        rejectionReason = `Game cap: max ${MAX_POSITIONS_PER_GAME} open on ${gk ?? "this game"}`;
+      } else if (duplicateTickerSkips.has(c.market.ticker)) {
+        disposition = "skipped_duplicate";
+        rejectionReason = "Same ticker already open or queued this cycle";
       } else if (riskSkippedTickers.has(c.market.ticker)) {
         disposition = "skipped_risk";
         rejectionReason = risk?.rejectReason || "Risk limit exceeded";
@@ -528,7 +695,7 @@ export async function runTradingCycle(): Promise<CycleResult> {
         kellyFraction: risk?.kellyFraction ?? null,
         side: analysis?.side ?? "yes",
         strategyName: strategyMatches[0]?.strategyName ?? null,
-        reasoning: analysis?.reasoning ?? null,
+        reasoning: analysis ? compactKeeperReasoning(analysis, strategyMatches[0]?.reason ?? null) : null,
         strategyReason: strategyMatches[0]?.reason ?? null,
         disposition,
         rejectionReason,
@@ -583,9 +750,7 @@ export async function runTradingCycle(): Promise<CycleResult> {
       }
     }
 
-    for (const run of agentResults) {
-      await logAgentRun(run);
-    }
+    await flushAgentRuns(agentResults);
 
     finishCycle();
     return {
@@ -600,7 +765,7 @@ export async function runTradingCycle(): Promise<CycleResult> {
   } catch (err: unknown) {
     const errMsg = err instanceof Error ? err.message : "Unknown error";
     agentResults.push({ agentName: "Pipeline", status: "error", duration: (Date.now() - cycleStart) / 1000, details: errMsg });
-    for (const run of agentResults) await logAgentRun(run);
+    await flushAgentRuns(agentResults);
     finishCycle();
     return {
       marketsScanned: 0, opportunitiesFound: 0, tradesExecuted: 0,
@@ -622,7 +787,18 @@ export function startPipeline(intervalMinutes: number) {
   // Start the news fetcher so breaking news is available for analyst prompts
   startNewsFetcher();
 
-  runTradingCycle().catch((err) => console.error("Pipeline initial cycle error:", err));
+  // Optional delay (ms) so `PUT /api/settings` can run before the first cycle reads `trading_settings`.
+  const rawDelay = process.env.PIPELINE_INITIAL_DELAY_MS;
+  const parsedDelay = rawDelay !== undefined ? Number(rawDelay) : 0;
+  const initialDelayMs = Math.min(60_000, Math.max(0, Number.isFinite(parsedDelay) ? parsedDelay : 0));
+  if (initialDelayMs > 0) {
+    console.log(`[Pipeline] First cycle delayed ${initialDelayMs}ms`);
+    setTimeout(() => {
+      runTradingCycle().catch((err) => console.error("Pipeline initial cycle error:", err));
+    }, initialDelayMs);
+  } else {
+    runTradingCycle().catch((err) => console.error("Pipeline initial cycle error:", err));
+  }
 
   pipelineInterval = setInterval(() => {
     runTradingCycle().catch((err) => console.error("Pipeline cycle error:", err));
@@ -685,7 +861,7 @@ export function startWatchdog() {
 
       try {
         const [settings] = await db.select().from(tradingSettingsTable).limit(1);
-        const intervalMin = settings?.scanIntervalMinutes || 5;
+        const intervalMin = settings?.scanIntervalMinutes ?? 3;
         startPipeline(intervalMin);
         console.log(`[Watchdog] Pipeline restarted with ${intervalMin} min interval`);
       } catch (err) {
@@ -738,9 +914,7 @@ export async function scanAndDiscover(): Promise<ScanDiscoverResult> {
   const topCandidates = scanResult.candidates.slice(0, 20);
 
   updateAgentStatus("Analyst", "running");
-  const analyses = settings.paperTradingMode
-    ? analyzeMarketsRuleBased(topCandidates)
-    : await analyzeMarkets(topCandidates);
+  const analyses = analyzeMarketsRuleBased(topCandidates);
   updateAgentStatus("Analyst", "idle", `Analyzed ${analyses.length} markets`);
 
   updateAgentStatus("Auditor", "running");
@@ -752,21 +926,35 @@ export async function scanAndDiscover(): Promise<ScanDiscoverResult> {
   });
   updateAgentStatus("Auditor", "idle", `${auditResults.filter(a => a.approved).length}/${auditResults.length} approved`);
 
-  await db.delete(marketOpportunitiesTable);
-  for (const audit of auditResults) {
-    const { analysis } = audit;
-    await db.insert(marketOpportunitiesTable).values({
-      kalshiTicker: analysis.candidate.market.ticker,
-      title: analysis.candidate.market.title || analysis.candidate.market.ticker,
-      category: analysis.candidate.market.category || "Sports",
-      currentYesPrice: analysis.candidate.yesPrice,
-      modelProbability: analysis.modelProbability,
-      edge: analysis.edge,
-      confidence: audit.adjustedConfidence,
-      side: analysis.side,
-      volume24h: analysis.candidate.volume24h,
-      expiresAt: new Date(analysis.candidate.market.expected_expiration_time || analysis.candidate.market.expiration_time || analysis.candidate.market.close_time),
+  try {
+    await withTransactionStatementTimeout(PIPELINE_DB_MS, async (tx: DbClient) => {
+      await tx.delete(marketOpportunitiesTable);
+      if (auditResults.length > 0) {
+        const rows = auditResults.map((audit) => {
+          const { analysis } = audit;
+          return {
+            kalshiTicker: analysis.candidate.market.ticker,
+            title: analysis.candidate.market.title || analysis.candidate.market.ticker,
+            category: analysis.candidate.market.category || "Sports",
+            currentYesPrice: analysis.candidate.yesPrice,
+            modelProbability: analysis.modelProbability,
+            edge: analysis.edge,
+            confidence: audit.adjustedConfidence,
+            side: analysis.side,
+            volume24h: analysis.candidate.volume24h,
+            expiresAt: new Date(
+              analysis.candidate.market.expected_expiration_time ||
+                analysis.candidate.market.expiration_time ||
+                analysis.candidate.market.close_time,
+            ),
+          };
+        });
+        await tx.insert(marketOpportunitiesTable).values(rows);
+      }
     });
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("[scanAndDiscover] market_opportunities refresh failed:", msg);
   }
 
   return {
@@ -792,7 +980,7 @@ export async function rehydratePipeline(): Promise<void> {
 
   const [settings] = await db.select().from(tradingSettingsTable).limit(1);
   if (settings?.pipelineActive) {
-    const interval = settings.scanIntervalMinutes || 60;
+    const interval = settings.scanIntervalMinutes ?? 3;
     startPipeline(interval);
     console.log(`Pipeline rehydrated from DB: active with ${interval} minute interval`);
   } else {

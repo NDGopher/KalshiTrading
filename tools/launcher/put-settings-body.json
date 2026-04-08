@@ -1,0 +1,12 @@
+{
+  "paperTradingMode": true,
+  "pipelineActive": true,
+  "scanIntervalMinutes": 3,
+  "targetBetUsd": 15,
+  "maxSimultaneousPositions": 0,
+  "enabledStrategies": ["Pure Value", "Volume Imbalance", "Whale Flow", "Dip Buy"],
+  "minEdge": 6,
+  "kellyFraction": 0.5,
+  "dailyBudgetUsd": 0,
+  "monthlyBudgetUsd": 0
+}

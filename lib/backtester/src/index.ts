@@ -33,7 +33,7 @@ export {
 } from "./replay/parallel-replay.js";
 export { runStrategyReplayWithRisk, type RunReplayParams } from "./replay/replay-engine.js";
 export { tryApplyMultiBacktestRankPatch } from "./apply-multi-rank-pg.js";
-export { filterTicksBySport, kalshiSportLabel } from "./replay/sport-bucket.js";
+export { filterTicksBySport, kalshiSportLabel, kalshiSportBucket } from "./replay/sport-bucket.js";
 export { kalshiTakerFeeUsd, pnlKalshiTaker, CONSERVATIVE_LIP_USD_PER_CONTRACT } from "./kalshi-fees.js";
 export { DEFAULT_PARALLEL_REPLAY_STRATEGIES, replayStrategiesByNames } from "./strategies/replay-registry.js";
 export {

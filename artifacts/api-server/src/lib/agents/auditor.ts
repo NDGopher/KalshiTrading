@@ -45,6 +45,7 @@ export function auditTrade(
   // (AI couldn't perform the task at all). Do NOT flag legitimate epistemic uncertainty
   // ("I'm not sure about X but my analysis suggests Y").
   const reasoningLower = analysis.reasoning.toLowerCase();
+  const isRuleBasedKeeper = analysis.reasoning.startsWith("RB:") || reasoningLower.includes("rule-based");
   const hardFailurePatterns = [
     "unable to access",
     "i cannot access",
@@ -54,11 +55,12 @@ export function auditTrade(
     "unverified report",
   ];
   const hallucinationHits = hardFailurePatterns.filter((p) => reasoningLower.includes(p));
-  if (hallucinationHits.length > 0) {
+  if (!isRuleBasedKeeper && hallucinationHits.length > 0) {
     flags.push(`Analysis reliability concern: matched ${hallucinationHits.length} failure pattern(s): ${hallucinationHits.join(", ")}`);
   }
 
-  if (analysis.reasoning.length < 50) {
+  // Keeper stack uses one-line RB: reasons (~30 chars). Do not apply the LLM-era length gate.
+  if (!isRuleBasedKeeper && analysis.reasoning.length < 50) {
     flags.push("Reasoning too short — possible analysis failure");
   }
 
