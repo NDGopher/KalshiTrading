@@ -137,14 +137,19 @@ async function executePaperTrade(decision: RiskDecision): Promise<ExecutionResul
   } catch (e: unknown) {
     const msg = formatDbError(e);
     console.error(`[PAPER_TRADE] DB error for ${candidate.market.ticker}:`, msg);
+    const any = e as { code?: string };
     const hint42703 =
       msg.includes("42703") || /column .* does not exist/i.test(msg)
         ? " Database schema may be behind the app: run `pnpm db:push` from the repo root (uses DATABASE_URL)."
         : "";
+    const hintDisk =
+      any.code === "53100" || /project size limit|max_cluster_size|disk full/i.test(msg)
+        ? " Hosted Postgres cluster is full (e.g. Neon 512MB free tier). Prune old rows (historical_markets, market_opportunities, agent_runs), upgrade plan, or use a larger instance."
+        : "";
     return {
       decision,
       executed: false,
-      error: `${msg}${hint42703}`,
+      error: `${msg}${hint42703}${hintDisk}`,
       paper: true,
     };
   }
