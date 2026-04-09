@@ -50,7 +50,7 @@ if errorlevel 1 (
 
 REM ---- 0) Fresh clone / new PC: dependencies (repo cwd is already REPO from pushd above) ----
 if not exist "node_modules\" (
-  echo [0/5] No node_modules — running pnpm install ^(first run may take a few minutes^)...
+  echo [0/6] No node_modules — running pnpm install ^(first run may take a few minutes^)...
   call pnpm install
   if errorlevel 1 (
     echo [ERROR] pnpm install failed. Fix errors above, then run this script again.
@@ -62,8 +62,27 @@ if not exist "node_modules\" (
   echo.
 )
 
-REM ---- 1) API in new window: working dir = repo (no fragile "cd /d" quoting) ----
-echo [1/5] Starting API in a new window (PORT=3000^)...
+REM ---- 1) Schema sync: Drizzle push ^(adds/alters columns; does NOT wipe paper_trades^) ----
+REM     Uses DATABASE_URL from repo .env or your environment. Skip with SKIP_DB_PUSH=1 if needed.
+if /i "%SKIP_DB_PUSH%"=="1" (
+  echo [1/6] SKIP_DB_PUSH=1 — skipping pnpm db:push.
+  echo.
+) else (
+  echo [1/6] Syncing database schema ^(pnpm db:push — keeps existing rows; no paper reset^)...
+  call pnpm db:push
+  if errorlevel 1 (
+    echo [ERROR] db:push failed. Set DATABASE_URL ^(repo .env^), check network/DB, then retry.
+    echo        Or set SKIP_DB_PUSH=1 to start without syncing ^(not recommended^).
+    popd
+    pause
+    exit /b 1
+  )
+  echo       Schema OK.
+  echo.
+)
+
+REM ---- 2) API in new window: working dir = repo (no fragile "cd /d" quoting) ----
+echo [2/6] Starting API in a new window (PORT=3000^)...
 start "Kalshi Paper API (3000)" /D "%REPO%" cmd.exe /k "set PORT=3000&& pnpm --filter @workspace/api-server run dev"
 if errorlevel 1 (
   echo [ERROR] Failed to start API window.
@@ -72,8 +91,8 @@ if errorlevel 1 (
   exit /b 1
 )
 
-REM ---- 2) Wait for API ----
-echo [2/5] Waiting for http://127.0.0.1:3000/api/healthz ...
+REM ---- 3) Wait for API ----
+echo [3/6] Waiting for http://127.0.0.1:3000/api/healthz ...
 set /a _w=0
 :wait_health
 curl -s -f "http://127.0.0.1:3000/api/healthz" >nul 2>&1
@@ -104,11 +123,11 @@ if /i "%RESET_PAPER%"=="1" (
     echo       Paper reset OK.
   )
 ) else (
-  echo [3/5] Keeping existing paper trade history ^(no reset^). Set RESET_PAPER=1 to wipe.
+  echo [4/6] Keeping existing paper trade history ^(no reset^). Set RESET_PAPER=1 to wipe.
 )
 echo.
 
-echo [4/5] Applying settings (3 min scan, 4 keepers, uncapped positions, $15 target^)...
+echo [5/6] Applying settings (3 min scan, 4 keepers, uncapped positions, $15 target^)...
 curl -sS -m 90 -X PUT "http://127.0.0.1:3000/api/settings" -H "Content-Type: application/json" --data-binary "@%SETTINGS_JSON%"
 if errorlevel 1 (
   echo [WARN] PUT settings failed — check API log.
@@ -117,8 +136,8 @@ if errorlevel 1 (
 )
 echo.
 
-REM ---- 4) Dashboard ----
-echo [5/5] Starting Dashboard in a new window (PORT=5173, BASE_PATH=/^)...
+REM ---- 6) Dashboard ----
+echo [6/6] Starting Dashboard in a new window (PORT=5173, BASE_PATH=/^)...
 start "Kalshi Dashboard (5173)" /D "%REPO%" cmd.exe /k "set PORT=5173&& set BASE_PATH=/ && pnpm --filter @workspace/dashboard run dev"
 if errorlevel 1 (
   echo [ERROR] Failed to start Dashboard window.
