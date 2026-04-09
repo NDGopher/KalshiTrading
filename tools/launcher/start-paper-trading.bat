@@ -90,13 +90,21 @@ goto wait_health
 :health_ok
 echo       API is up.
 
-REM ---- 3) Paper reset + settings ----
-echo [3/5] Resetting paper balance (async^)...
-curl -s -S -m 60 -X POST "http://127.0.0.1:3000/api/paper-trades/reset?async=1"
-if errorlevel 1 (
-  echo [WARN] Paper reset request failed — check API log.
+REM ---- 3) Paper reset (optional only) ----
+REM By default we do NOT reset: paper_trades live in Postgres and should persist across
+REM restarts and machines that share the same DATABASE_URL. Reset wipes ALL history.
+REM To start from a clean slate: set RESET_PAPER=1 before running this script, or use
+REM Dashboard Paper page / Settings, or: pnpm paper:reset:async (API must be up).
+if /i "%RESET_PAPER%"=="1" (
+  echo [3/5] RESET_PAPER=1 — wiping paper_trades and restoring balance ^(async^)...
+  curl -s -S -m 60 -X POST "http://127.0.0.1:3000/api/paper-trades/reset?async=1"
+  if errorlevel 1 (
+    echo [WARN] Paper reset request failed — check API log.
+  ) else (
+    echo       Paper reset OK.
+  )
 ) else (
-  echo       Paper reset OK.
+  echo [3/5] Keeping existing paper trade history ^(no reset^). Set RESET_PAPER=1 to wipe.
 )
 echo.
 
