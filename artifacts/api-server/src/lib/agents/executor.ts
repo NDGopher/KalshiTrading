@@ -21,13 +21,40 @@ async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** Postgres / Drizzle errors often hide `code` on the Error object — surface it for logs. */
+function formatDbError(err: unknown): string {
+  if (!(err instanceof Error)) return String(err);
+  const any = err as Error & { code?: string; detail?: string; column?: string; hint?: string };
+  const parts = [err.message];
+  if (any.code) parts.push(`pg_code=${any.code}`);
+  if (any.column) parts.push(`column=${any.column}`);
+  if (any.detail) parts.push(`detail=${any.detail}`);
+  if (any.hint) parts.push(`hint=${any.hint}`);
+  return parts.join(" | ");
+}
+
+function finiteOr(n: unknown, fallback: number): number {
+  if (typeof n === "number" && Number.isFinite(n)) return n;
+  const x = Number(n);
+  return Number.isFinite(x) ? x : fallback;
+}
+
 async function executePaperTrade(decision: RiskDecision): Promise<ExecutionResult> {
   const { audit } = decision;
   const { analysis } = audit;
   const { candidate } = analysis;
 
   const [settings] = await db.select().from(tradingSettingsTable).limit(1);
-  const currentBalance = settings?.paperBalance || 5000;
+  if (!settings?.id) {
+    return {
+      decision,
+      executed: false,
+      error:
+        "No trading_settings row — open Settings in the dashboard and save once (required for paper balance).",
+      paper: true,
+    };
+  }
+  const currentBalance = settings.paperBalance ?? 5000;
   const entryPrice = analysis.side === "yes" ? candidate.yesAsk : candidate.noAsk;
   if (entryPrice == null || entryPrice < 0.01 || entryPrice > 0.99) {
     return {
@@ -64,31 +91,63 @@ async function executePaperTrade(decision: RiskDecision): Promise<ExecutionResul
     };
   }
 
-  const [paperTrade] = await db
-    .insert(paperTradesTable)
-    .values({
-      kalshiTicker: candidate.market.ticker,
-      title: candidate.market.title || candidate.market.ticker,
-      side: analysis.side,
-      entryPrice,
-      quantity: decision.positionSize,
-      status: "open",
-      strategyName: decision.strategyName || null,
-      modelProbability: analysis.modelProbability,
-      edge: analysis.edge,
-      confidence: audit.adjustedConfidence,
-      analystReasoning: keeperReason,
-      auditorFlags: audit.flags,
-      riskScore: decision.riskScore,
-      kellyFraction: decision.kellyFraction,
-      simulatedBalance: currentBalance - cost,
-    })
-    .returning();
+  const quantity = Math.max(1, Math.min(10_000_000, Math.round(finiteOr(decision.positionSize, 0))));
+  if (!Number.isFinite(entryPrice) || quantity < 1) {
+    return {
+      decision,
+      executed: false,
+      error: "Paper trade blocked: invalid entry price or contract count",
+      paper: true,
+    };
+  }
 
-  await db
-    .update(tradingSettingsTable)
-    .set({ paperBalance: currentBalance - cost })
-    .where(eq(tradingSettingsTable.id, settings!.id));
+  const flags = Array.isArray(audit.flags) ? audit.flags : [];
+
+  let paperTrade: { id: number };
+  try {
+    const [row] = await db
+      .insert(paperTradesTable)
+      .values({
+        kalshiTicker: candidate.market.ticker,
+        title: candidate.market.title || candidate.market.ticker,
+        side: analysis.side,
+        entryPrice,
+        quantity,
+        status: "open",
+        strategyName: decision.strategyName || null,
+        modelProbability: finiteOr(analysis.modelProbability, 0),
+        edge: finiteOr(analysis.edge, 0),
+        confidence: finiteOr(audit.adjustedConfidence, 0),
+        analystReasoning: keeperReason,
+        auditorFlags: flags,
+        riskScore: finiteOr(decision.riskScore, 0),
+        kellyFraction: finiteOr(decision.kellyFraction, 0),
+        simulatedBalance: finiteOr(currentBalance - cost, 0),
+      })
+      .returning();
+    if (!row) {
+      return { decision, executed: false, error: "Paper insert returned no row", paper: true };
+    }
+    paperTrade = row;
+
+    await db
+      .update(tradingSettingsTable)
+      .set({ paperBalance: currentBalance - cost })
+      .where(eq(tradingSettingsTable.id, settings.id));
+  } catch (e: unknown) {
+    const msg = formatDbError(e);
+    console.error(`[PAPER_TRADE] DB error for ${candidate.market.ticker}:`, msg);
+    const hint42703 =
+      msg.includes("42703") || /column .* does not exist/i.test(msg)
+        ? " Database schema may be behind the app: run `pnpm db:push` from the repo root (uses DATABASE_URL)."
+        : "";
+    return {
+      decision,
+      executed: false,
+      error: `${msg}${hint42703}`,
+      paper: true,
+    };
+  }
 
   const sport = kalshiSportLabel(candidate.market.ticker);
   const winProb = analysis.side === "yes" ? analysis.modelProbability : 1 - analysis.modelProbability;

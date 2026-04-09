@@ -168,22 +168,35 @@ export function getAgentStatuses() {
   }));
 }
 
+function safeAgentRunDuration(seconds: number): number {
+  return typeof seconds === "number" && Number.isFinite(seconds) && seconds >= 0 && seconds < 1e7 ? seconds : 0;
+}
+
 async function flushAgentRuns(runs: AgentRunLog[]): Promise<void> {
   if (runs.length === 0) return;
+  const rows = runs.map((run) => ({
+    agentName: run.agentName,
+    status: run.status,
+    duration: safeAgentRunDuration(run.duration),
+    details: run.details ?? null,
+  }));
   try {
     await withTransactionStatementTimeout(PIPELINE_AGENT_LOG_MS, async (tx: DbClient) => {
-      await tx.insert(agentRunsTable).values(
-        runs.map((run) => ({
-          agentName: run.agentName,
-          status: run.status,
-          duration: run.duration,
-          details: run.details,
-        })),
-      );
+      await tx.insert(agentRunsTable).values(rows);
     });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
-    console.error("[Pipeline] flushAgentRuns failed:", msg);
+    console.error("[Pipeline] flushAgentRuns batch failed:", msg, "— retrying one row at a time");
+    try {
+      await withTransactionStatementTimeout(PIPELINE_AGENT_LOG_MS, async (tx: DbClient) => {
+        for (const row of rows) {
+          await tx.insert(agentRunsTable).values(row);
+        }
+      });
+    } catch (e2: unknown) {
+      const msg2 = e2 instanceof Error ? e2.message : String(e2);
+      console.error("[Pipeline] flushAgentRuns failed:", msg2);
+    }
   }
 }
 
@@ -628,6 +641,10 @@ export async function runTradingCycle(): Promise<CycleResult> {
     for (const decision of riskApproved) {
       const result = await executeTrade(decision, paperMode);
       if (result.executed) executed++;
+      else if (result.error) {
+        const t = decision.audit.analysis.candidate.market.ticker;
+        console.warn(`[Executor] skipped ${t}: ${result.error}`);
+      }
     }
     const execDuration = (Date.now() - execStart) / 1000;
     const modeLabel = paperMode ? " (paper)" : "";

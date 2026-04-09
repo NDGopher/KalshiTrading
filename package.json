@@ -7,6 +7,7 @@
     "setup:paper-stack": "powershell -ExecutionPolicy Bypass -File ./tools/launcher/full-setup.ps1",
     "paper:reset": "curl -s -X POST http://127.0.0.1:3000/api/paper-trades/reset",
     "paper:reset:async": "curl -s -X POST \"http://127.0.0.1:3000/api/paper-trades/reset?async=1\"",
+    "db:push": "pnpm --filter @workspace/db run db:push",
     "pipeline:cycle": "curl -s -X POST http://127.0.0.1:3000/api/agents/run-cycle",
     "build": "pnpm run typecheck && pnpm -r --if-present run build",
     "typecheck:libs": "tsc --build",
