@@ -6,7 +6,12 @@ import {
   type DbClient,
 } from "@workspace/db";
 import { desc, eq, sql } from "drizzle-orm";
-import { getMarket, getMarketYesAsk, getMarketYesBid } from "../lib/kalshi-client.js";
+import { getBestYesMarkPrice } from "../lib/kalshi-client.js";
+import {
+  kalshiCoarseMacroGroup,
+  kalshiMarketBucket,
+  kalshiSportLabel,
+} from "@workspace/backtester";
 import { reconcilePaperTrades } from "../lib/agents/reconciler.js";
 
 const router = Router();
@@ -15,25 +20,45 @@ const RESET_TIMEOUT_MS = Math.min(120_000, Number(process.env.DB_RESET_STATEMENT
 const ROUTE_DB_TIMEOUT_MS = Math.min(120_000, Number(process.env.DB_ROUTE_STATEMENT_TIMEOUT_MS) || 60_000);
 const LIVE_ENRICH_CONCURRENCY = Math.min(8, Math.max(1, Number(process.env.PAPER_LIVE_ENRICH_CONCURRENCY) || 4));
 
+function macroFieldsForTicker(ticker: string): { macroBucket: string; coarse: string; sportLabel: string } {
+  const m = { ticker };
+  return {
+    macroBucket: kalshiMarketBucket(m),
+    coarse: kalshiCoarseMacroGroup(m),
+    sportLabel: kalshiSportLabel(ticker),
+  };
+}
+
+function summarizeCoarse(trades: { coarse?: string }[]): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const tr of trades) {
+    const c = tr.coarse ?? "unknown";
+    out[c] = (out[c] ?? 0) + 1;
+  }
+  return out;
+}
+
 interface LivePrice {
   currentPrice: number;
   priceSource: "live" | "entry_fallback";
 }
 
 async function fetchLivePrice(ticker: string, side: string, entryPrice: number): Promise<LivePrice> {
+  const sideNorm = String(side).toLowerCase();
+  if (sideNorm !== "yes" && sideNorm !== "no") {
+    return { currentPrice: entryPrice, priceSource: "entry_fallback" };
+  }
   try {
-    const { market } = await getMarket(ticker);
-    const bid = getMarketYesBid(market);
-    const ask = getMarketYesAsk(market);
-    if (side === "yes") {
-      const mid = bid > 0 && ask > 0 ? (bid + ask) / 2 : ask > 0 ? ask : bid > 0 ? bid : 0;
-      if (mid > 0.005 && mid < 0.995) return { currentPrice: mid, priceSource: "live" };
-    } else {
-      const yesMid = bid > 0 && ask > 0 ? (bid + ask) / 2 : ask > 0 ? ask : bid > 0 ? bid : 0;
-      if (yesMid > 0.005 && yesMid < 0.995) return { currentPrice: 1 - yesMid, priceSource: "live" };
+    // Kalshi v2 often returns yes_bid_dollars/yes_ask_dollars as "0.0000" on GET /markets/{ticker} while
+    // real prices live on GET /markets/{ticker}/orderbook as orderbook_fp.yes_dollars / no_dollars.
+    const yesPx = await getBestYesMarkPrice(ticker);
+    const mark =
+      sideNorm === "yes" ? yesPx : yesPx > 0 && yesPx < 1 ? parseFloat((1 - yesPx).toFixed(4)) : 0;
+    if (mark > 0.005 && mark < 0.995) {
+      return { currentPrice: mark, priceSource: "live" };
     }
   } catch {
-    /* Kalshi slow / rate limit */
+    /* defensive — getBestYesMarkPrice already swallows */
   }
   return { currentPrice: entryPrice, priceSource: "entry_fallback" };
 }
@@ -70,6 +95,7 @@ router.get("/paper-trades", async (req, res) => {
     const limit = parseInt(req.query.limit as string) || 50;
     // Default: DB-only (fast). Pass enrichLive=1 for Kalshi mark-to-market on open rows.
     const enrichLive = req.query.enrichLive === "1" || req.query.enrichLive === "true";
+    const withMacro = req.query.macro === "1" || req.query.macro === "true";
 
     const trades = await withTransactionStatementTimeout(ROUTE_DB_TIMEOUT_MS, async (tx: DbClient) =>
       tx
@@ -81,16 +107,31 @@ router.get("/paper-trades", async (req, res) => {
 
     if (!enrichLive) {
       const slim = trades.map((t) => {
+        let row: Record<string, unknown>;
         if (t.status !== "open") {
-          return { ...t, currentPrice: t.exitPrice ?? t.entryPrice, priceSource: "settled" as const };
+          row = { ...t, currentPrice: t.exitPrice ?? t.entryPrice, priceSource: "settled" as const };
+        } else {
+          row = { ...t, currentPrice: t.entryPrice, priceSource: "entry_fallback" as const, unrealizedPnl: 0 };
         }
-        return { ...t, currentPrice: t.entryPrice, priceSource: "entry_fallback" as const, unrealizedPnl: 0 };
+        if (withMacro) Object.assign(row, macroFieldsForTicker(t.kalshiTicker));
+        return row;
       });
-      return res.json({ trades: slim, enrichLive: false });
+      return res.json({
+        trades: slim,
+        enrichLive: false,
+        ...(withMacro ? { coarseSummary: summarizeCoarse(slim as { coarse?: string }[]) } : {}),
+      });
     }
 
     const enriched = await enrichTradesWithLivePrices(trades);
-    return res.json({ trades: enriched, enrichLive: true });
+    const out = withMacro
+      ? enriched.map((t) => ({ ...t, ...macroFieldsForTicker(t.kalshiTicker) }))
+      : enriched;
+    return res.json({
+      trades: out,
+      enrichLive: true,
+      ...(withMacro ? { coarseSummary: summarizeCoarse(out as { coarse?: string }[]) } : {}),
+    });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Unknown error";
     return res.status(500).json({ error: msg });

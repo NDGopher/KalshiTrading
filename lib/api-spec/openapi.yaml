@@ -21,8 +21,6 @@ tags:
     description: Trading settings
   - name: backtest
     description: Backtesting engine
-  - name: costs
-    description: API cost tracking
   - name: paper-trades
     description: Paper trading
 paths:
@@ -127,44 +125,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TradeStats"
-
-  /agents/status:
-    get:
-      operationId: getAgentStatus
-      tags: [agents]
-      summary: Get agent pipeline status
-      description: Returns the status of all six agents in the pipeline
-      responses:
-        "200":
-          description: Agent status list
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/AgentStatus"
-
-  /agents/runs:
-    get:
-      operationId: listAgentRuns
-      tags: [agents]
-      summary: List recent agent runs
-      description: Returns recent agent pipeline execution logs
-      parameters:
-        - name: limit
-          in: query
-          schema:
-            type: integer
-            default: 20
-      responses:
-        "200":
-          description: List of agent runs
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/AgentRun"
 
   /agents/toggle:
     post:
@@ -575,19 +535,6 @@ paths:
                   - settledMarkets
                   - dateRange
 
-  /costs:
-    get:
-      operationId: getApiCosts
-      tags: [costs]
-      summary: Get API cost breakdown
-      responses:
-        "200":
-          description: Cost data
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ApiCostSummary"
-
   /paper-trades:
     get:
       operationId: getPaperTrades
@@ -880,24 +827,6 @@ components:
         - worstStreak
         - roi
 
-    AgentStatus:
-      type: object
-      properties:
-        name:
-          type: string
-        status:
-          type: string
-          enum: [idle, running, error, disabled]
-        lastRunAt:
-          type: ["string", "null"]
-        lastResult:
-          type: ["string", "null"]
-        errorMessage:
-          type: ["string", "null"]
-      required:
-        - name
-        - status
-
     AgentRun:
       type: object
       properties:
@@ -1002,28 +931,10 @@ components:
           type: boolean
         paperBalance:
           type: number
-        dailyBudgetUsd:
-          type: number
-        monthlyBudgetUsd:
-          type: number
         kalshiApiKeySet:
           type: boolean
         kalshiBaseUrl:
           type: ["string", "null"]
-        budgetStatus:
-          type: object
-          properties:
-            dailySpend:
-              type: number
-            monthlySpend:
-              type: number
-            dailyExceeded:
-              type: boolean
-            monthlyExceeded:
-              type: boolean
-            budgetPaused:
-              type: boolean
-          required: [dailySpend, monthlySpend, dailyExceeded, monthlyExceeded, budgetPaused]
       required:
         - id
         - maxPositionPct
@@ -1075,10 +986,6 @@ components:
         paperTradingMode:
           type: boolean
         paperBalance:
-          type: number
-        dailyBudgetUsd:
-          type: number
-        monthlyBudgetUsd:
           type: number
 
     PortfolioBalance:
@@ -1261,81 +1168,6 @@ components:
         - edge
         - confidence
         - createdAt
-
-    ApiCostSummary:
-      type: object
-      properties:
-        daily:
-          type: object
-          properties:
-            costUsd:
-              type: number
-            calls:
-              type: integer
-            inputTokens:
-              type: integer
-            outputTokens:
-              type: integer
-            budgetUsd:
-              type: number
-            exceeded:
-              type: boolean
-          required: [costUsd, calls, inputTokens, outputTokens, budgetUsd, exceeded]
-        monthly:
-          type: object
-          properties:
-            costUsd:
-              type: number
-            calls:
-              type: integer
-            inputTokens:
-              type: integer
-            outputTokens:
-              type: integer
-            budgetUsd:
-              type: number
-            exceeded:
-              type: boolean
-            projectedUsd:
-              type: number
-          required: [costUsd, calls, inputTokens, outputTokens, budgetUsd, exceeded, projectedUsd]
-        allTime:
-          type: object
-          properties:
-            costUsd:
-              type: number
-            calls:
-              type: integer
-          required: [costUsd, calls]
-        byAgent:
-          type: array
-          items:
-            type: object
-            properties:
-              agentName:
-                type: string
-              costUsd:
-                type: number
-              calls:
-                type: integer
-              inputTokens:
-                type: integer
-              outputTokens:
-                type: integer
-            required: [agentName, costUsd, calls, inputTokens, outputTokens]
-        budgetPaused:
-          type: boolean
-        recentCalls:
-          type: array
-          items:
-            type: object
-      required:
-        - daily
-        - monthly
-        - allTime
-        - byAgent
-        - budgetPaused
-        - recentCalls
 
     PaperTrade:
       type: object

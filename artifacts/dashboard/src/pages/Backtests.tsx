@@ -264,7 +264,7 @@ export default function Backtests() {
                 </div>
                 {multiData.suggestedSettingsPatch?.rationale && (
                   <p className="text-xs text-amber-200/90 border border-amber-500/20 rounded-lg p-2 bg-amber-500/5">
-                    Learner patch hint: {multiData.suggestedSettingsPatch.rationale}
+                    Settings suggestion: {multiData.suggestedSettingsPatch.rationale}
                   </p>
                 )}
                 {multiData.outputFiles && (

@@ -17,9 +17,6 @@ import type {
 } from "@tanstack/react-query";
 
 import type {
-  AgentRun,
-  AgentStatus,
-  ApiCostSummary,
   BacktestRunRequest,
   CycleResult,
   DashboardOverview,
@@ -33,7 +30,6 @@ import type {
   HealthStatus,
   IngestHistoricalMarkets200,
   IngestHistoricalMarketsBody,
-  ListAgentRunsParams,
   ListBacktestTrades200,
   ListBacktestTradesParams,
   ListTradesParams,
@@ -537,177 +533,6 @@ export function useGetTradeStats<
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetTradeStatsQueryOptions(options);
-
-  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
-    queryKey: QueryKey;
-  };
-
-  return { ...query, queryKey: queryOptions.queryKey };
-}
-
-/**
- * Returns the status of all six agents in the pipeline
- * @summary Get agent pipeline status
- */
-export const getGetAgentStatusUrl = () => {
-  return `/api/agents/status`;
-};
-
-export const getAgentStatus = async (
-  options?: RequestInit,
-): Promise<AgentStatus[]> => {
-  return customFetch<AgentStatus[]>(getGetAgentStatusUrl(), {
-    ...options,
-    method: "GET",
-  });
-};
-
-export const getGetAgentStatusQueryKey = () => {
-  return [`/api/agents/status`] as const;
-};
-
-export const getGetAgentStatusQueryOptions = <
-  TData = Awaited<ReturnType<typeof getAgentStatus>>,
-  TError = ErrorType<unknown>,
->(options?: {
-  query?: UseQueryOptions<
-    Awaited<ReturnType<typeof getAgentStatus>>,
-    TError,
-    TData
-  >;
-  request?: SecondParameter<typeof customFetch>;
-}) => {
-  const { query: queryOptions, request: requestOptions } = options ?? {};
-
-  const queryKey = queryOptions?.queryKey ?? getGetAgentStatusQueryKey();
-
-  const queryFn: QueryFunction<Awaited<ReturnType<typeof getAgentStatus>>> = ({
-    signal,
-  }) => getAgentStatus({ signal, ...requestOptions });
-
-  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
-    Awaited<ReturnType<typeof getAgentStatus>>,
-    TError,
-    TData
-  > & { queryKey: QueryKey };
-};
-
-export type GetAgentStatusQueryResult = NonNullable<
-  Awaited<ReturnType<typeof getAgentStatus>>
->;
-export type GetAgentStatusQueryError = ErrorType<unknown>;
-
-/**
- * @summary Get agent pipeline status
- */
-
-export function useGetAgentStatus<
-  TData = Awaited<ReturnType<typeof getAgentStatus>>,
-  TError = ErrorType<unknown>,
->(options?: {
-  query?: UseQueryOptions<
-    Awaited<ReturnType<typeof getAgentStatus>>,
-    TError,
-    TData
-  >;
-  request?: SecondParameter<typeof customFetch>;
-}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-  const queryOptions = getGetAgentStatusQueryOptions(options);
-
-  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
-    queryKey: QueryKey;
-  };
-
-  return { ...query, queryKey: queryOptions.queryKey };
-}
-
-/**
- * Returns recent agent pipeline execution logs
- * @summary List recent agent runs
- */
-export const getListAgentRunsUrl = (params?: ListAgentRunsParams) => {
-  const normalizedParams = new URLSearchParams();
-
-  Object.entries(params || {}).forEach(([key, value]) => {
-    if (value !== undefined) {
-      normalizedParams.append(key, value === null ? "null" : value.toString());
-    }
-  });
-
-  const stringifiedParams = normalizedParams.toString();
-
-  return stringifiedParams.length > 0
-    ? `/api/agents/runs?${stringifiedParams}`
-    : `/api/agents/runs`;
-};
-
-export const listAgentRuns = async (
-  params?: ListAgentRunsParams,
-  options?: RequestInit,
-): Promise<AgentRun[]> => {
-  return customFetch<AgentRun[]>(getListAgentRunsUrl(params), {
-    ...options,
-    method: "GET",
-  });
-};
-
-export const getListAgentRunsQueryKey = (params?: ListAgentRunsParams) => {
-  return [`/api/agents/runs`, ...(params ? [params] : [])] as const;
-};
-
-export const getListAgentRunsQueryOptions = <
-  TData = Awaited<ReturnType<typeof listAgentRuns>>,
-  TError = ErrorType<unknown>,
->(
-  params?: ListAgentRunsParams,
-  options?: {
-    query?: UseQueryOptions<
-      Awaited<ReturnType<typeof listAgentRuns>>,
-      TError,
-      TData
-    >;
-    request?: SecondParameter<typeof customFetch>;
-  },
-) => {
-  const { query: queryOptions, request: requestOptions } = options ?? {};
-
-  const queryKey = queryOptions?.queryKey ?? getListAgentRunsQueryKey(params);
-
-  const queryFn: QueryFunction<Awaited<ReturnType<typeof listAgentRuns>>> = ({
-    signal,
-  }) => listAgentRuns(params, { signal, ...requestOptions });
-
-  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
-    Awaited<ReturnType<typeof listAgentRuns>>,
-    TError,
-    TData
-  > & { queryKey: QueryKey };
-};
-
-export type ListAgentRunsQueryResult = NonNullable<
-  Awaited<ReturnType<typeof listAgentRuns>>
->;
-export type ListAgentRunsQueryError = ErrorType<unknown>;
-
-/**
- * @summary List recent agent runs
- */
-
-export function useListAgentRuns<
-  TData = Awaited<ReturnType<typeof listAgentRuns>>,
-  TError = ErrorType<unknown>,
->(
-  params?: ListAgentRunsParams,
-  options?: {
-    query?: UseQueryOptions<
-      Awaited<ReturnType<typeof listAgentRuns>>,
-      TError,
-      TData
-    >;
-    request?: SecondParameter<typeof customFetch>;
-  },
-): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-  const queryOptions = getListAgentRunsQueryOptions(params, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;
@@ -1938,81 +1763,6 @@ export function useGetIngestionStats<
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetIngestionStatsQueryOptions(options);
-
-  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
-    queryKey: QueryKey;
-  };
-
-  return { ...query, queryKey: queryOptions.queryKey };
-}
-
-/**
- * @summary Get API cost breakdown
- */
-export const getGetApiCostsUrl = () => {
-  return `/api/costs`;
-};
-
-export const getApiCosts = async (
-  options?: RequestInit,
-): Promise<ApiCostSummary> => {
-  return customFetch<ApiCostSummary>(getGetApiCostsUrl(), {
-    ...options,
-    method: "GET",
-  });
-};
-
-export const getGetApiCostsQueryKey = () => {
-  return [`/api/costs`] as const;
-};
-
-export const getGetApiCostsQueryOptions = <
-  TData = Awaited<ReturnType<typeof getApiCosts>>,
-  TError = ErrorType<unknown>,
->(options?: {
-  query?: UseQueryOptions<
-    Awaited<ReturnType<typeof getApiCosts>>,
-    TError,
-    TData
-  >;
-  request?: SecondParameter<typeof customFetch>;
-}) => {
-  const { query: queryOptions, request: requestOptions } = options ?? {};
-
-  const queryKey = queryOptions?.queryKey ?? getGetApiCostsQueryKey();
-
-  const queryFn: QueryFunction<Awaited<ReturnType<typeof getApiCosts>>> = ({
-    signal,
-  }) => getApiCosts({ signal, ...requestOptions });
-
-  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
-    Awaited<ReturnType<typeof getApiCosts>>,
-    TError,
-    TData
-  > & { queryKey: QueryKey };
-};
-
-export type GetApiCostsQueryResult = NonNullable<
-  Awaited<ReturnType<typeof getApiCosts>>
->;
-export type GetApiCostsQueryError = ErrorType<unknown>;
-
-/**
- * @summary Get API cost breakdown
- */
-
-export function useGetApiCosts<
-  TData = Awaited<ReturnType<typeof getApiCosts>>,
-  TError = ErrorType<unknown>,
->(options?: {
-  query?: UseQueryOptions<
-    Awaited<ReturnType<typeof getApiCosts>>,
-    TError,
-    TData
-  >;
-  request?: SecondParameter<typeof customFetch>;
-}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-  const queryOptions = getGetApiCostsQueryOptions(options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

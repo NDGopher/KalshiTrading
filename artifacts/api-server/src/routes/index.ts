@@ -6,7 +6,6 @@ import tradesRouter from "./trades";
 import agentsRouter from "./agents";
 import settingsRouter from "./settings";
 import backtestRouter from "./backtest";
-import costsRouter from "./costs";
 import paperTradesRouter from "./paper-trades";
 import pmxtBacktestsRouter from "./pmxt-backtests";
 
@@ -19,7 +18,6 @@ router.use(tradesRouter);
 router.use(agentsRouter);
 router.use(settingsRouter);
 router.use(backtestRouter);
-router.use(costsRouter);
 router.use(paperTradesRouter);
 router.use(pmxtBacktestsRouter);
 

@@ -22,8 +22,6 @@ export const tradingSettingsTable = pgTable("trading_settings", {
   paperBalance: real("paper_balance").notNull().default(5000),
   /** Target average notional per trade (USD); risk-manager clamps toward ~$10–$22 around this. */
   targetBetUsd: real("target_bet_usd").notNull().default(15),
-  dailyBudgetUsd: real("daily_budget_usd").notNull().default(0),
-  monthlyBudgetUsd: real("monthly_budget_usd").notNull().default(0),
   enabledStrategies: jsonb("enabled_strategies").$type<string[]>().default([
     "Whale Flow",
     "Volume Imbalance",

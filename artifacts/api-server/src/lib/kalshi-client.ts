@@ -79,6 +79,7 @@ async function kalshiFetch<T = unknown>(path: string, options: RequestInit = {})
 export interface KalshiMarket {
   ticker: string;
   event_ticker: string;
+  series_ticker?: string;
   title?: string;
   subtitle?: string;
   yes_bid: number;
@@ -114,18 +115,52 @@ export interface KalshiMarket {
   early_close_condition?: string;
   price_ranges?: unknown;
   price_level_structure?: string;
+  /** Prior-day last YES trade (API v2); used when book + last are empty. */
+  previous_price_dollars?: string | number;
+}
+
+/**
+ * Kalshi multivariate / extended multi-leg markets (KXMV*…, MULTIGAMEEXTENDED, etc.).
+ * They flood unfiltered category pages but are usually illiquid, wide-spread, and unreliable to mark.
+ */
+export function isExcludedKalshiStructuralJunk(m: KalshiMarket): boolean {
+  const mt = String(m.market_type ?? "").toLowerCase();
+  if (mt.includes("multivariate")) return true;
+
+  const t = m.ticker.toUpperCase();
+  const blob = `${t} ${(m.title || "").toUpperCase()}`;
+  if (t.startsWith("KXMV")) return true;
+  if (blob.includes("MULTIGAMEEXTENDED")) return true;
+  if (blob.includes("SPORTSMULTIGAME")) return true;
+
+  return false;
+}
+
+/** Kalshi `_dollars` fields are fixed-point strings; "0.0000" means no level — treat as absent. */
+function kalshiPositiveDollars(v: unknown): number {
+  if (v == null || v === "") return 0;
+  const n = parseFloat(String(v).trim());
+  return Number.isFinite(n) && n > 0 ? parseFloat(n.toFixed(6)) : 0;
+}
+
+/** Last / previous trade quotes: accept interior probabilities, reject 0/1 sentinels. */
+function yesProbabilityFromDollarField(v: unknown): number {
+  if (v == null || v === "") return 0;
+  const n = parseFloat(String(v).trim());
+  if (!Number.isFinite(n) || n <= 0.001 || n >= 0.999) return 0;
+  return parseFloat(n.toFixed(4));
 }
 
 export function getMarketYesAsk(m: KalshiMarket): number {
   if (m.yes_ask != null && m.yes_ask > 0) return m.yes_ask / 100;
-  if (m.yes_ask_dollars != null) return parseFloat(String(m.yes_ask_dollars));
-  return 0;
+  const d = kalshiPositiveDollars(m.yes_ask_dollars);
+  return d > 0 ? d : 0;
 }
 
 export function getMarketYesBid(m: KalshiMarket): number {
   if (m.yes_bid != null && m.yes_bid > 0) return m.yes_bid / 100;
-  if (m.yes_bid_dollars != null) return parseFloat(String(m.yes_bid_dollars));
-  return 0;
+  const d = kalshiPositiveDollars(m.yes_bid_dollars);
+  return d > 0 ? d : 0;
 }
 
 export function getMarketNoAsk(m: KalshiMarket): number {
@@ -147,8 +182,14 @@ export function getMarketYesPrice(m: KalshiMarket): number {
   if (ask > 0) return ask;
   if (bid > 0) return bid;
   // Fall back to last traded price only when order book is empty
-  if (m.last_price != null && m.last_price > 0) return m.last_price / 100;
-  if (m.last_price_dollars != null) return parseFloat(String(m.last_price_dollars));
+  if (m.last_price != null && m.last_price > 0) {
+    const lp = m.last_price / 100;
+    if (lp > 0.001 && lp < 0.999) return parseFloat(lp.toFixed(4));
+  }
+  const lastD = yesProbabilityFromDollarField(m.last_price_dollars);
+  if (lastD > 0) return lastD;
+  const prevD = yesProbabilityFromDollarField(m.previous_price_dollars);
+  if (prevD > 0) return prevD;
   return 0;
 }
 
@@ -225,7 +266,7 @@ export async function getMarkets(params: {
 }
 
 export async function getMarket(ticker: string): Promise<{ market: KalshiMarket }> {
-  return kalshiFetch(`/markets/${ticker}`);
+  return kalshiFetch(`/markets/${encodeURIComponent(ticker)}`);
 }
 
 export async function getEvents(params: {
@@ -249,10 +290,76 @@ export async function getEvent(eventTicker: string): Promise<{ event: KalshiEven
   return kalshiFetch(`/events/${eventTicker}?with_nested_markets=true`);
 }
 
-export async function getOrderbook(ticker: string): Promise<{
-  orderbook: { yes: number[][]; no: number[][] };
-}> {
-  return kalshiFetch(`/markets/${ticker}/orderbook`);
+/** Kalshi v2 orderbook (current); legacy cent arrays may still appear in older responses. */
+export type KalshiOrderbookPayload = {
+  orderbook?: { yes: number[][]; no: number[][] };
+  orderbook_fp?: {
+    yes_dollars?: [unknown, unknown][];
+    no_dollars?: [unknown, unknown][];
+  };
+};
+
+export async function getOrderbook(ticker: string): Promise<KalshiOrderbookPayload> {
+  return kalshiFetch(`/markets/${encodeURIComponent(ticker)}/orderbook`);
+}
+
+/**
+ * Best-effort YES probability for mark-to-market when GET /market quote fields are all "0.0000"
+ * but the book still has bids (common after Kalshi's orderbook_fp migration).
+ */
+export function midYesPriceFromOrderbookPayload(data: KalshiOrderbookPayload): number {
+  const fp = data.orderbook_fp;
+  if (fp && ((fp.yes_dollars?.length ?? 0) > 0 || (fp.no_dollars?.length ?? 0) > 0)) {
+    const bestYesBid = fp.yes_dollars?.[0]?.[0] != null ? kalshiPositiveDollars(fp.yes_dollars[0][0]) : 0;
+    const bestNoBid = fp.no_dollars?.[0]?.[0] != null ? kalshiPositiveDollars(fp.no_dollars[0][0]) : 0;
+    const impliedYesAsk = bestNoBid > 0 && bestNoBid < 1 ? parseFloat((1 - bestNoBid).toFixed(6)) : 0;
+    if (bestYesBid > 0 && impliedYesAsk > 0) return parseFloat(((bestYesBid + impliedYesAsk) / 2).toFixed(4));
+    if (bestYesBid > 0) return bestYesBid;
+    if (impliedYesAsk > 0) return impliedYesAsk;
+  }
+  const leg = data.orderbook;
+  if (leg && ((leg.yes?.length ?? 0) > 0 || (leg.no?.length ?? 0) > 0)) {
+    const yc = leg.yes?.[0]?.[0];
+    const nc = leg.no?.[0]?.[0];
+    const yb = yc != null && yc > 0 ? yc / 100 : 0;
+    const nb = nc != null && nc > 0 ? nc / 100 : 0;
+    const implied = nb > 0 && nb < 1 ? 1 - nb : 0;
+    if (yb > 0 && implied > 0) return parseFloat(((yb + implied) / 2).toFixed(4));
+    if (yb > 0) return yb;
+    if (implied > 0) return implied;
+  }
+  return 0;
+}
+
+/** Resolve a tradable YES mark: market snapshot first, then orderbook_fp / legacy orderbook. */
+export async function getBestYesMarkPrice(ticker: string): Promise<number> {
+  try {
+    const { market } = await getMarket(ticker);
+    const p = getMarketYesPrice(market);
+    if (p > 0.005 && p < 0.995) return p;
+  } catch {
+    /* auth, 404, network */
+  }
+  // Some multivariate / long tickers 404 on GET /markets/{ticker} but appear in the list endpoint.
+  try {
+    const q = new URLSearchParams({ ticker, limit: "1", status: "open" });
+    const { markets } = await kalshiFetch<{ markets?: KalshiMarket[] }>(`/markets?${q.toString()}`);
+    const m = markets?.find((x) => x.ticker === ticker) ?? markets?.[0];
+    if (m?.ticker === ticker) {
+      const p = getMarketYesPrice(m);
+      if (p > 0.005 && p < 0.995) return p;
+    }
+  } catch {
+    /* bad filter combo */
+  }
+  try {
+    const ob = await getOrderbook(ticker);
+    const m = midYesPriceFromOrderbookPayload(ob);
+    if (m > 0.005 && m < 0.995) return m;
+  } catch {
+    /* rate limit, 404 */
+  }
+  return 0;
 }
 
 export async function getBalance(): Promise<KalshiBalance> {
@@ -402,7 +509,7 @@ async function fetchOnePage(category: string, cursor?: string): Promise<{ market
  * Each category gets up to 2 pages (200 markets). Also sweeps specific game-day series
  * (soccer, NBA spreads, etc.) that are proven to trade at real prices.
  *
- * Result: diverse mix of game-day sports, politics, economics, financials + KXMVE parlays.
+ * Multivariate / extended combo tickers are stripped after fetch (see isExcludedKalshiStructuralJunk).
  */
 export async function getAllLiquidMarkets(_maxPages = 10): Promise<KalshiMarket[]> {
   // Kalshi category strings — each maps to a distinct set of events
@@ -411,6 +518,7 @@ export async function getAllLiquidMarkets(_maxPages = 10): Promise<KalshiMarket[
     "Politics",
     "Economics",
     "Financials",
+    "Crypto",     // BTC/ETH/etc. — backtest-heavy bucket; sequential fetch stays rate-limit safe
     "Sports",
     "Entertainment",
     "Weather",
@@ -445,14 +553,25 @@ export async function getAllLiquidMarkets(_maxPages = 10): Promise<KalshiMarket[
     "KXNFLSPREAD",       // NFL spreads (off-season until Sep — will return 0)
     "KXATPGAMETOTAL",    // ATP tennis
     "KXWBCTOTAL",        // WBC/MLB run totals
+    "KXBTCD",            // Bitcoin daily binary — primary backtest (Pure Value) series
   ];
 
   const allMarketsRaw: KalshiMarket[] = [];
 
-  // Phase 1: Category sweep
+  const HIGH_VALUE_CATEGORIES = new Set(["Politics", "Economics", "Financials", "Crypto", "Entertainment"]);
+
+  // Phase 1: Category sweep (extra page for politics/crypto/economics — backtest-heavy buckets)
   for (const category of CATEGORIES) {
     let cursor: string | undefined;
-    for (let page = 0; page < 2; page++) {
+    const maxPages =
+      category === ""
+        ? 2
+        : category === "Crypto"
+          ? 4
+          : HIGH_VALUE_CATEGORIES.has(category)
+            ? 3
+            : 2;
+    for (let page = 0; page < maxPages; page++) {
       await delay(300);
       const result = await fetchOnePage(category, cursor);
       if (!result.markets || result.markets.length === 0) break;
@@ -494,11 +613,19 @@ export async function getAllLiquidMarkets(_maxPages = 10): Promise<KalshiMarket[
     }
   }
 
-  console.log(`[Scanner] getAllLiquidMarkets: ${allMarkets.length} unique markets total`);
+  const preJunk = allMarkets.length;
+  const noJunk = allMarkets.filter((m) => !isExcludedKalshiStructuralJunk(m));
+  const junkDropped = preJunk - noJunk.length;
+  if (junkDropped > 0) {
+    console.log(`[Scanner] getAllLiquidMarkets: dropped ${junkDropped} multivariate/extended-combo tickers`);
+  }
+  console.log(`[Scanner] getAllLiquidMarkets: ${noJunk.length} unique markets after structural filter`);
 
-  // Only filter out extreme prices — scoring is done downstream by compositeScore()
-  return allMarkets.filter((m) => {
-    const price = parseFloat(String(m.last_price_dollars || "0"));
-    return price > 0.02 && price < 0.98;
+  // Only filter out extreme prices — use full quote (bid/ask/last), not last_price_dollars alone,
+  // or we drop active books with no recent trade (common on crypto/politics).
+  return noJunk.filter((m) => {
+    const price = getMarketYesPrice(m);
+    // Inclusive-ish band so near-the-floor politics/crypto longshots still reach the scanner
+    return price >= 0.015 && price <= 0.985;
   });
 }

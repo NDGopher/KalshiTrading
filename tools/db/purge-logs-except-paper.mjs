@@ -1,7 +1,7 @@
 /**
- * Truncates bulky / log tables; keeps paper_trades and trading_settings.
- * Usage (repo root): node tools/db/purge-logs-except-paper.mjs
- * Requires DATABASE_URL in environment or .env at repo root.
+ * Truncates non-essential tables; keeps paper_trades + trading_settings.
+ * Run automatically from start-paper-trading.bat after db:push.
+ * Usage: node tools/db/purge-logs-except-paper.mjs
  */
 import fs from "fs";
 import path from "path";
@@ -27,14 +27,10 @@ if (!url) {
   process.exit(1);
 }
 
-// Omit tables not created in this deployment (e.g. messages/conversations).
 const sql = `
 TRUNCATE TABLE
   backtest_trades,
   backtest_runs,
-  agent_runs,
-  agent_learnings,
-  api_costs,
   historical_markets,
   market_opportunities,
   market_snapshots,
@@ -46,7 +42,7 @@ RESTART IDENTITY CASCADE;
 const pool = new pg.Pool({ connectionString: url });
 try {
   await pool.query(sql);
-  console.log("OK: truncated log/history tables (paper_trades + trading_settings unchanged).");
+  console.log("OK: purged non-essential tables (paper_trades + trading_settings kept).");
 } catch (e) {
   console.error("FAILED:", e.message, e.code || "");
   process.exitCode = 1;

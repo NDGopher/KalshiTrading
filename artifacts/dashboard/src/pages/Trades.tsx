@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency, formatPercent } from "@/lib/utils";
 import { format } from "date-fns";
-import { History, Target, BrainCircuit, BarChart3, TrendingUp, Award, ChevronUp, AlertTriangle } from "lucide-react";
+import { History, Target, Crosshair, BarChart3, TrendingUp, Award, ChevronUp, AlertTriangle } from "lucide-react";
 import { useState, useMemo, Fragment } from "react";
 import { ListTradesStatus } from "@workspace/api-client-react";
 import {
@@ -538,7 +538,7 @@ export default function Trades() {
                             >
                               {expandedId === trade.id
                                 ? <ChevronUp className="w-4 h-4 mx-auto" />
-                                : <BrainCircuit className="w-4 h-4 mx-auto" />
+                                : <Crosshair className="w-4 h-4 mx-auto" />
                               }
                             </button>
                           </td>
@@ -551,7 +551,7 @@ export default function Trades() {
                                 {trade.analystReasoning ? (
                                   <div>
                                     <div className="flex items-center gap-2 mb-2">
-                                      <BrainCircuit className="w-3.5 h-3.5 text-primary" />
+                                      <Crosshair className="w-3.5 h-3.5 text-primary" />
                                       <span className="text-xs font-semibold text-primary uppercase tracking-wider">Claude Haiku Analysis</span>
                                     </div>
                                     <p className="text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap border-l-2 border-primary/30 pl-3">

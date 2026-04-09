@@ -1,4 +1,9 @@
-import { kalshiSportLabel } from "@workspace/backtester";
+import {
+  kalshiCoarseMacroGroup,
+  kalshiMarketBucket,
+  kalshiSportLabel,
+  kalshiSportBucket,
+} from "@workspace/backtester";
 import { createOrder } from "../kalshi-client.js";
 import { db, tradesTable, paperTradesTable, tradingSettingsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
@@ -144,7 +149,7 @@ async function executePaperTrade(decision: RiskDecision): Promise<ExecutionResul
         : "";
     const hintDisk =
       any.code === "53100" || /project size limit|max_cluster_size|disk full/i.test(msg)
-        ? " Hosted Postgres cluster is full (e.g. Neon 512MB free tier). Prune old rows (historical_markets, market_opportunities, agent_runs), upgrade plan, or use a larger instance."
+        ? " Hosted Postgres cluster is full (e.g. Neon 512MB free tier). Prune old rows (historical_markets, market_opportunities), upgrade plan, or use a larger instance."
         : "";
     return {
       decision,
@@ -155,12 +160,16 @@ async function executePaperTrade(decision: RiskDecision): Promise<ExecutionResul
   }
 
   const sport = kalshiSportLabel(candidate.market.ticker);
+  const bucket = kalshiSportBucket(candidate.market.ticker);
+  const macroBucket = kalshiMarketBucket(candidate.market);
+  const coarse = kalshiCoarseMacroGroup(candidate.market);
+  const categoryField = (candidate.market.category || "").trim() || macroBucket;
   const winProb = analysis.side === "yes" ? analysis.modelProbability : 1 - analysis.modelProbability;
   const expectedEdgePerContract = winProb - entryPrice;
   const expectedPnlUsdApprox = expectedEdgePerContract * decision.positionSize;
   const dollarSize = cost;
   console.info(
-    `[PAPER_TRADE] strategy=${decision.strategyName ?? "?"} ticker=${candidate.market.ticker} sport=${sport} side=${analysis.side.toUpperCase()} ` +
+    `[PAPER_TRADE] strategy=${decision.strategyName ?? "?"} ticker=${candidate.market.ticker} sport=${sport} tickerBucket=${bucket} macroBucket=${macroBucket} coarse=${coarse} category=${categoryField} side=${analysis.side.toUpperCase()} ` +
       `ask=${entryPrice.toFixed(4)} contracts=${decision.positionSize} dollars=$${dollarSize.toFixed(2)} edge_pp=${analysis.edge.toFixed(2)} expectedPnlUsd~=${expectedPnlUsdApprox.toFixed(3)} | ${keeperReason}`,
   );
   console.info(
@@ -169,6 +178,10 @@ async function executePaperTrade(decision: RiskDecision): Promise<ExecutionResul
       timestamp: new Date().toISOString(),
       ticker: candidate.market.ticker,
       sport,
+      tickerBucket: bucket,
+      macroBucket,
+      coarse,
+      category: categoryField,
       side: analysis.side,
       entryAsk: entryPrice,
       contracts: decision.positionSize,

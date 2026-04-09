@@ -120,27 +120,6 @@ export interface TradeStats {
   roi: number;
 }
 
-export type AgentStatusStatus =
-  (typeof AgentStatusStatus)[keyof typeof AgentStatusStatus];
-
-export const AgentStatusStatus = {
-  idle: "idle",
-  running: "running",
-  error: "error",
-  disabled: "disabled",
-} as const;
-
-export interface AgentStatus {
-  name: string;
-  status: AgentStatusStatus;
-  /** @nullable */
-  lastRunAt?: string | null;
-  /** @nullable */
-  lastResult?: string | null;
-  /** @nullable */
-  errorMessage?: string | null;
-}
-
 export type AgentRunStatus =
   (typeof AgentRunStatus)[keyof typeof AgentRunStatus];
 
@@ -179,14 +158,6 @@ export interface CycleResult {
   paperMode?: boolean;
 }
 
-export type TradingSettingsBudgetStatus = {
-  dailySpend: number;
-  monthlySpend: number;
-  dailyExceeded: boolean;
-  monthlyExceeded: boolean;
-  budgetPaused: boolean;
-};
-
 export interface TradingSettings {
   id: number;
   maxPositionPct: number;
@@ -203,12 +174,9 @@ export interface TradingSettings {
   pipelineActive: boolean;
   paperTradingMode: boolean;
   paperBalance: number;
-  dailyBudgetUsd: number;
-  monthlyBudgetUsd: number;
   kalshiApiKeySet?: boolean;
   /** @nullable */
   kalshiBaseUrl?: string | null;
-  budgetStatus?: TradingSettingsBudgetStatus;
 }
 
 export interface UpdateSettingsBody {
@@ -226,8 +194,6 @@ export interface UpdateSettingsBody {
   pipelineActive?: boolean;
   paperTradingMode?: boolean;
   paperBalance?: number;
-  dailyBudgetUsd?: number;
-  monthlyBudgetUsd?: number;
 }
 
 export interface PortfolioBalance {
@@ -326,49 +292,6 @@ export interface BacktestTrade {
   createdAt: string;
 }
 
-export type ApiCostSummaryDaily = {
-  costUsd: number;
-  calls: number;
-  inputTokens: number;
-  outputTokens: number;
-  budgetUsd: number;
-  exceeded: boolean;
-};
-
-export type ApiCostSummaryMonthly = {
-  costUsd: number;
-  calls: number;
-  inputTokens: number;
-  outputTokens: number;
-  budgetUsd: number;
-  exceeded: boolean;
-  projectedUsd: number;
-};
-
-export type ApiCostSummaryAllTime = {
-  costUsd: number;
-  calls: number;
-};
-
-export type ApiCostSummaryByAgentItem = {
-  agentName: string;
-  costUsd: number;
-  calls: number;
-  inputTokens: number;
-  outputTokens: number;
-};
-
-export type ApiCostSummaryRecentCallsItem = { [key: string]: unknown };
-
-export interface ApiCostSummary {
-  daily: ApiCostSummaryDaily;
-  monthly: ApiCostSummaryMonthly;
-  allTime: ApiCostSummaryAllTime;
-  byAgent: ApiCostSummaryByAgentItem[];
-  budgetPaused: boolean;
-  recentCalls: ApiCostSummaryRecentCallsItem[];
-}
-
 export interface PaperTrade {
   id: number;
   kalshiTicker: string;
@@ -422,10 +345,6 @@ export const ListTradesStatus = {
   cancelled: "cancelled",
   failed: "failed",
 } as const;
-
-export type ListAgentRunsParams = {
-  limit?: number;
-};
 
 export type TestConnection200 = {
   connected: boolean;

@@ -2,13 +2,6 @@
  * Market analysis for the trading pipeline — **keeper-only / rule-based**.
  * No Anthropic or other LLM calls (see `analyzeMarketRuleBased`).
  */
-import {
-  apiCostsTable,
-  tradingSettingsTable,
-  withTransactionStatementTimeout,
-  type DbClient,
-} from "@workspace/db";
-import { sql, gte } from "drizzle-orm";
 import type { ScanCandidate } from "./scanner.js";
 
 export interface AnalysisResult {
@@ -30,44 +23,9 @@ function deterministicHash(s: string): number {
 
 export { checkBudget };
 
-const BUDGET_DB_MS = Math.min(60_000, Number(process.env.DB_BUDGET_STATEMENT_TIMEOUT_MS) || 15_000);
-
+/** Legacy hook — API cost tracking removed; pipeline always allowed. */
 async function checkBudget(): Promise<{ allowed: boolean; reason?: string }> {
-  try {
-    return await withTransactionStatementTimeout(BUDGET_DB_MS, async (tx: DbClient) => {
-      const [settings] = await tx.select().from(tradingSettingsTable).limit(1);
-      if (!settings) return { allowed: true };
-
-      const now = new Date();
-      const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-
-      const [dailyResult] = await tx
-        .select({ total: sql<number>`coalesce(sum(${apiCostsTable.costUsd}), 0)` })
-        .from(apiCostsTable)
-        .where(gte(apiCostsTable.createdAt, startOfDay));
-      const dailySpend = Number(dailyResult?.total || 0);
-
-      const [monthlyResult] = await tx
-        .select({ total: sql<number>`coalesce(sum(${apiCostsTable.costUsd}), 0)` })
-        .from(apiCostsTable)
-        .where(gte(apiCostsTable.createdAt, startOfMonth));
-      const monthlySpend = Number(monthlyResult?.total || 0);
-
-      if (settings.dailyBudgetUsd > 0 && dailySpend >= settings.dailyBudgetUsd) {
-        return { allowed: false, reason: `Daily API budget exceeded: $${dailySpend.toFixed(2)} / $${settings.dailyBudgetUsd}` };
-      }
-      if (settings.monthlyBudgetUsd > 0 && monthlySpend >= settings.monthlyBudgetUsd) {
-        return { allowed: false, reason: `Monthly API budget exceeded: $${monthlySpend.toFixed(2)} / $${settings.monthlyBudgetUsd}` };
-      }
-
-      return { allowed: true };
-    });
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.warn("[Analyst] checkBudget DB timed out or failed — allowing cycle:", msg);
-    return { allowed: true };
-  }
+  return { allowed: true };
 }
 
 /** Blind pricing math aligned with JBecker replay (`blindReplayAnalysisForTick`). No LLM. */

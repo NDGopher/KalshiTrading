@@ -7,17 +7,20 @@ import {
   getMarketYesPrice,
   getMarketVolume24h,
   getMarketLiquidity,
+  isExcludedKalshiStructuralJunk,
   type KalshiMarket,
 } from "../kalshi-client.js";
 import { db, historicalMarketsTable } from "@workspace/db";
 import { ne, desc } from "drizzle-orm";
 import { batchGetPriceHistory, type PriceHistory } from "../price-history.js";
 import { updateLiveTapeFlow } from "../live-tape-flow.js";
-import { kalshiSportBucket } from "@workspace/backtester";
+import { kalshiMarketBucket, kalshiSportBucket } from "@workspace/backtester";
 
 /**
  * Scanner sizing (live paper + future live) — **no Odds API / sharp lines**.
- * - **Pool 500**: sports-heavy core + **ticker-bucket** non-sports injection (Politics/Crypto/Economics/Other).
+ * - **Pool 500**: **80–100** Crypto + Politics + Other guaranteed when supply exists (backtest-aligned), up to **120**
+ *   total non-sports including Economics; **sports fill remainder** (~380–420). Relaxed vol/liq **only** for
+ *   Crypto/Politics/Other; Economics uses a tighter relaxed pass. **KXBTCD** boosted in score + series fetch.
  * - **Enrich top 250**: price-history only (DB, batched 20 tickers → ~13 rounds).
  *
  * **Cycle budget:** Kalshi ~12–22s; persist 500 rows; enrich ~13 DB batches; analyst 250 ~2–6s.
@@ -86,12 +89,37 @@ function isNonSportsCategory(candidate: ScanCandidate): boolean {
   return NON_SPORTS_CATEGORIES.some((nc) => cat.includes(nc));
 }
 
-/** Coarse bucket for diversity quotas (ticker-based — works when API category is missing). */
-function diversityQuotaBucket(c: ScanCandidate): "Politics" | "Crypto" | "Economics" | "Other" | "Sports" {
-  const b = kalshiSportBucket(c.market.ticker);
+/** True when we should keep tight liquidity/price floors (game markets only). */
+function isStrictSportsLikeMarket(m: KalshiMarket): boolean {
+  const cat = (m.category || "").toLowerCase();
+  if (cat.includes("politic") || cat.includes("crypto") || cat.includes("economic")) return false;
+  if (cat.includes("financial") && !cat.includes("sport")) return false;
+  if (cat.includes("entertainment") || cat.includes("weather") || cat.includes("science")) return false;
+  if (cat.includes("sport")) return true;
+  return kalshiMarketBucket(m) === "Sports";
+}
+
+/** Coarse bucket for diversity quotas — prefer Kalshi API category, then ticker. */
+function diversityQuotaBucketFromMarket(m: KalshiMarket): "Politics" | "Crypto" | "Economics" | "Other" | "Sports" {
+  const cat = (m.category || "").toLowerCase();
+  if (cat.includes("sport")) return "Sports";
+  if (cat.includes("politic")) return "Politics";
+  if (cat.includes("crypto") || cat.includes("digital")) return "Crypto";
+  if (cat.includes("economic") || cat.includes("financial") || cat.includes("finance")) return "Economics";
+  const b = kalshiMarketBucket(m);
   if (b === "Politics" || b === "Crypto" || b === "Economics") return b;
   if (b === "Sports") return "Sports";
   return "Other";
+}
+
+function diversityQuotaBucket(c: ScanCandidate): "Politics" | "Crypto" | "Economics" | "Other" | "Sports" {
+  return diversityQuotaBucketFromMarket(c.market);
+}
+
+/** Backtest priority slice: Crypto + Politics + Other (excludes Economics for the 80–100 floor). */
+function isPriorityBacktestBucketFromMarket(m: KalshiMarket): boolean {
+  const d = diversityQuotaBucketFromMarket(m);
+  return d === "Crypto" || d === "Politics" || d === "Other";
 }
 
 function compositeScore(candidate: ScanCandidate): number {
@@ -102,16 +130,37 @@ function compositeScore(candidate: ScanCandidate): number {
   const spreadQuality = Math.max(0, 1 - candidate.spread / 0.2);
   // Bonus for dip/surge signals — bump these up in priority
   const dipBonus = candidate.priceHistory?.isDip || candidate.priceHistory?.isSurge ? 0.8 : 0;
-  // Non-sports bonus: use ticker bucket so politics/crypto compete even if category string is empty.
-  const bucket = kalshiSportBucket(candidate.market.ticker);
+  // Non-sports bonus: category + ticker bucket so politics/crypto compete in ranking.
+  const dq = diversityQuotaBucket(candidate);
   const nonSportsBonus =
-    bucket !== "Sports" && (candidate.volume24h > 50 || candidate.liquidity > 200) ? 2.5 : 0;
+    dq !== "Sports" && (candidate.volume24h > 50 || candidate.liquidity > 200) ? 2.5 : 0;
   const categoryBonus =
     isNonSportsCategory(candidate) && candidate.volume24h > 30 ? 0.4 : 0;
-  return proximity * 3 + volNorm * 1.5 + liqNorm * 0.5 + spreadQuality * 0.5 + dipBonus + nonSportsBonus + categoryBonus;
+  const priorityMacroBonus = dq === "Crypto" || dq === "Politics" || dq === "Other" ? 2.2 : 0;
+  const kxbtcdBonus = candidate.market.ticker.toUpperCase().startsWith("KXBTCD") ? 7.0 : 0;
+  // Backtest: Pure Value on KXBTCD ~13–21¢ YES
+  const btcSweetSpot =
+    candidate.market.ticker.toUpperCase().startsWith("KXBTCD") &&
+    candidate.yesPrice >= 0.11 &&
+    candidate.yesPrice <= 0.21
+      ? 3.0
+      : 0;
+  return (
+    proximity * 3 +
+    volNorm * 1.5 +
+    liqNorm * 0.5 +
+    spreadQuality * 0.5 +
+    dipBonus +
+    nonSportsBonus +
+    categoryBonus +
+    priorityMacroBonus +
+    kxbtcdBonus +
+    btcSweetSpot
+  );
 }
 
 function buildCandidateFromKalshi(market: KalshiMarket): ScanCandidate | null {
+  if (isExcludedKalshiStructuralJunk(market)) return null;
   const now = new Date();
   const rawAsk = getMarketYesAsk(market);
   const rawBid = getMarketYesBid(market);
@@ -160,6 +209,141 @@ function buildCandidateFromKalshi(market: KalshiMarket): ScanCandidate | null {
     replayFlowImbalance: imbalance,
     replayWhalePrint: whalePrint,
   };
+}
+
+/**
+ * Relaxed pass for **Crypto / Politics / Other** only — widest price band, no vol/liq floor (backtest-aligned thin books).
+ */
+function buildCandidateRelaxedPriorityMacro(market: KalshiMarket): ScanCandidate | null {
+  if (isExcludedKalshiStructuralJunk(market)) return null;
+  if (isStrictSportsLikeMarket(market)) return null;
+  if (!isPriorityBacktestBucketFromMarket(market)) return null;
+
+  const now = new Date();
+  const rawAsk = getMarketYesAsk(market);
+  const rawBid = getMarketYesBid(market);
+  const yesPrice = getMarketYesPrice(market);
+  if (!yesPrice || yesPrice < 0.015 || yesPrice > 0.985) return null;
+
+  const noPrice = 1 - yesPrice;
+  const yesAsk = rawAsk > 0 ? rawAsk : yesPrice;
+  const noAsk = getMarketNoAsk(market) || noPrice;
+  const rawSpread = rawAsk > 0 && rawBid > 0 ? Math.abs(rawAsk - rawBid) : 0;
+  const spread = rawSpread > 0 && rawSpread < 0.5 ? rawSpread : Math.min(0.05, yesPrice * 0.05);
+  const volume24h = getMarketVolume24h(market);
+  const liquidity = getMarketLiquidity(market);
+  const expiresAt = new Date(
+    market.expected_expiration_time || market.expiration_time || market.close_time
+  );
+  const hoursToExpiry = (expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60);
+
+  if (hoursToExpiry < 0.5) return null;
+  if (hoursToExpiry > MAX_HOURS_TO_EXPIRY) return null;
+
+  if (hoursToExpiry < 3 && yesPrice < 0.06 && volume24h < 1) return null;
+
+  const { imbalance, whalePrint } = updateLiveTapeFlow(market.ticker, yesPrice, volume24h);
+  return {
+    market,
+    yesPrice,
+    noPrice,
+    yesAsk,
+    noAsk,
+    spread,
+    volume24h,
+    liquidity,
+    hoursToExpiry,
+    hasLiveData: volume24h > 0 || liquidity >= 50,
+    replayFlowImbalance: imbalance,
+    replayWhalePrint: whalePrint,
+  };
+}
+
+/**
+ * Tighter relaxed pass for **Economics** (and any remaining non-sports macro not in priority buckets).
+ */
+function buildCandidateRelaxedEconomicsMacro(market: KalshiMarket): ScanCandidate | null {
+  if (isExcludedKalshiStructuralJunk(market)) return null;
+  if (isStrictSportsLikeMarket(market)) return null;
+  if (isPriorityBacktestBucketFromMarket(market)) return null;
+
+  const now = new Date();
+  const rawAsk = getMarketYesAsk(market);
+  const rawBid = getMarketYesBid(market);
+  const yesPrice = getMarketYesPrice(market);
+  if (!yesPrice || yesPrice < 0.02 || yesPrice > 0.98) return null;
+
+  const noPrice = 1 - yesPrice;
+  const yesAsk = rawAsk > 0 ? rawAsk : yesPrice;
+  const noAsk = getMarketNoAsk(market) || noPrice;
+  const rawSpread = rawAsk > 0 && rawBid > 0 ? Math.abs(rawAsk - rawBid) : 0;
+  const spread = rawSpread > 0 && rawSpread < 0.5 ? rawSpread : Math.min(0.05, yesPrice * 0.05);
+  const volume24h = getMarketVolume24h(market);
+  const liquidity = getMarketLiquidity(market);
+  const expiresAt = new Date(
+    market.expected_expiration_time || market.expiration_time || market.close_time
+  );
+  const hoursToExpiry = (expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60);
+
+  if (hoursToExpiry < 0.5) return null;
+  if (hoursToExpiry > MAX_HOURS_TO_EXPIRY) return null;
+
+  if (volume24h === 0 && liquidity < 28) return null;
+  if (hoursToExpiry < 4 && volume24h < 8 && liquidity < 80) return null;
+
+  const { imbalance, whalePrint } = updateLiveTapeFlow(market.ticker, yesPrice, volume24h);
+  return {
+    market,
+    yesPrice,
+    noPrice,
+    yesAsk,
+    noAsk,
+    spread,
+    volume24h,
+    liquidity,
+    hoursToExpiry,
+    hasLiveData: volume24h > 0 || liquidity >= 80,
+    replayFlowImbalance: imbalance,
+    replayWhalePrint: whalePrint,
+  };
+}
+
+function isSportsCandidate(c: ScanCandidate): boolean {
+  return diversityQuotaBucket(c) === "Sports";
+}
+
+/**
+ * After a global score sort, the top 250 would be almost all sports. Pin up to
+ * `maxNonSports` non-sports at the front of the pool so analyst + opportunities
+ * DB include crypto/politics/economics when the universe has them.
+ */
+function reorderPoolWithDiverseAnalysisHead(pool: ScanCandidate[], maxNonSports: number): ScanCandidate[] {
+  const sorted = [...pool].sort((a, b) => compositeScore(b) - compositeScore(a));
+  const slice = SCANNER_ANALYSIS_SLICE;
+
+  const nonSportsSorted = sorted.filter((c) => !isSportsCandidate(c));
+  const takeNon = nonSportsSorted.slice(0, Math.min(maxNonSports, nonSportsSorted.length, slice));
+  const taken = new Set(takeNon.map((c) => c.market.ticker));
+
+  const sportsSorted = sorted.filter((c) => isSportsCandidate(c) && !taken.has(c.market.ticker));
+  const needSports = slice - takeNon.length;
+  const takeSports = sportsSorted.slice(0, Math.max(0, needSports));
+
+  const head: ScanCandidate[] = [...takeNon, ...takeSports];
+  if (head.length < slice) {
+    const headIds = new Set(head.map((c) => c.market.ticker));
+    for (const c of sorted) {
+      if (head.length >= slice) break;
+      if (!headIds.has(c.market.ticker)) {
+        head.push(c);
+        headIds.add(c.market.ticker);
+      }
+    }
+  }
+
+  const headIds = new Set(head.map((c) => c.market.ticker));
+  const tail = sorted.filter((c) => !headIds.has(c.market.ticker));
+  return [...head, ...tail].slice(0, SCANNER_POOL_SIZE);
 }
 
 async function scanFromCachedDb(): Promise<{ candidates: ScanCandidate[]; totalScanned: number }> {
@@ -213,6 +397,8 @@ async function scanFromCachedDb(): Promise<{ candidates: ScanCandidate[]; totalS
       expiration_time: row.expirationTime?.toISOString() || expiresAt.toISOString(),
     } as KalshiMarket;
 
+    if (isExcludedKalshiStructuralJunk(market)) continue;
+
     candidates.push({
       market,
       yesPrice: price,
@@ -263,58 +449,112 @@ export async function scanMarkets(_sportFilters?: string[]): Promise<{
     const markets = await getAllLiquidMarkets(10);
     const candidates: ScanCandidate[] = [];
 
+    let strictOk = 0;
+    let relaxedAdded = 0;
     for (const market of markets) {
-      const candidate = buildCandidateFromKalshi(market);
+      const sportsLike = isStrictSportsLikeMarket(market);
+      let candidate = buildCandidateFromKalshi(market);
+      if (candidate) strictOk++;
+      else if (!sportsLike) {
+        candidate = buildCandidateRelaxedPriorityMacro(market) ?? buildCandidateRelaxedEconomicsMacro(market);
+        if (candidate) relaxedAdded++;
+      }
       if (candidate) candidates.push(candidate);
     }
 
-    console.info(`[Scanner] buildCandidateFromKalshi: ${candidates.length} candidates from ${markets.length} markets`);
+    console.info(
+      `[Scanner] candidates: ${strictOk} strict + ${relaxedAdded} relaxed macro/non-sports → ${candidates.length} total from ${markets.length} markets`,
+    );
 
     candidates.sort((a, b) => compositeScore(b) - compositeScore(a));
 
-    // Diversity: prepend **ticker-bucket** non-sports (Politics / Crypto / Economics / Other) so they
-    // are not crowded out when API `category` is "Unknown". Sports core unchanged: top SCANNER_POOL_SIZE
-    // by score after removing injected tickers from the tail build.
-    const POOL_SIZE = SCANNER_POOL_SIZE;
-    /** Per non-sports bucket, how many of the best-scoring markets to force into the pool head. */
-    const DIVERSITY_PER_BUCKET = 16;
-    const diversityBuckets = ["Politics", "Crypto", "Economics", "Other"] as const;
+    /** Backtest slice: Crypto + Politics + Other in pool (Economics uses separate slots). */
+    const PRIORITY_MACRO_MIN = 80;
+    const PRIORITY_MACRO_CAP = 100;
+    const MAX_NON_SPORTS_IN_POOL = 120;
+    const MIN_NON_SPORTS_IN_POOL = 100;
 
-    const diversityPoolIds = new Set<string>();
-    const diversityExtras: ScanCandidate[] = [];
-
-    for (const dk of diversityBuckets) {
-      const picked = candidates
-        .filter(
-          (c) =>
-            !diversityPoolIds.has(c.market.ticker) &&
-            diversityQuotaBucket(c) === dk &&
-            (c.volume24h > 0 || c.liquidity > 25),
-        )
-        .sort((a, b) => compositeScore(b) - compositeScore(a))
-        .slice(0, DIVERSITY_PER_BUCKET);
-      for (const dc of picked) {
-        diversityExtras.push(dc);
-        diversityPoolIds.add(dc.market.ticker);
-      }
+    function sortPriorityQuotaPool(arr: ScanCandidate[]): ScanCandidate[] {
+      return [...arr].sort((a, b) => {
+        const ak = a.market.ticker.toUpperCase().startsWith("KXBTCD") ? 1 : 0;
+        const bk = b.market.ticker.toUpperCase().startsWith("KXBTCD") ? 1 : 0;
+        if (bk !== ak) return bk - ak;
+        return compositeScore(b) - compositeScore(a);
+      });
     }
 
-    const diversityPool = candidates.filter((c) => !diversityPoolIds.has(c.market.ticker)).slice(0, POOL_SIZE);
-
-    diversityExtras.sort((a, b) => compositeScore(b) - compositeScore(a));
-    const topCandidates = [...diversityExtras, ...diversityPool].slice(0, SCANNER_POOL_SIZE);
-
-    if (diversityExtras.length > 0) {
-      const counts = new Map<string, number>();
-      for (const c of diversityExtras) {
+    const priorityPool = sortPriorityQuotaPool(
+      candidates.filter((c) => {
         const d = diversityQuotaBucket(c);
-        counts.set(d, (counts.get(d) ?? 0) + 1);
+        return d === "Crypto" || d === "Politics" || d === "Other";
+      }),
+    );
+    const econPool = candidates
+      .filter((c) => diversityQuotaBucket(c) === "Economics")
+      .sort((a, b) => compositeScore(b) - compositeScore(a));
+    const sportsOnly = candidates.filter(isSportsCandidate).sort((a, b) => compositeScore(b) - compositeScore(a));
+
+    let priorityTake: number;
+    if (priorityPool.length >= PRIORITY_MACRO_CAP) priorityTake = PRIORITY_MACRO_CAP;
+    else if (priorityPool.length >= PRIORITY_MACRO_MIN) priorityTake = priorityPool.length;
+    else priorityTake = priorityPool.length;
+
+    const pickedPriority = priorityPool.slice(0, priorityTake);
+    const pickedIds = new Set(pickedPriority.map((c) => c.market.ticker));
+
+    const roomForEcon = Math.max(0, MAX_NON_SPORTS_IN_POOL - pickedPriority.length);
+    const pickedEcon = econPool.filter((c) => !pickedIds.has(c.market.ticker)).slice(0, roomForEcon);
+    for (const c of pickedEcon) pickedIds.add(c.market.ticker);
+
+    let pickedNon: ScanCandidate[] = [...pickedPriority, ...pickedEcon];
+
+    if (pickedNon.length < MIN_NON_SPORTS_IN_POOL) {
+      const filler = candidates
+        .filter((c) => !isSportsCandidate(c) && !pickedIds.has(c.market.ticker))
+        .sort((a, b) => compositeScore(b) - compositeScore(a));
+      for (const c of filler) {
+        if (pickedNon.length >= MIN_NON_SPORTS_IN_POOL || pickedNon.length >= MAX_NON_SPORTS_IN_POOL) break;
+        pickedNon.push(c);
+        pickedIds.add(c.market.ticker);
       }
-      const bucketLog = [...counts.entries()].map(([k, v]) => `${k}=${v}`).join(", ");
-      console.info(`[Scanner] Diversity injection: +${diversityExtras.length} non-sports (ticker bucket) → ${bucketLog}`);
-    } else {
-      console.info(`[Scanner] No non-sports candidates with sufficient volume found this cycle`);
     }
+
+    if (pickedNon.length > MAX_NON_SPORTS_IN_POOL) {
+      pickedNon = pickedNon.slice(0, MAX_NON_SPORTS_IN_POOL);
+      pickedIds.clear();
+      for (const c of pickedNon) pickedIds.add(c.market.ticker);
+    }
+
+    const needSports = SCANNER_POOL_SIZE - pickedNon.length;
+    const sportsPart: ScanCandidate[] = [];
+    for (const c of sportsOnly) {
+      if (sportsPart.length >= needSports) break;
+      if (!pickedIds.has(c.market.ticker)) sportsPart.push(c);
+    }
+
+    if (sportsPart.length < needSports) {
+      const shortfall = needSports - sportsPart.length;
+      const used = new Set<string>([...pickedIds, ...sportsPart.map((c) => c.market.ticker)]);
+      const backfill = candidates
+        .filter((c) => !used.has(c.market.ticker))
+        .sort((a, b) => compositeScore(b) - compositeScore(a));
+      sportsPart.push(...backfill.slice(0, shortfall));
+    }
+
+    const topCandidates = [...pickedNon, ...sportsPart].slice(0, SCANNER_POOL_SIZE);
+
+    const nsInPool = topCandidates.filter((c) => !isSportsCandidate(c)).length;
+    const spInPool = topCandidates.length - nsInPool;
+    const bucketCounts = new Map<string, number>();
+    for (const c of pickedNon) {
+      const d = diversityQuotaBucket(c);
+      bucketCounts.set(d, (bucketCounts.get(d) ?? 0) + 1);
+    }
+    const bucketLog = [...bucketCounts.entries()].map(([k, v]) => `${k}=${v}`).join(", ");
+    const kxbtcdInPool = pickedNon.filter((c) => c.market.ticker.toUpperCase().startsWith("KXBTCD")).length;
+    console.info(
+      `[Scanner] Pool ${topCandidates.length}: priority C/P/O=${pickedPriority.length}/${priorityPool.length} avail, KXBTCD_in_nonSports=${kxbtcdInPool}, non-sports=${nsInPool} (buckets ${bucketLog || "—"}) | sports=${spInPool}`,
+    );
 
     // If API returned nothing usable, fall through to the DB cache
     if (topCandidates.length === 0) {
@@ -375,8 +615,14 @@ export async function scanMarkets(_sportFilters?: string[]): Promise<{
 
     // Re-sort after enrichment so dip/surge signals bubble up
     topCandidates.sort((a, b) => compositeScore(b) - compositeScore(a));
+    const ANALYSIS_HEAD_NON_SPORTS_MAX = 120;
+    const finalCandidates = reorderPoolWithDiverseAnalysisHead(topCandidates, ANALYSIS_HEAD_NON_SPORTS_MAX);
+    const nsHead = finalCandidates.slice(0, SCANNER_ANALYSIS_SLICE).filter((c) => !isSportsCandidate(c)).length;
+    console.info(
+      `[Scanner] Analysis slice (first ${SCANNER_ANALYSIS_SLICE}): non-sports=${nsHead} (cap ${ANALYSIS_HEAD_NON_SPORTS_MAX}) after diverse reorder`,
+    );
 
-    return { candidates: topCandidates, totalScanned: markets.length, source: "live" };
+    return { candidates: finalCandidates, totalScanned: markets.length, source: "live" };
   } catch (err: unknown) {
     const errMsg = err instanceof Error ? err.message : String(err);
     const isRateLimit = errMsg.includes("429") || errMsg.includes("too_many_requests");

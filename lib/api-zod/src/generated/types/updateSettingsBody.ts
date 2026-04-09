@@ -21,6 +21,4 @@ export interface UpdateSettingsBody {
   pipelineActive?: boolean;
   paperTradingMode?: boolean;
   paperBalance?: number;
-  dailyBudgetUsd?: number;
-  monthlyBudgetUsd?: number;
 }

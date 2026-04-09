@@ -1,6 +1,5 @@
 import {
   db,
-  agentRunsTable,
   marketOpportunitiesTable,
   paperTradesTable,
   tradesTable,
@@ -10,19 +9,32 @@ import {
 } from "@workspace/db";
 import { eq, sql, inArray } from "drizzle-orm";
 import { scanMarkets, SCANNER_ANALYSIS_SLICE } from "./scanner.js";
-import { analyzeMarketsRuleBased, compactKeeperReasoning } from "./analyst.js";
+import { analyzeMarketsRuleBased } from "./analyst.js";
 import { auditTrades, type AuditResult } from "./auditor.js";
 import { assessRisk, type RiskDecision } from "./risk-manager.js";
 import { executeTrade } from "./executor.js";
 import { reconcileOpenTrades, reconcilePaperTrades } from "./reconciler.js";
 import { checkBudget } from "./analyst.js";
 import { getBalance } from "../kalshi-client.js";
-import { kalshiSportBucket, kalshiSportLabel } from "@workspace/backtester";
-import { diagnoseStrategyMiss, evaluateStrategies } from "../strategies/index.js";
-import { startNewsFetcher, getNewsFetcherStatus } from "./news-fetcher.js";
-import { getLiveTapeSnapshot } from "../live-tape-flow.js";
-import { runLearner } from "./learner.js";
+import { kalshiMarketBucket, kalshiSportBucket, kalshiSportLabel } from "@workspace/backtester";
 
+function opportunityCategoryLabel(
+  ticker: string,
+  category: string | null | undefined,
+  eventTicker?: string | null,
+  seriesTicker?: string | null,
+): string {
+  const c = typeof category === "string" ? category.trim() : "";
+  if (c.length > 0) return c;
+  return kalshiMarketBucket({
+    ticker,
+    event_ticker: eventTicker || undefined,
+    series_ticker: seriesTicker || undefined,
+  });
+}
+import { diagnoseStrategyMiss, evaluateStrategies } from "../strategies/index.js";
+import { startNewsFetcher } from "./news-fetcher.js";
+import { getLiveTapeSnapshot } from "../live-tape-flow.js";
 interface AgentRunLog {
   agentName: string;
   status: "success" | "error" | "skipped";
@@ -38,23 +50,6 @@ export interface CycleResult {
   totalDuration: number;
   agentResults: AgentRunLog[];
   paperMode?: boolean;
-}
-
-export interface LastCycleMarket {
-  ticker: string;
-  title: string;
-  sport: string;
-  yesPrice: number;
-  modelProbability: number;
-  confidence: number;
-  edge: number;
-  kellyFraction: number | null;
-  side: "yes" | "no";
-  strategyName: string | null;
-  reasoning: string | null;
-  strategyReason: string | null;
-  disposition: "executed" | "skipped_risk" | "skipped_audit" | "skipped_duplicate" | "skipped_confidence" | "skipped_no_price" | "skipped_game_cap" | "candidate";
-  rejectionReason: string | null;
 }
 
 // Hard ceiling on AI confidence: empirical data shows win rate collapses above 75%.
@@ -109,28 +104,11 @@ function dedupeApprovedOnePerGame(approved: AuditResult[]): AuditResult[] {
   return [...noGameKey, ...bestByGame.values()];
 }
 
-let lastCycleMarkets: LastCycleMarket[] = [];
-let lastCycleAt: Date | null = null;
 let lastSuccessfulCycleAt: Date | null = null;
 let liveCycleId: string | null = null;
 let liveCycleInProgress = false;
 let liveCycleActiveAgent: string | null = null;
 let watchdogInterval: ReturnType<typeof setInterval> | null = null;
-
-export function getLastCycleSummary() {
-  return {
-    markets: lastCycleMarkets,
-    cycleAt: lastCycleAt,
-    cycleId: liveCycleId,
-    inProgress: liveCycleInProgress,
-    activeAgent: liveCycleActiveAgent,
-    lastHeartbeatAt: lastSuccessfulCycleAt?.toISOString() || null,
-  };
-}
-
-function setLiveAgent(agent: string | null) {
-  liveCycleActiveAgent = agent;
-}
 
 let pipelineInterval: ReturnType<typeof setInterval> | null = null;
 let pipelineRunning = false;
@@ -147,16 +125,10 @@ const agentStatuses: Record<string, {
   "Risk Manager": { status: "idle", lastRunAt: null, lastResult: null, errorMessage: null },
   Executor: { status: "idle", lastRunAt: null, lastResult: null, errorMessage: null },
   Reconciler: { status: "idle", lastRunAt: null, lastResult: null, errorMessage: null },
-  Learner: { status: "idle", lastRunAt: null, lastResult: null, errorMessage: null },
 };
-
-// Learner runs every LEARNER_CYCLE_INTERVAL cycles (or when enough trades close)
-const LEARNER_CYCLE_INTERVAL = 10;
-let pipelineCycleCount = 0;
 
 /** Bound Neon latency so one slow statement cannot wedge the pool for minutes. */
 const PIPELINE_DB_MS = Math.min(120_000, Number(process.env.PIPELINE_STATEMENT_TIMEOUT_MS) || 90_000);
-const PIPELINE_AGENT_LOG_MS = Math.min(60_000, Number(process.env.PIPELINE_AGENT_LOG_TIMEOUT_MS) || 25_000);
 
 export function getAgentStatuses() {
   return Object.entries(agentStatuses).map(([name, s]) => ({
@@ -168,37 +140,8 @@ export function getAgentStatuses() {
   }));
 }
 
-function safeAgentRunDuration(seconds: number): number {
-  return typeof seconds === "number" && Number.isFinite(seconds) && seconds >= 0 && seconds < 1e7 ? seconds : 0;
-}
-
-async function flushAgentRuns(runs: AgentRunLog[]): Promise<void> {
-  if (runs.length === 0) return;
-  const rows = runs.map((run) => ({
-    agentName: run.agentName,
-    status: run.status,
-    duration: safeAgentRunDuration(run.duration),
-    details: run.details ?? null,
-  }));
-  try {
-    await withTransactionStatementTimeout(PIPELINE_AGENT_LOG_MS, async (tx: DbClient) => {
-      await tx.insert(agentRunsTable).values(rows);
-    });
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.error("[Pipeline] flushAgentRuns batch failed:", msg, "— retrying one row at a time");
-    try {
-      await withTransactionStatementTimeout(PIPELINE_AGENT_LOG_MS, async (tx: DbClient) => {
-        for (const row of rows) {
-          await tx.insert(agentRunsTable).values(row);
-        }
-      });
-    } catch (e2: unknown) {
-      const msg2 = e2 instanceof Error ? e2.message : String(e2);
-      console.error("[Pipeline] flushAgentRuns failed:", msg2);
-    }
-  }
-}
+/** Agent run rows are no longer persisted (Neon size / no agent UI). */
+async function flushAgentRuns(_runs: AgentRunLog[]): Promise<void> {}
 
 function updateAgentStatus(name: string, status: "idle" | "running" | "error", result?: string, error?: string) {
   if (agentStatuses[name]) {
@@ -414,7 +357,10 @@ export async function runTradingCycle(): Promise<CycleResult> {
             return {
               kalshiTicker: analysis.candidate.market.ticker,
               title: analysis.candidate.market.title || analysis.candidate.market.ticker,
-              category: analysis.candidate.market.category || "Sports",
+              category: opportunityCategoryLabel(
+                analysis.candidate.market.ticker,
+                analysis.candidate.market.category,
+              ),
               currentYesPrice: analysis.candidate.yesPrice,
               modelProbability: analysis.modelProbability,
               edge: analysis.edge,
@@ -481,10 +427,6 @@ export async function runTradingCycle(): Promise<CycleResult> {
     let gameCapSkipped = 0;
     // Tracks trades approved THIS cycle so the reverse middle detector can see
     // intra-cycle positions before they are written to the DB.
-    const confidenceCappedTickers = new Set<string>();
-    const noPriceCappedTickers = new Set<string>();
-    const gameCapTickers = new Set<string>();
-    const duplicateTickerSkips = new Set<string>();
     const intraCycleTrades: Array<{ kalshiTicker: string; side: string }> = [];
 
     // Build a game-key → count map from currently open DB positions.
@@ -538,7 +480,6 @@ export async function runTradingCycle(): Promise<CycleResult> {
       // Skip the trade but record the ticker so the dashboard can display why.
       if (audit.adjustedConfidence > CONFIDENCE_CEILING) {
         confidenceCapped++;
-        confidenceCappedTickers.add(audit.analysis.candidate.market.ticker);
         console.log(`[Pipeline] Confidence ceiling hit: ${audit.analysis.candidate.market.ticker} conf=${(audit.adjustedConfidence * 100).toFixed(0)}% > ${(CONFIDENCE_CEILING * 100).toFixed(0)}% — skipped`);
         continue;
       }
@@ -552,7 +493,6 @@ export async function runTradingCycle(): Promise<CycleResult> {
         const noEntryPrice = candidate.noAsk ?? candidate.noPrice ?? (1 - (candidate.yesPrice ?? 0));
         if (noEntryPrice > NO_MAX_ENTRY_PRICE) {
           noPriceCapped++;
-          noPriceCappedTickers.add(candidate.market.ticker);
           console.log(`[Pipeline] NO price cap: ${candidate.market.ticker} noAsk=${noEntryPrice.toFixed(2)} > ${NO_MAX_ENTRY_PRICE} — skipped`);
           continue;
         }
@@ -568,7 +508,6 @@ export async function runTradingCycle(): Promise<CycleResult> {
         const totalGamePositions = dbCount + cycleCount;
         if (totalGamePositions >= MAX_POSITIONS_PER_GAME) {
           gameCapSkipped++;
-          gameCapTickers.add(ticker);
           const cat = audit.analysis.candidate.market.category || "Unknown";
           const strat = strategyMatches[0]?.strategyName ?? "?";
           const sf = kalshiSportLabel(ticker);
@@ -584,7 +523,6 @@ export async function runTradingCycle(): Promise<CycleResult> {
       }
 
       if (openTickers.has(ticker) || intraCycleTrades.some((x) => x.kalshiTicker === ticker)) {
-        duplicateTickerSkips.add(ticker);
         console.log(`[Pipeline] Same-ticker skip: already open or queued ${ticker}`);
         continue;
       }
@@ -651,75 +589,6 @@ export async function runTradingCycle(): Promise<CycleResult> {
     updateAgentStatus("Executor", "idle", `Executed ${executed}/${riskApproved.length} trades${modeLabel}`);
     agentResults.push({ agentName: "Executor", status: "success", duration: execDuration, details: `${executed}/${riskApproved.length} executed${modeLabel}` });
 
-    // Build last cycle summary for Brain view
-    const executedTickers = new Set(
-      riskApproved
-        .filter((d) => d.approved)
-        .map((d) => d.audit.analysis.candidate.market.ticker)
-    );
-    const riskSkippedTickers = new Set(
-      riskDecisions
-        .filter((d) => !d.approved)
-        .map((d) => d.audit.analysis.candidate.market.ticker)
-    );
-    const auditFailedTickers = new Set(
-      auditResults
-        .filter((a) => !a.approved)
-        .map((a) => a.analysis.candidate.market.ticker)
-    );
-    lastCycleMarkets = topCandidates.map((c) => {
-      const analysis = analyses.find((a) => a.candidate.market.ticker === c.market.ticker);
-      const audit = auditResults.find((a) => a.analysis.candidate.market.ticker === c.market.ticker);
-      const risk = riskDecisions.find((d) => d.audit.analysis.candidate.market.ticker === c.market.ticker);
-      const strategyMatches = analysis ? evaluateStrategies(analysis, enabledStrategies) : [];
-      let disposition: LastCycleMarket["disposition"] = "candidate";
-      let rejectionReason: string | null = null;
-      if (executedTickers.has(c.market.ticker)) {
-        disposition = "executed";
-      } else if (confidenceCappedTickers.has(c.market.ticker)) {
-        disposition = "skipped_confidence";
-        rejectionReason = `Conf ${((analysis?.confidence ?? 0) * 100).toFixed(0)}% > ${(CONFIDENCE_CEILING * 100).toFixed(0)}% cap`;
-      } else if (noPriceCappedTickers.has(c.market.ticker)) {
-        disposition = "skipped_no_price";
-        const candidate = c;
-        const noAsk = candidate.noAsk ?? candidate.noPrice ?? (1 - (candidate.yesPrice ?? 0));
-        rejectionReason = `NO ask ${(noAsk * 100).toFixed(0)}¢ > ${(NO_MAX_ENTRY_PRICE * 100).toFixed(0)}¢ max`;
-      } else if (gameCapTickers.has(c.market.ticker)) {
-        disposition = "skipped_game_cap";
-        const gk = extractGameKey(c.market.ticker);
-        rejectionReason = `Game cap: max ${MAX_POSITIONS_PER_GAME} open on ${gk ?? "this game"}`;
-      } else if (duplicateTickerSkips.has(c.market.ticker)) {
-        disposition = "skipped_duplicate";
-        rejectionReason = "Same ticker already open or queued this cycle";
-      } else if (riskSkippedTickers.has(c.market.ticker)) {
-        disposition = "skipped_risk";
-        rejectionReason = risk?.rejectReason || "Risk limit exceeded";
-      } else if (auditFailedTickers.has(c.market.ticker)) {
-        disposition = "skipped_audit";
-        rejectionReason = audit?.flags?.join(", ") || "Audit filters failed";
-      } else if (strategyMatches.length === 0) {
-        disposition = "skipped_audit";
-        rejectionReason = "No strategy match";
-      }
-      return {
-        ticker: c.market.ticker,
-        title: c.market.title || c.market.ticker,
-        sport: c.market.category || "Sports",
-        yesPrice: c.yesPrice,
-        modelProbability: analysis?.modelProbability ?? c.yesPrice,
-        confidence: analysis?.confidence ?? 0,
-        edge: analysis?.edge ?? 0,
-        kellyFraction: risk?.kellyFraction ?? null,
-        side: analysis?.side ?? "yes",
-        strategyName: strategyMatches[0]?.strategyName ?? null,
-        reasoning: analysis ? compactKeeperReasoning(analysis, strategyMatches[0]?.reason ?? null) : null,
-        strategyReason: strategyMatches[0]?.reason ?? null,
-        disposition,
-        rejectionReason,
-      } as LastCycleMarket;
-    });
-    lastCycleAt = new Date();
-
     let reconStart = Date.now();
     updateAgentStatus("Reconciler", "running");
     if (paperMode) {
@@ -743,27 +612,6 @@ export async function runTradingCycle(): Promise<CycleResult> {
         const reconMsg = reconErr instanceof Error ? reconErr.message : "Unknown error";
         updateAgentStatus("Reconciler", "error", undefined, reconMsg);
         agentResults.push({ agentName: "Reconciler", status: "error", duration: (Date.now() - reconStart) / 1000, details: reconMsg });
-      }
-    }
-
-    // Learner: run every LEARNER_CYCLE_INTERVAL cycles to distill empirical insights
-    pipelineCycleCount++;
-    if (pipelineCycleCount % LEARNER_CYCLE_INTERVAL === 0) {
-      updateAgentStatus("Learner", "running");
-      try {
-        const learnResult = await runLearner();
-        if (learnResult.skipped) {
-          updateAgentStatus("Learner", "idle", learnResult.reason ?? "Skipped");
-          agentResults.push({ agentName: "Learner", status: "skipped", duration: 0, details: learnResult.reason ?? "Skipped" });
-        } else {
-          const summary = `${learnResult.insights?.length ?? 0} insights from ${learnResult.totalClosedTrades} closed trades`;
-          updateAgentStatus("Learner", "idle", summary);
-          agentResults.push({ agentName: "Learner", status: "success", duration: 0, details: summary });
-        }
-      } catch (learnErr: unknown) {
-        const msg = learnErr instanceof Error ? learnErr.message : "Unknown error";
-        updateAgentStatus("Learner", "error", undefined, msg);
-        agentResults.push({ agentName: "Learner", status: "error", duration: 0, details: msg });
       }
     }
 
@@ -866,17 +714,6 @@ export function startWatchdog() {
       forceResetPipelineRunningState();
 
       try {
-        await db.insert(agentRunsTable).values({
-          agentName: "Watchdog",
-          status: "error",
-          duration: 0,
-          details: `Pipeline stall detected: no heartbeat for ${minutesSince} min. Force-reset pipelineRunning + restarted.`,
-        });
-      } catch {
-        // Non-fatal — don't let the watchdog itself crash
-      }
-
-      try {
         const [settings] = await db.select().from(tradingSettingsTable).limit(1);
         const intervalMin = settings?.scanIntervalMinutes ?? 3;
         startPipeline(intervalMin);
@@ -888,10 +725,6 @@ export function startWatchdog() {
   }, WATCHDOG_CHECK_MS);
 
   console.log("[Watchdog] Dead-man's switch started (checks every 1 min, threshold 15 min)");
-}
-
-export function getNewsFetcherInfo() {
-  return getNewsFetcherStatus();
 }
 
 export function stopPipeline() {
@@ -952,7 +785,12 @@ export async function scanAndDiscover(): Promise<ScanDiscoverResult> {
           return {
             kalshiTicker: analysis.candidate.market.ticker,
             title: analysis.candidate.market.title || analysis.candidate.market.ticker,
-            category: analysis.candidate.market.category || "Sports",
+            category: opportunityCategoryLabel(
+              analysis.candidate.market.ticker,
+              analysis.candidate.market.category,
+              analysis.candidate.market.event_ticker,
+              analysis.candidate.market.series_ticker,
+            ),
             currentYesPrice: analysis.candidate.yesPrice,
             modelProbability: analysis.modelProbability,
             edge: analysis.edge,

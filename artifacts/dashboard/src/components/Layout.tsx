@@ -1,25 +1,18 @@
 import { ReactNode } from "react";
 import { Link, useLocation } from "wouter";
-import { 
-  LayoutDashboard, 
-  Activity, 
-  History, 
-  Cpu, 
-  Settings, 
+import {
+  LayoutDashboard,
+  Activity,
+  History,
+  Settings,
   TrendingUp,
   Zap,
   FlaskConical,
   FileText,
-  BrainCircuit,
-  DollarSign,
-  BarChart3
+  BarChart3,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useGetDashboardOverview, getGetDashboardOverviewQueryKey } from "@workspace/api-client-react";
-import { useQuery } from "@tanstack/react-query";
-
-const API_BASE = `${import.meta.env.BASE_URL}api`;
-
 interface LayoutProps {
   children: ReactNode;
 }
@@ -28,22 +21,11 @@ export function Layout({ children }: LayoutProps) {
   const [location] = useLocation();
   const { data: overview } = useGetDashboardOverview({ query: { queryKey: getGetDashboardOverviewQueryKey(), refetchInterval: 10000 } });
 
-  const { data: costs } = useQuery({
-    queryKey: ["/api/costs/sidebar"],
-    queryFn: async () => {
-      const res = await fetch(`${API_BASE}/costs`);
-      return res.json();
-    },
-    refetchInterval: 30000,
-  });
-
   const navItems = [
     { href: "/", label: "Dashboard", icon: LayoutDashboard },
-    { href: "/brain", label: "Decision Brain", icon: BrainCircuit },
     { href: "/opportunities", label: "Opportunities", icon: Activity },
     { href: "/trades", label: "Trade History", icon: History },
     { href: "/paper", label: "Paper Trading", icon: FileText },
-    { href: "/agents", label: "Agent Status", icon: Cpu },
     { href: "/backtest", label: "Backtest", icon: FlaskConical },
     { href: "/backtests", label: "Backtests", icon: BarChart3 },
     { href: "/settings", label: "Settings", icon: Settings },
@@ -57,7 +39,7 @@ export function Layout({ children }: LayoutProps) {
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center shadow-lg shadow-primary/20">
               <TrendingUp className="w-5 h-5 text-white" />
             </div>
-            <span className="font-display font-bold text-lg text-white tracking-tight">Kalshi<span className="text-primary">AI</span></span>
+            <span className="font-display font-bold text-lg text-white tracking-tight">Kalshi<span className="text-primary">Trader</span></span>
           </div>
         </div>
 
@@ -117,63 +99,6 @@ export function Layout({ children }: LayoutProps) {
                </div>
             )}
           </div>
-          {costs && (
-            <div className="px-4 pb-4 pt-0">
-              <div className="p-3 rounded-lg bg-black/30 border border-white/5">
-                <div className="flex items-center gap-1.5 mb-2">
-                  <DollarSign className="w-3 h-3 text-primary" />
-                  <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">API Costs</span>
-                  {costs.budgetPaused && (
-                    <span className="px-1 py-0.5 rounded text-[8px] font-bold bg-destructive/20 text-destructive border border-destructive/30">PAUSED</span>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-[10px] text-muted-foreground">Today</span>
-                      <span className="text-xs font-mono text-white">
-                        ${costs.daily?.costUsd?.toFixed(4) || "0.00"}
-                        {costs.daily?.budgetUsd > 0 && <span className="text-muted-foreground/60"> / ${costs.daily.budgetUsd}</span>}
-                      </span>
-                    </div>
-                    {costs.daily?.budgetUsd > 0 && (
-                      <div className="w-full h-1 bg-white/5 rounded-full mt-1 overflow-hidden">
-                        <div
-                          className={`h-full rounded-full transition-all ${costs.daily.exceeded ? "bg-destructive" : "bg-primary"}`}
-                          style={{ width: `${Math.min(100, ((costs.daily.costUsd || 0) / costs.daily.budgetUsd) * 100)}%` }}
-                        />
-                      </div>
-                    )}
-                  </div>
-                  <div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-[10px] text-muted-foreground">Month</span>
-                      <span className="text-xs font-mono text-white">
-                        ${costs.monthly?.costUsd?.toFixed(4) || "0.00"}
-                        {costs.monthly?.budgetUsd > 0 && <span className="text-muted-foreground/60"> / ${costs.monthly.budgetUsd}</span>}
-                      </span>
-                    </div>
-                    {costs.monthly?.budgetUsd > 0 && (
-                      <div className="w-full h-1 bg-white/5 rounded-full mt-1 overflow-hidden">
-                        <div
-                          className={`h-full rounded-full transition-all ${costs.monthly.exceeded ? "bg-destructive" : "bg-primary"}`}
-                          style={{ width: `${Math.min(100, ((costs.monthly.costUsd || 0) / costs.monthly.budgetUsd) * 100)}%` }}
-                        />
-                      </div>
-                    )}
-                    {costs.monthly?.projectedUsd > 0 && (
-                      <div className="flex justify-between items-center mt-1">
-                        <span className="text-[9px] text-muted-foreground/60">Projected EOM</span>
-                        <span className={`text-[10px] font-mono ${costs.monthly.budgetUsd > 0 && costs.monthly.projectedUsd > costs.monthly.budgetUsd ? "text-destructive" : "text-muted-foreground/80"}`}>
-                          ${costs.monthly.projectedUsd.toFixed(4)}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       </aside>
 

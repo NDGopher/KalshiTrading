@@ -4,34 +4,46 @@ import tailwindcss from "@tailwindcss/vite";
 import path from "path";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 
-const rawPort = process.env.PORT;
-
-if (!rawPort) {
-  throw new Error(
-    "PORT environment variable is required but was not provided.",
-  );
-}
-
+/** Defaults so `pnpm dev` works without env (Windows .bat still sets these explicitly). */
+const rawPort = process.env.PORT?.trim() || "5173";
 const port = Number(rawPort);
-
 if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-const basePath = process.env.BASE_PATH;
+let basePath = process.env.BASE_PATH?.trim() || "/";
+if (!basePath.startsWith("/")) basePath = `/${basePath}`;
+if (basePath !== "/" && !basePath.endsWith("/")) basePath = `${basePath}/`;
 
-if (!basePath) {
-  throw new Error(
-    "BASE_PATH environment variable is required but was not provided.",
-  );
-}
+const dashboardRoot = path.resolve(import.meta.dirname);
+const repoRoot = path.resolve(dashboardRoot, "..", "..");
 
 export default defineConfig({
   base: basePath,
+  /** Linked workspace package uses `export *` from a large orval file; pre-bundle can omit some named exports. */
+  optimizeDeps: {
+    exclude: ["@workspace/api-client-react"],
+  },
   plugins: [
     react(),
     tailwindcss(),
-    runtimeErrorOverlay(),
+    // Replit overlay uses inline styles; breaks under strict CSP (e.g. embedded preview browsers).
+    ...(process.env.REPL_ID !== undefined ? [runtimeErrorOverlay()] : []),
+    {
+      name: "kalshi-dev-log",
+      configureServer(server) {
+        server.httpServer?.once("listening", () => {
+          const a = server.httpServer?.address();
+          if (a && typeof a === "object") {
+            const host =
+              a.address === "::" || a.address === "0.0.0.0" ? "localhost" : a.address === "::1" ? "localhost" : a.address;
+            const origin = `http://${host}:${a.port}`;
+            const href = basePath === "/" ? `${origin}/` : new URL(basePath.replace(/^\//, ""), `${origin}/`).href;
+            console.info(`[dashboard] Vite ready → open ${href}`);
+          }
+        });
+      },
+    },
     ...(process.env.NODE_ENV !== "production" &&
     process.env.REPL_ID !== undefined
       ? [
@@ -60,6 +72,8 @@ export default defineConfig({
   },
   server: {
     port,
+    /** Fail if PORT is taken so we never silently jump to 5174 while .bat and API redirect expect 5173. */
+    strictPort: true,
     host: "0.0.0.0",
     allowedHosts: true,
     proxy: {
@@ -70,6 +84,8 @@ export default defineConfig({
     },
     fs: {
       strict: true,
+      // @workspace/* packages live under repo root (e.g. lib/api-client-react), outside this package.
+      allow: [dashboardRoot, repoRoot],
       deny: ["**/.*"],
     },
   },

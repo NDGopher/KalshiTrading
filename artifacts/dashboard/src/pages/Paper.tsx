@@ -11,7 +11,7 @@ import { format } from "date-fns";
 import {
   FileText, RefreshCw, RotateCcw, TrendingUp, TrendingDown, Wallet,
   Target, Activity, BarChart3, AlertTriangle, Wifi, WifiOff, ExternalLink,
-  ChevronDown, ChevronUp, Brain,
+  ChevronDown, ChevronUp, LineChart,
 } from "lucide-react";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -440,7 +440,7 @@ export default function Paper() {
               <Card className="glass-panel border-white/10">
                 <CardHeader className="border-b border-white/5 bg-black/20 py-3">
                   <CardTitle className="text-base flex items-center gap-2">
-                    <Brain className="w-4 h-4 text-purple-400" />
+                    <LineChart className="w-4 h-4 text-purple-400" />
                     AI Confidence vs Actual Win Rate
                     <span className="text-xs text-muted-foreground font-normal ml-1">— is the AI calibrated?</span>
                   </CardTitle>
@@ -766,7 +766,7 @@ export default function Paper() {
                               <td colSpan={10} className="px-6 pb-4 pt-0 bg-black/20">
                                 <div className="rounded-lg border border-white/5 bg-white/[0.02] p-3 text-xs text-muted-foreground leading-relaxed">
                                   <div className="flex items-center gap-1.5 text-purple-400 font-medium mb-2">
-                                    <Brain className="w-3.5 h-3.5" />
+                                    <LineChart className="w-3.5 h-3.5" />
                                     AI Reasoning
                                   </div>
                                   <p>{trade.analystReasoning}</p>

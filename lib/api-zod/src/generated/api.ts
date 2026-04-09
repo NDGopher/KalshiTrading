@@ -135,39 +135,6 @@ export const GetTradeStatsResponse = zod.object({
 });
 
 /**
- * Returns the status of all six agents in the pipeline
- * @summary Get agent pipeline status
- */
-export const GetAgentStatusResponseItem = zod.object({
-  name: zod.string(),
-  status: zod.enum(["idle", "running", "error", "disabled"]),
-  lastRunAt: zod.string().nullish(),
-  lastResult: zod.string().nullish(),
-  errorMessage: zod.string().nullish(),
-});
-export const GetAgentStatusResponse = zod.array(GetAgentStatusResponseItem);
-
-/**
- * Returns recent agent pipeline execution logs
- * @summary List recent agent runs
- */
-export const listAgentRunsQueryLimitDefault = 20;
-
-export const ListAgentRunsQueryParams = zod.object({
-  limit: zod.coerce.number().default(listAgentRunsQueryLimitDefault),
-});
-
-export const ListAgentRunsResponseItem = zod.object({
-  id: zod.number(),
-  agentName: zod.string(),
-  status: zod.enum(["success", "error", "skipped"]),
-  duration: zod.number(),
-  details: zod.string().nullish(),
-  createdAt: zod.string(),
-});
-export const ListAgentRunsResponse = zod.array(ListAgentRunsResponseItem);
-
-/**
  * Toggle the automated trading pipeline on or off
  * @summary Start or stop the agent pipeline
  */
@@ -223,19 +190,8 @@ export const GetSettingsResponse = zod.object({
   pipelineActive: zod.boolean(),
   paperTradingMode: zod.boolean(),
   paperBalance: zod.number(),
-  dailyBudgetUsd: zod.number(),
-  monthlyBudgetUsd: zod.number(),
   kalshiApiKeySet: zod.boolean().optional(),
   kalshiBaseUrl: zod.string().nullish(),
-  budgetStatus: zod
-    .object({
-      dailySpend: zod.number(),
-      monthlySpend: zod.number(),
-      dailyExceeded: zod.boolean(),
-      monthlyExceeded: zod.boolean(),
-      budgetPaused: zod.boolean(),
-    })
-    .optional(),
 });
 
 /**
@@ -257,8 +213,6 @@ export const UpdateSettingsBody = zod.object({
   pipelineActive: zod.boolean().optional(),
   paperTradingMode: zod.boolean().optional(),
   paperBalance: zod.number().optional(),
-  dailyBudgetUsd: zod.number().optional(),
-  monthlyBudgetUsd: zod.number().optional(),
 });
 
 export const UpdateSettingsResponse = zod.object({
@@ -277,19 +231,8 @@ export const UpdateSettingsResponse = zod.object({
   pipelineActive: zod.boolean(),
   paperTradingMode: zod.boolean(),
   paperBalance: zod.number(),
-  dailyBudgetUsd: zod.number(),
-  monthlyBudgetUsd: zod.number(),
   kalshiApiKeySet: zod.boolean().optional(),
   kalshiBaseUrl: zod.string().nullish(),
-  budgetStatus: zod
-    .object({
-      dailySpend: zod.number(),
-      monthlySpend: zod.number(),
-      dailyExceeded: zod.boolean(),
-      monthlyExceeded: zod.boolean(),
-      budgetPaused: zod.boolean(),
-    })
-    .optional(),
 });
 
 /**
@@ -518,44 +461,6 @@ export const GetIngestionStatsResponse = zod.object({
     earliest: zod.string().nullish(),
     latest: zod.string().nullish(),
   }),
-});
-
-/**
- * @summary Get API cost breakdown
- */
-export const GetApiCostsResponse = zod.object({
-  daily: zod.object({
-    costUsd: zod.number(),
-    calls: zod.number(),
-    inputTokens: zod.number(),
-    outputTokens: zod.number(),
-    budgetUsd: zod.number(),
-    exceeded: zod.boolean(),
-  }),
-  monthly: zod.object({
-    costUsd: zod.number(),
-    calls: zod.number(),
-    inputTokens: zod.number(),
-    outputTokens: zod.number(),
-    budgetUsd: zod.number(),
-    exceeded: zod.boolean(),
-    projectedUsd: zod.number(),
-  }),
-  allTime: zod.object({
-    costUsd: zod.number(),
-    calls: zod.number(),
-  }),
-  byAgent: zod.array(
-    zod.object({
-      agentName: zod.string(),
-      costUsd: zod.number(),
-      calls: zod.number(),
-      inputTokens: zod.number(),
-      outputTokens: zod.number(),
-    }),
-  ),
-  budgetPaused: zod.boolean(),
-  recentCalls: zod.array(zod.object({}).passthrough()),
 });
 
 /**

@@ -87,6 +87,22 @@ function authMiddleware(req: Request, res: Response, next: NextFunction): void {
 
 app.use(authMiddleware);
 
+/** Browsers often open the API port (3000) first — send them to the Vite app instead of "Cannot GET /". */
+const DASHBOARD_DEV_URL = (process.env.DASHBOARD_DEV_URL || "http://127.0.0.1:5173/").replace(/([^/])$/, "$1/");
+app.get("/", (req, res) => {
+  const accept = req.headers.accept ?? "";
+  if (accept.includes("text/html")) {
+    res.redirect(302, DASHBOARD_DEV_URL);
+    return;
+  }
+  res.json({
+    ok: true,
+    service: "kalshi-api",
+    dashboard: DASHBOARD_DEV_URL.replace(/\/$/, ""),
+    hint: "Open the dashboard URL in a browser; this port serves /api only.",
+  });
+});
+
 app.use("/api", router);
 
 export default app;

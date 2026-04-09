@@ -62,13 +62,13 @@ if not exist "node_modules\" (
   echo.
 )
 
-REM ---- 1) Schema sync: Drizzle push ^(adds/alters columns; does NOT wipe paper_trades^) ----
-REM     Uses DATABASE_URL from repo .env or your environment. Skip with SKIP_DB_PUSH=1 if needed.
+REM ---- 1) Schema sync + log purge: keeps paper_trades + trading_settings; truncates bulky tables ----
+REM     Uses DATABASE_URL from repo .env. SKIP_DB_PUSH=1 skips push; SKIP_PURGE=1 skips truncate.
 if /i "%SKIP_DB_PUSH%"=="1" (
   echo [1/6] SKIP_DB_PUSH=1 — skipping pnpm db:push.
   echo.
 ) else (
-  echo [1/6] Syncing database schema ^(pnpm db:push — keeps existing rows; no paper reset^)...
+  echo [1/6] Syncing database schema ^(pnpm db:push — keeps paper_trades rows^)...
   call pnpm db:push
   if errorlevel 1 (
     echo [ERROR] db:push failed. Set DATABASE_URL ^(repo .env^), check network/DB, then retry.
@@ -78,12 +78,33 @@ if /i "%SKIP_DB_PUSH%"=="1" (
     exit /b 1
   )
   echo       Schema OK.
+  if /i "%SKIP_PURGE%"=="1" (
+    echo       SKIP_PURGE=1 — skipping non-essential table truncate.
+  ) else (
+    echo       Purging non-essential tables ^(paper_trades + settings kept^)...
+    call node tools\db\purge-logs-except-paper.mjs
+    if errorlevel 1 (
+      echo [WARN] Purge failed — check DATABASE_URL and DB permissions. Continuing startup.
+    )
+  )
+  echo.
+)
+
+REM ---- 1b) Free canonical ports so API/dashboard always bind 3000 / 5173 (not 5174+) ----
+if /i "%SKIP_FREE_PORTS%"=="1" (
+  echo [1b/6] SKIP_FREE_PORTS=1 — leaving listeners on 3000/5173 unchanged.
+  echo.
+) else (
+  echo [1b/6] Stopping processes listening on 3000 ^(API^) and 5173 ^(dashboard^) — clears stale windows...
+  powershell -NoProfile -ExecutionPolicy Bypass -Command "3000,5173 | ForEach-Object { Get-NetTCPConnection -LocalPort $_ -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue } }"
+  ping 127.0.0.1 -n 2 >nul
+  echo       Done. ^(Set SKIP_FREE_PORTS=1 to skip.^)
   echo.
 )
 
 REM ---- 2) API in new window: working dir = repo (no fragile "cd /d" quoting) ----
 echo [2/6] Starting API in a new window (PORT=3000^)...
-start "Kalshi Paper API (3000)" /D "%REPO%" cmd.exe /k "set PORT=3000&& pnpm --filter @workspace/api-server run dev"
+start "Kalshi Paper API (3000)" /D "%REPO%" cmd.exe /k "set PORT=3000&& set DASHBOARD_DEV_URL=http://127.0.0.1:5173/&& pnpm --filter @workspace/api-server run dev"
 if errorlevel 1 (
   echo [ERROR] Failed to start API window.
   popd
@@ -115,7 +136,7 @@ REM restarts and machines that share the same DATABASE_URL. Reset wipes ALL hist
 REM To start from a clean slate: set RESET_PAPER=1 before running this script, or use
 REM Dashboard Paper page / Settings, or: pnpm paper:reset:async (API must be up).
 if /i "%RESET_PAPER%"=="1" (
-  echo [3/5] RESET_PAPER=1 — wiping paper_trades and restoring balance ^(async^)...
+  echo [4/6] RESET_PAPER=1 — wiping paper_trades and restoring balance ^(async^)...
   curl -s -S -m 60 -X POST "http://127.0.0.1:3000/api/paper-trades/reset?async=1"
   if errorlevel 1 (
     echo [WARN] Paper reset request failed — check API log.
@@ -138,7 +159,7 @@ echo.
 
 REM ---- 6) Dashboard ----
 echo [6/6] Starting Dashboard in a new window (PORT=5173, BASE_PATH=/^)...
-start "Kalshi Dashboard (5173)" /D "%REPO%" cmd.exe /k "set PORT=5173&& set BASE_PATH=/ && pnpm --filter @workspace/dashboard run dev"
+start "Kalshi Dashboard (5173)" /D "%REPO%" cmd.exe /k "set PORT=5173&& set BASE_PATH=/&& pnpm --filter @workspace/dashboard run dev"
 if errorlevel 1 (
   echo [ERROR] Failed to start Dashboard window.
   popd
@@ -162,6 +183,8 @@ echo   Settings:   %SETTINGS_JSON%
 echo.
 echo Leave this window open for the message above. Close the two titled
 echo windows "Kalshi Paper API (3000)" and "Kalshi Dashboard (5173)" to stop servers.
+echo.
+echo Optional: SKIP_FREE_PORTS=1 — do not kill listeners on 3000/5173 before start.
 echo.
 
 popd

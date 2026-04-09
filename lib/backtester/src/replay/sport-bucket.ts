@@ -61,6 +61,40 @@ export function filterTicksBySport(ticks: ArchiveMarketTick[], sportToken: strin
   return ticks.filter((x) => parts.some((p) => tickerMatchesSportToken(x.ticker, p)));
 }
 
+/**
+ * Bucket using both event and market ticker — political/crypto events often use a clear
+ * event_ticker (e.g. KXPRES-…) while the market ticker suffix is opaque.
+ */
+export function kalshiMarketBucket(market: {
+  ticker: string;
+  event_ticker?: string;
+  series_ticker?: string;
+}): string {
+  for (const raw of [market.series_ticker, market.event_ticker, market.ticker] as const) {
+    const s = (raw || "").trim();
+    if (!s) continue;
+    const b = kalshiSportBucket(s);
+    if (b !== "Other") return b;
+  }
+  return kalshiSportBucket(market.ticker);
+}
+
+/** Roll Kalshi buckets into Sports vs Politics/Crypto/Economics/Other for reporting. */
+export type KalshiCoarseMacro = "Sports" | "Politics" | "Crypto" | "Economics" | "Other";
+
+export function kalshiCoarseMacroGroup(market: {
+  ticker: string;
+  event_ticker?: string;
+  series_ticker?: string;
+}): KalshiCoarseMacro {
+  const m = kalshiMarketBucket(market);
+  if (m === "Sports") return "Sports";
+  if (m === "Politics") return "Politics";
+  if (m === "Crypto") return "Crypto";
+  if (m === "Economics") return "Economics";
+  return "Other";
+}
+
 /** Coarse bucket aligned with Learner's category heuristics. */
 export function kalshiSportBucket(ticker: string): string {
   const t = ticker.toUpperCase();
@@ -85,14 +119,28 @@ export function kalshiSportBucket(ticker: string): string {
   ) {
     return "Sports";
   }
-  if (t.startsWith("KXBTC") || t.startsWith("KXETH") || t.startsWith("KXCRYPTO") || t.startsWith("KXSOLANA")) {
+  if (
+    t.startsWith("KXBTC") ||
+    t.startsWith("KXETH") ||
+    t.startsWith("KXCRYPTO") ||
+    t.startsWith("KXSOLANA") ||
+    t.startsWith("KXDOGE") ||
+    t.startsWith("KXXRP") ||
+    t.startsWith("KXADA")
+  ) {
     return "Crypto";
   }
   if (
     t.startsWith("KXPRES") ||
     t.startsWith("KXSEN") ||
     t.startsWith("KXGOV") ||
-    t.startsWith("KXELECT")
+    t.startsWith("KXELECT") ||
+    t.startsWith("KXHOUSE") ||
+    t.startsWith("KXCONG") ||
+    t.startsWith("KXCOURT") ||
+    t.startsWith("KXVP") ||
+    t.startsWith("KXVOTE") ||
+    t.startsWith("KXPOLL")
   ) {
     return "Politics";
   }

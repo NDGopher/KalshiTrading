@@ -8,7 +8,7 @@ import * as z from "zod";
 import { useEffect, useState, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { DollarSign, FileText, Shield, Layers, CheckCircle2, XCircle } from "lucide-react";
+import { FileText, Shield, Layers, CheckCircle2, XCircle } from "lucide-react";
 
 const ALL_STRATEGIES = [
   { name: "Pure Value", description: "Buys when model probability diverges meaningfully from market implied odds — works across all market types.", color: "#a78bfa" },
@@ -38,17 +38,8 @@ interface SettingsData {
   paperTradingMode: boolean;
   paperBalance: number;
   enabledStrategies: string[] | null;
-  dailyBudgetUsd: number;
-  monthlyBudgetUsd: number;
   kalshiApiKeySet: boolean;
   kalshiBaseUrl: string | null;
-  budgetStatus: {
-    dailySpend: number;
-    monthlySpend: number;
-    dailyExceeded: boolean;
-    monthlyExceeded: boolean;
-    budgetPaused: boolean;
-  };
 }
 
 const settingsSchema = z.object({
@@ -63,24 +54,11 @@ const settingsSchema = z.object({
   scanIntervalMinutes: z.coerce.number().min(5).max(1440),
   confidencePenaltyPct: z.coerce.number().min(0).max(50),
   sportFilters: z.string(),
-  dailyBudgetUsd: z.coerce.number().min(0),
-  monthlyBudgetUsd: z.coerce.number().min(0),
 });
 
 type SettingsFormValues = z.infer<typeof settingsSchema>;
 
 const API_BASE = `${import.meta.env.BASE_URL}api`;
-
-function useCosts() {
-  return useQuery({
-    queryKey: ["/api/costs"],
-    queryFn: async () => {
-      const res = await fetch(`${API_BASE}/costs`);
-      return res.json();
-    },
-    refetchInterval: 30000,
-  });
-}
 
 export default function Settings() {
   const { toast } = useToast();
@@ -92,8 +70,6 @@ export default function Settings() {
       return res.json() as Promise<SettingsData>;
     },
   });
-  const { data: costs } = useCosts();
-
   const [kalshiApiKey, setKalshiApiKey] = useState("");
   const [kalshiBaseUrl, setKalshiBaseUrl] = useState("");
   const [credSaving, setCredSaving] = useState(false);
@@ -134,8 +110,6 @@ export default function Settings() {
         scanIntervalMinutes: settings.scanIntervalMinutes,
         confidencePenaltyPct: settings.confidencePenaltyPct,
         sportFilters: (settings.sportFilters || []).join(", "),
-        dailyBudgetUsd: settings.dailyBudgetUsd || 5,
-        monthlyBudgetUsd: settings.monthlyBudgetUsd || 50,
       });
       setKalshiBaseUrl(settings.kalshiBaseUrl || "");
       setPaperMode(settings.paperTradingMode || false);
@@ -534,95 +508,8 @@ export default function Settings() {
                     {...register("scanIntervalMinutes")}
                     className="flex h-10 w-full rounded-md border border-white/10 bg-black/50 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary/50"
                   />
-                  <p className="text-xs text-muted-foreground">How often the Scanner agent runs.</p>
+                  <p className="text-xs text-muted-foreground">How often the market scan runs.</p>
                 </div>
-              </CardContent>
-            </Card>
-
-            <Card className="glass-panel border-white/10">
-              <CardHeader className="border-b border-white/5 bg-black/20">
-                <CardTitle className="flex items-center gap-2">
-                  <DollarSign className="w-5 h-5 text-primary" />
-                  API Budget Caps
-                </CardTitle>
-                <CardDescription>Control AI API spending. Pipeline pauses when limits are reached.</CardDescription>
-              </CardHeader>
-              <CardContent className="p-6 space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-white">Daily Budget (USD)</label>
-                    <input 
-                      type="number" step="0.01"
-                      {...register("dailyBudgetUsd")}
-                      className="flex h-10 w-full rounded-md border border-white/10 bg-black/50 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary/50"
-                    />
-                    <p className="text-xs text-muted-foreground">Max API spend per day. Set 0 for unlimited.</p>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-white">Monthly Budget (USD)</label>
-                    <input 
-                      type="number" step="0.01"
-                      {...register("monthlyBudgetUsd")}
-                      className="flex h-10 w-full rounded-md border border-white/10 bg-black/50 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary/50"
-                    />
-                    <p className="text-xs text-muted-foreground">Max API spend per month. Set 0 for unlimited.</p>
-                  </div>
-                </div>
-                {costs && (
-                  <div className="space-y-4 pt-2">
-                    <div className="grid grid-cols-3 gap-4">
-                      <div className="p-3 rounded-lg bg-black/30 border border-white/5 text-center">
-                        <div className="text-xs text-muted-foreground uppercase tracking-wider">Today</div>
-                        <div className="text-lg font-mono font-bold text-white mt-1">${costs.daily?.costUsd?.toFixed(4) || "0.00"}</div>
-                        <div className="text-xs text-muted-foreground">{costs.daily?.calls || 0} calls</div>
-                      </div>
-                      <div className="p-3 rounded-lg bg-black/30 border border-white/5 text-center">
-                        <div className="text-xs text-muted-foreground uppercase tracking-wider">This Month</div>
-                        <div className="text-lg font-mono font-bold text-white mt-1">${costs.monthly?.costUsd?.toFixed(4) || "0.00"}</div>
-                        <div className="text-xs text-muted-foreground">{costs.monthly?.calls || 0} calls</div>
-                      </div>
-                      <div className="p-3 rounded-lg bg-black/30 border border-white/5 text-center">
-                        <div className="text-xs text-muted-foreground uppercase tracking-wider">All Time</div>
-                        <div className="text-lg font-mono font-bold text-white mt-1">${costs.allTime?.costUsd?.toFixed(4) || "0.00"}</div>
-                        <div className="text-xs text-muted-foreground">{costs.allTime?.calls || 0} calls</div>
-                      </div>
-                    </div>
-                    {(costs.monthly?.budgetUsd > 0 || costs.monthly?.projectedUsd > 0) && (
-                      <div className="p-4 rounded-lg bg-black/30 border border-white/5 space-y-2">
-                        <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Monthly Budget Progress</div>
-                        {costs.monthly?.budgetUsd > 0 && (
-                          <>
-                            <div className="flex justify-between text-xs">
-                              <span className="text-muted-foreground">Spent</span>
-                              <span className="font-mono text-white">${costs.monthly.costUsd?.toFixed(4) || "0.00"} / ${costs.monthly.budgetUsd.toFixed(2)}</span>
-                            </div>
-                            <div className="w-full h-2 bg-white/5 rounded-full overflow-hidden">
-                              <div
-                                className={`h-full rounded-full transition-all ${costs.monthly.exceeded ? "bg-destructive" : (costs.monthly.costUsd / costs.monthly.budgetUsd) > 0.8 ? "bg-yellow-400" : "bg-primary"}`}
-                                style={{ width: `${Math.min(100, ((costs.monthly.costUsd || 0) / costs.monthly.budgetUsd) * 100)}%` }}
-                              />
-                            </div>
-                            <div className="flex justify-between text-[11px] text-muted-foreground">
-                              <span>{(Math.min(100, ((costs.monthly.costUsd || 0) / costs.monthly.budgetUsd) * 100)).toFixed(0)}% used</span>
-                              <span>${Math.max(0, costs.monthly.budgetUsd - (costs.monthly.costUsd || 0)).toFixed(4)} remaining</span>
-                            </div>
-                          </>
-                        )}
-                        {costs.monthly?.projectedUsd > 0 && (
-                          <div className="flex justify-between items-center pt-1 border-t border-white/5">
-                            <span className="text-xs text-muted-foreground">Projected EOM</span>
-                            <span className={`text-sm font-mono font-bold ${costs.monthly.budgetUsd > 0 && costs.monthly.projectedUsd > costs.monthly.budgetUsd ? "text-destructive" : "text-muted-foreground"}`}>
-                              ${costs.monthly.projectedUsd.toFixed(4)}
-                              {costs.monthly.budgetUsd > 0 && costs.monthly.projectedUsd > costs.monthly.budgetUsd && (
-                                <span className="text-[10px] text-destructive ml-1">over budget</span>
-                              )}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
               </CardContent>
             </Card>
 

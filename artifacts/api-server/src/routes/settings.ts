@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { tradingSettingsTable, apiCostsTable, withTransactionStatementTimeout, type DbClient } from "@workspace/db";
-import { eq, sql } from "drizzle-orm";
+import { tradingSettingsTable, withTransactionStatementTimeout, type DbClient } from "@workspace/db";
+import { eq } from "drizzle-orm";
 import { getBalance } from "../lib/kalshi-client.js";
 import { startPipeline, stopPipeline } from "../lib/agents/pipeline.js";
 
@@ -18,38 +18,7 @@ async function ensureSettings() {
   });
 }
 
-async function computeBudgetStatus(settings: typeof tradingSettingsTable.$inferSelect) {
-  const now = new Date();
-  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-
-  const [row] = await withTransactionStatementTimeout(SETTINGS_DB_MS, async (tx: DbClient) =>
-    tx
-      .select({
-        dailySpend: sql<number>`coalesce(sum(case when ${apiCostsTable.createdAt} >= ${startOfDay} then ${apiCostsTable.costUsd} else 0 end), 0)::double precision`,
-        monthlySpend: sql<number>`coalesce(sum(case when ${apiCostsTable.createdAt} >= ${startOfMonth} then ${apiCostsTable.costUsd} else 0 end), 0)::double precision`,
-      })
-      .from(apiCostsTable),
-  );
-
-  const dailySpend = Number(row?.dailySpend ?? 0);
-  const monthlySpend = Number(row?.monthlySpend ?? 0);
-
-  const dailyExceeded = settings.dailyBudgetUsd > 0 && dailySpend >= settings.dailyBudgetUsd;
-  const monthlyExceeded = settings.monthlyBudgetUsd > 0 && monthlySpend >= settings.monthlyBudgetUsd;
-
-  return {
-    dailySpend,
-    monthlySpend,
-    dailyExceeded,
-    monthlyExceeded,
-    budgetPaused: dailyExceeded || monthlyExceeded,
-  };
-}
-
 async function settingsToResponse(settings: typeof tradingSettingsTable.$inferSelect) {
-  const budgetStatus = await computeBudgetStatus(settings);
-
   return {
     id: settings.id,
     maxPositionPct: settings.maxPositionPct,
@@ -66,8 +35,6 @@ async function settingsToResponse(settings: typeof tradingSettingsTable.$inferSe
     pipelineActive: settings.pipelineActive,
     paperTradingMode: settings.paperTradingMode,
     paperBalance: settings.paperBalance,
-    dailyBudgetUsd: settings.dailyBudgetUsd,
-    monthlyBudgetUsd: settings.monthlyBudgetUsd,
     enabledStrategies:
       (settings.enabledStrategies as string[] | null) ?? [
         "Whale Flow",
@@ -78,7 +45,6 @@ async function settingsToResponse(settings: typeof tradingSettingsTable.$inferSe
     targetBetUsd: settings.targetBetUsd ?? 15,
     kalshiApiKeySet: !!(settings.kalshiApiKey || process.env.KALSHI_API_KEY),
     kalshiBaseUrl: settings.kalshiBaseUrl || null,
-    budgetStatus,
   };
 }
 
@@ -126,10 +92,6 @@ router.put("/settings", async (req, res): Promise<void> => {
     updateData.paperTradingMode = body.paperTradingMode;
   if (body.paperBalance !== undefined)
     updateData.paperBalance = clampNum(body.paperBalance, 0, 1000000, current.paperBalance);
-  if (body.dailyBudgetUsd !== undefined)
-    updateData.dailyBudgetUsd = clampNum(body.dailyBudgetUsd, 0, 10000, current.dailyBudgetUsd);
-  if (body.monthlyBudgetUsd !== undefined)
-    updateData.monthlyBudgetUsd = clampNum(body.monthlyBudgetUsd, 0, 100000, current.monthlyBudgetUsd);
   if (body.enabledStrategies !== undefined && Array.isArray(body.enabledStrategies))
     updateData.enabledStrategies = body.enabledStrategies.filter((s: unknown) => typeof s === "string");
   if (body.targetBetUsd !== undefined)
