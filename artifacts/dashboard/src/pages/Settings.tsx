@@ -51,7 +51,7 @@ const settingsSchema = z.object({
   minEdge: z.coerce.number().min(1).max(50),
   minLiquidity: z.coerce.number().min(10),
   minTimeToExpiry: z.coerce.number().min(1),
-  scanIntervalMinutes: z.coerce.number().min(5).max(1440),
+  scanIntervalMinutes: z.coerce.number().min(1).max(1440),
   confidencePenaltyPct: z.coerce.number().min(0).max(50),
   sportFilters: z.string(),
 });

@@ -120,8 +120,8 @@ router.put("/settings", async (req, res): Promise<void> => {
 
   if (updated.pipelineActive) {
     stopPipeline();
-    startPipeline(updated.scanIntervalMinutes ?? 3);
-    console.log(`[Settings] Pipeline restarted from PUT: ${updated.scanIntervalMinutes ?? 3} min, keepers=${JSON.stringify(updated.enabledStrategies)}`);
+    startPipeline(updated.scanIntervalMinutes ?? 2);
+    console.log(`[Settings] Pipeline restarted from PUT: ${updated.scanIntervalMinutes ?? 2} min, keepers=${JSON.stringify(updated.enabledStrategies)}`);
   } else {
     stopPipeline();
   }

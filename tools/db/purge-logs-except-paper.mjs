@@ -1,5 +1,6 @@
 /**
- * Truncates non-essential tables; keeps paper_trades + trading_settings.
+ * Truncates non-essential tables; keeps paper_trades, trading_settings,
+ * and strategy_performance_snapshots (daily learner aggregates).
  * Run automatically from start-paper-trading.bat after db:push.
  * Usage: node tools/db/purge-logs-except-paper.mjs
  */

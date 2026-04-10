@@ -30,7 +30,7 @@ router.post("/agents/toggle", async (req, res): Promise<void> => {
   }
 
   if (parsed.data.active) {
-    const interval = settings?.scanIntervalMinutes ?? 3;
+    const interval = settings?.scanIntervalMinutes ?? 2;
     startPipeline(interval);
     res.json(
       ToggleAgentPipelineResponse.parse({

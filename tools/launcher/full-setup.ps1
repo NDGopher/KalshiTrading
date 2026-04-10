@@ -91,7 +91,7 @@ if (-not $ok) {
 $body = @{
   paperTradingMode     = $true
   pipelineActive       = $true
-  scanIntervalMinutes  = 3
+  scanIntervalMinutes  = 2
   targetBetUsd         = 15
   maxSimultaneousPositions = 0
   enabledStrategies    = @("Whale Flow", "Volume Imbalance", "Dip Buy", "Pure Value")

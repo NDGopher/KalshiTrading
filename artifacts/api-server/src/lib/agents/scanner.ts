@@ -523,8 +523,8 @@ export async function scanMarkets(
     const byScore = (a: ScanCandidate, b: ScanCandidate) => compositeScore(b) - compositeScore(a);
     candidates.sort(byScore);
 
-    const MIN_NON_SPORTS_IN_POOL = 120;
-    const MAX_NON_SPORTS_IN_POOL = 160;
+    const MIN_NON_SPORTS_IN_POOL = 140;
+    const MAX_NON_SPORTS_IN_POOL = 170;
 
     const cryptoList = candidates.filter(isCryptoScanCandidate).sort(byScore);
     const weatherOnly = candidates

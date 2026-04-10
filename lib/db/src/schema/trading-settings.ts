@@ -18,7 +18,7 @@ export const tradingSettingsTable = pgTable("trading_settings", {
   minTimeToExpiry: integer("min_time_to_expiry").notNull().default(10),
   confidencePenaltyPct: real("confidence_penalty_pct").notNull().default(8),
   sportFilters: jsonb("sport_filters").$type<string[]>().default(["NFL", "NBA", "MLB", "Soccer"]),
-  scanIntervalMinutes: integer("scan_interval_minutes").notNull().default(3),
+  scanIntervalMinutes: integer("scan_interval_minutes").notNull().default(2),
   pipelineActive: boolean("pipeline_active").notNull().default(true),
   paperTradingMode: boolean("paper_trading_mode").notNull().default(false),
   paperBalance: real("paper_balance").notNull().default(5000),

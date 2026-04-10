@@ -35,6 +35,10 @@ function opportunityCategoryLabel(
 import { diagnoseStrategyMiss, evaluateStrategies } from "../strategies/index.js";
 import { takerSpreadDollars } from "./execution-policy.js";
 import { startNewsFetcher } from "./news-fetcher.js";
+import { startStrategyLearnerSchedule } from "./strategy-learner.js";
+
+/** DB/API fallback when `scan_interval_minutes` is null (must match schema default). */
+const DEFAULT_SCAN_INTERVAL_MINUTES = 2;
 import { getLiveTapeSnapshot } from "../live-tape-flow.js";
 interface AgentRunLog {
   agentName: string;
@@ -225,7 +229,7 @@ export async function runTradingCycle(): Promise<CycleResult> {
 
     const paperMode = settings.paperTradingMode;
     const enabledStrategies = (settings.enabledStrategies as string[] | null) ?? undefined;
-    const intervalMin = settings.scanIntervalMinutes ?? 3;
+    const intervalMin = settings.scanIntervalMinutes ?? DEFAULT_SCAN_INTERVAL_MINUTES;
 
     console.log(
       `[Pipeline] Cycle ${liveCycleId} started | paperMode=${paperMode} | scanIntervalMin=${intervalMin} | keepers=${JSON.stringify(enabledStrategies ?? ["default"])}`,
@@ -712,6 +716,9 @@ export function startPipeline(intervalMinutes: number) {
   }, intervalMinutes * 60 * 1000);
 
   console.log(`[Pipeline] Started: runs every ${intervalMinutes} min (first cycle immediate)`);
+  if (intervalMinutes === 2) {
+    console.log("[Pipeline] Using aggressive 2-minute scan — monitoring rate limits");
+  }
 }
 
 /**
@@ -757,7 +764,7 @@ export function startWatchdog() {
 
       try {
         const [settings] = await db.select().from(tradingSettingsTable).limit(1);
-        const intervalMin = settings?.scanIntervalMinutes ?? 3;
+        const intervalMin = settings?.scanIntervalMinutes ?? DEFAULT_SCAN_INTERVAL_MINUTES;
         startPipeline(intervalMin);
         console.log(`[Watchdog] Pipeline restarted with ${intervalMin} min interval`);
       } catch (err) {
@@ -881,10 +888,11 @@ export async function rehydratePipeline(): Promise<void> {
 
   const [settings] = await db.select().from(tradingSettingsTable).limit(1);
   if (settings?.pipelineActive) {
-    const interval = settings.scanIntervalMinutes ?? 3;
+    const interval = settings.scanIntervalMinutes ?? DEFAULT_SCAN_INTERVAL_MINUTES;
     startPipeline(interval);
     console.log(`Pipeline rehydrated from DB: active with ${interval} minute interval`);
   } else {
     console.log("Pipeline rehydration: not active in DB settings");
   }
+  startStrategyLearnerSchedule();
 }

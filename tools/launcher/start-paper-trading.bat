@@ -148,7 +148,7 @@ if /i "%RESET_PAPER%"=="1" (
 )
 echo.
 
-echo [5/6] Applying settings (3 min scan, 4 keepers, uncapped positions, $15 target^)...
+echo [5/6] Applying settings (2 min scan, 4 keepers, uncapped positions, $15 target^)...
 curl -sS -m 90 -X PUT "http://127.0.0.1:3000/api/settings" -H "Content-Type: application/json" --data-binary "@%SETTINGS_JSON%"
 if errorlevel 1 (
   echo [WARN] PUT settings failed — check API log.

@@ -7,3 +7,4 @@ export * from "./backtest-trades";
 export * from "./paper-trades";
 export * from "./historical-markets";
 export * from "./market-snapshots";
+export * from "./strategy-performance-snapshots";
