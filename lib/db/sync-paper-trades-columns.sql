@@ -11,3 +11,4 @@ ALTER TABLE paper_trades ADD COLUMN IF NOT EXISTS auditor_flags jsonb DEFAULT '[
 ALTER TABLE paper_trades ADD COLUMN IF NOT EXISTS risk_score real;
 ALTER TABLE paper_trades ADD COLUMN IF NOT EXISTS kelly_fraction real;
 ALTER TABLE paper_trades ADD COLUMN IF NOT EXISTS simulated_balance real;
+ALTER TABLE paper_trades ADD COLUMN IF NOT EXISTS entry_spread_cents integer NOT NULL DEFAULT 0;

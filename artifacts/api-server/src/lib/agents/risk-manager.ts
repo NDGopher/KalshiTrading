@@ -2,7 +2,6 @@ import { db, tradesTable, paperTradesTable } from "@workspace/db";
 import { desc } from "drizzle-orm";
 import type { AuditResult } from "./auditor.js";
 import type { AnalysisResult } from "./analyst.js";
-import { effectiveNoBuyPrice, effectiveYesBuyPrice } from "./analyst.js";
 
 export interface RiskDecision {
   audit: AuditResult;
@@ -125,8 +124,8 @@ export function computeRisk(
   const p = analysis.side === "yes" ? rawP : 1 - rawP;
   const marketPrice =
     analysis.side === "yes"
-      ? effectiveYesBuyPrice(analysis.candidate)
-      : effectiveNoBuyPrice(analysis.candidate);
+      ? (analysis.candidate.yesAsk ?? analysis.candidate.yesPrice)
+      : (analysis.candidate.noAsk ?? 1 - analysis.candidate.yesPrice);
   if (marketPrice == null || marketPrice < 0.01 || marketPrice > 0.99) {
     return {
       approved: false,

@@ -20,9 +20,6 @@ const RESET_TIMEOUT_MS = Math.min(120_000, Number(process.env.DB_RESET_STATEMENT
 const ROUTE_DB_TIMEOUT_MS = Math.min(120_000, Number(process.env.DB_ROUTE_STATEMENT_TIMEOUT_MS) || 60_000);
 const LIVE_ENRICH_CONCURRENCY = Math.min(8, Math.max(1, Number(process.env.PAPER_LIVE_ENRICH_CONCURRENCY) || 4));
 
-/** Edge / Kelly cushion applied in rule-based analyst (shown on Paper UI). */
-export const PAPER_EDGE_SLIPPAGE_APPLIED = 0.01;
-
 function macroFieldsForTicker(ticker: string): { macroBucket: string; coarse: string; sportLabel: string } {
   const m = { ticker };
   return {
@@ -115,7 +112,7 @@ router.get("/paper-trades", async (req, res) => {
         } else {
           row = { ...t, currentPrice: t.entryPrice, priceSource: "entry_fallback" as const, unrealizedPnl: 0 };
         }
-        Object.assign(row, macroFieldsForTicker(t.kalshiTicker), { slippageApplied: PAPER_EDGE_SLIPPAGE_APPLIED });
+        Object.assign(row, macroFieldsForTicker(t.kalshiTicker));
         return row;
       });
       return res.json({
@@ -129,7 +126,6 @@ router.get("/paper-trades", async (req, res) => {
     const out = enriched.map((t) => ({
       ...t,
       ...macroFieldsForTicker(t.kalshiTicker),
-      slippageApplied: PAPER_EDGE_SLIPPAGE_APPLIED,
     }));
     return res.json({
       trades: out,

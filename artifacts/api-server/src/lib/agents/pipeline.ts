@@ -33,6 +33,7 @@ function opportunityCategoryLabel(
   });
 }
 import { diagnoseStrategyMiss, evaluateStrategies } from "../strategies/index.js";
+import { takerSpreadDollars } from "./execution-policy.js";
 import { startNewsFetcher } from "./news-fetcher.js";
 import { getLiveTapeSnapshot } from "../live-tape-flow.js";
 interface AgentRunLog {
@@ -268,6 +269,7 @@ export async function runTradingCycle(): Promise<CycleResult> {
       scanResult = await scanMarkets(settings.sportFilters as string[], {
         crypto: settings.cryptoPriorityWeight ?? 2.5,
         weather: settings.weatherPriorityWeight ?? 2.5,
+        maxSpreadCents: settings.maxSpreadCents ?? 5,
       });
       const scanDuration = (Date.now() - scanStart) / 1000;
       const sample = scanResult.candidates.slice(0, 12).map((c) => c.market.ticker);
@@ -430,6 +432,7 @@ export async function runTradingCycle(): Promise<CycleResult> {
     let confidenceCapped = 0;
     let noPriceCapped = 0;
     let gameCapSkipped = 0;
+    let spreadCapSkipped = 0;
     // Tracks trades approved THIS cycle so the reverse middle detector can see
     // intra-cycle positions before they are written to the DB.
     const intraCycleTrades: Array<{ kalshiTicker: string; side: string }> = [];
@@ -554,6 +557,16 @@ export async function runTradingCycle(): Promise<CycleResult> {
         continue;
       }
 
+      const maxSpreadDollars = (settings.maxSpreadCents ?? 5) / 100;
+      const spreadD = takerSpreadDollars(audit.analysis.candidate, audit.analysis.side);
+      if (spreadD > maxSpreadDollars + 1e-9) {
+        spreadCapSkipped++;
+        console.log(
+          `[Pipeline] Spread cap skip: ${ticker} side=${audit.analysis.side} spread=$${spreadD.toFixed(4)} (>${maxSpreadDollars.toFixed(2)} max)`,
+        );
+        continue;
+      }
+
       const strategyName = strategyMatches[0].strategyName;
       const strategyReason = strategyMatches[0].reason;
       const decision = await assessRisk(audit, {
@@ -594,6 +607,7 @@ export async function runTradingCycle(): Promise<CycleResult> {
       confidenceCapped > 0 ? `${confidenceCapped} conf>${(CONFIDENCE_CEILING * 100).toFixed(0)}% capped` : null,
       noPriceCapped > 0 ? `${noPriceCapped} NO>${(NO_MAX_ENTRY_PRICE * 100).toFixed(0)}¢ capped` : null,
       gameCapSkipped > 0 ? `${gameCapSkipped} game-cap (max ${MAX_POSITIONS_PER_GAME}/game)` : null,
+      spreadCapSkipped > 0 ? `${spreadCapSkipped} spread-cap (>${(settings.maxSpreadCents ?? 5)}¢)` : null,
     ].filter(Boolean).join(", ");
     const riskDetails = riskExtras
       ? `${riskApproved.length}/${riskDecisions.length} risk-approved, ${riskExtras}`
@@ -785,6 +799,7 @@ export async function scanAndDiscover(): Promise<ScanDiscoverResult> {
   const scanResult = await scanMarkets(settings.sportFilters as string[], {
     crypto: settings.cryptoPriorityWeight ?? 2.5,
     weather: settings.weatherPriorityWeight ?? 2.5,
+    maxSpreadCents: settings.maxSpreadCents ?? 5,
   });
   updateAgentStatus("Scanner", "idle", `Scanned ${scanResult.totalScanned} markets, found ${scanResult.candidates.length} candidates`);
 

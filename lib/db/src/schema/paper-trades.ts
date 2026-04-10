@@ -8,6 +8,8 @@ export const paperTradesTable = pgTable("paper_trades", {
   title: text("title").notNull(),
   side: text("side").notNull(),
   entryPrice: real("entry_price").notNull(),
+  /** YES or NO taker bid–ask width in cents at entry (for dashboard / audit). */
+  entrySpreadCents: integer("entry_spread_cents").notNull().default(0),
   exitPrice: real("exit_price"),
   quantity: integer("quantity").notNull(),
   pnl: real("pnl"),

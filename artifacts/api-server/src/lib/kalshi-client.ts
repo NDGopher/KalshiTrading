@@ -172,6 +172,16 @@ export function getMarketNoAsk(m: KalshiMarket): number {
   return 0;
 }
 
+/** Best bid for NO contracts; fallback 1 − YES ask when API omits no_bid. */
+export function getMarketNoBid(m: KalshiMarket): number {
+  if (m.no_bid != null && m.no_bid > 0) return m.no_bid / 100;
+  const d = kalshiPositiveDollars(m.no_bid_dollars);
+  if (d > 0) return d;
+  const yesAsk = getMarketYesAsk(m);
+  if (yesAsk > 0 && yesAsk < 1) return parseFloat((1 - yesAsk).toFixed(4));
+  return 0;
+}
+
 export function getMarketYesPrice(m: KalshiMarket): number {
   // Live order book midpoint takes priority over stale last_price.
   // last_price is the most-recent TRADE price, which can be hours or days

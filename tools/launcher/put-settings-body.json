@@ -6,6 +6,7 @@
   "maxSimultaneousPositions": 0,
   "enabledStrategies": ["Pure Value", "Volume Imbalance", "Whale Flow", "Dip Buy"],
   "minEdge": 6,
+  "maxSpreadCents": 5,
   "kellyFraction": 0.28,
   "cryptoPriorityWeight": 2.5,
   "weatherPriorityWeight": 2.5

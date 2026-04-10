@@ -37,12 +37,13 @@ async function settingsToResponse(settings: typeof tradingSettingsTable.$inferSe
     paperBalance: settings.paperBalance,
     enabledStrategies:
       (settings.enabledStrategies as string[] | null) ?? [
-        "Whale Flow",
-        "Volume Imbalance",
-        "Dip Buy",
         "Pure Value",
+        "Volume Imbalance",
+        "Whale Flow",
+        "Dip Buy",
       ],
     targetBetUsd: settings.targetBetUsd ?? 15,
+    maxSpreadCents: settings.maxSpreadCents ?? 5,
     cryptoPriorityWeight: settings.cryptoPriorityWeight ?? 2.5,
     weatherPriorityWeight: settings.weatherPriorityWeight ?? 2.5,
     kalshiApiKeySet: !!(settings.kalshiApiKey || process.env.KALSHI_API_KEY),
@@ -78,6 +79,8 @@ router.put("/settings", async (req, res): Promise<void> => {
     updateData.maxSimultaneousPositions = clampNum(body.maxSimultaneousPositions, 0, 10000, current.maxSimultaneousPositions);
   if (body.minEdge !== undefined)
     updateData.minEdge = clampNum(body.minEdge, 1, 50, current.minEdge);
+  if (body.maxSpreadCents !== undefined)
+    updateData.maxSpreadCents = Math.round(clampNum(body.maxSpreadCents, 1, 50, current.maxSpreadCents ?? 5));
   if (body.minLiquidity !== undefined)
     updateData.minLiquidity = clampNum(body.minLiquidity, 10, 100000, current.minLiquidity);
   if (body.minTimeToExpiry !== undefined)

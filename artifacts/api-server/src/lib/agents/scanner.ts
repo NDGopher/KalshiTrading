@@ -15,6 +15,7 @@ import { ne, desc } from "drizzle-orm";
 import { batchGetPriceHistory, type PriceHistory } from "../price-history.js";
 import { updateLiveTapeFlow } from "../live-tape-flow.js";
 import { kalshiIsWeatherTicker, kalshiMarketBucket, kalshiSportBucket } from "@workspace/backtester";
+import { rejectsWideBookForTrading } from "./execution-policy.js";
 
 /**
  * Scanner sizing (live paper + future live) — **no Odds API / sharp lines**.
@@ -34,6 +35,8 @@ export const SCANNER_ANALYSIS_SLICE = 250;
 /** DB-driven scanner weights (set at each `scanMarkets` entry). */
 let scanPriorityCrypto = 2.5;
 let scanPriorityWeather = 2.5;
+/** Max YES bid–ask width (dollars) for scanner pre-filter; from DB `max_spread_cents`. */
+let scanMaxSpreadDollars = 0.05;
 
 export interface ScanCandidate {
   market: KalshiMarket;
@@ -212,7 +215,7 @@ function buildCandidateFromKalshi(market: KalshiMarket): ScanCandidate | null {
   if (hoursToExpiry < 4 && volume24h < 10 && liquidity < 100) return null;
 
   const { imbalance, whalePrint } = updateLiveTapeFlow(market.ticker, yesPrice, volume24h);
-  return {
+  const candidate: ScanCandidate = {
     market,
     yesPrice,
     noPrice,
@@ -226,6 +229,8 @@ function buildCandidateFromKalshi(market: KalshiMarket): ScanCandidate | null {
     replayFlowImbalance: imbalance,
     replayWhalePrint: whalePrint,
   };
+  if (rejectsWideBookForTrading(candidate, scanMaxSpreadDollars)) return null;
+  return candidate;
 }
 
 /**
@@ -260,7 +265,7 @@ function buildCandidateRelaxedPriorityMacro(market: KalshiMarket): ScanCandidate
   if (hoursToExpiry < 3 && yesPrice < 0.06 && volume24h < 1) return null;
 
   const { imbalance, whalePrint } = updateLiveTapeFlow(market.ticker, yesPrice, volume24h);
-  return {
+  const candidate: ScanCandidate = {
     market,
     yesPrice,
     noPrice,
@@ -274,6 +279,8 @@ function buildCandidateRelaxedPriorityMacro(market: KalshiMarket): ScanCandidate
     replayFlowImbalance: imbalance,
     replayWhalePrint: whalePrint,
   };
+  if (rejectsWideBookForTrading(candidate, scanMaxSpreadDollars)) return null;
+  return candidate;
 }
 
 /**
@@ -309,7 +316,7 @@ function buildCandidateRelaxedEconomicsMacro(market: KalshiMarket): ScanCandidat
   if (hoursToExpiry < 4 && volume24h < 8 && liquidity < 80) return null;
 
   const { imbalance, whalePrint } = updateLiveTapeFlow(market.ticker, yesPrice, volume24h);
-  return {
+  const candidate: ScanCandidate = {
     market,
     yesPrice,
     noPrice,
@@ -323,6 +330,8 @@ function buildCandidateRelaxedEconomicsMacro(market: KalshiMarket): ScanCandidat
     replayFlowImbalance: imbalance,
     replayWhalePrint: whalePrint,
   };
+  if (rejectsWideBookForTrading(candidate, scanMaxSpreadDollars)) return null;
+  return candidate;
 }
 
 function isSportsCandidate(c: ScanCandidate): boolean {
@@ -479,7 +488,7 @@ async function enrichCandidates(candidates: ScanCandidate[]): Promise<void> {
  */
 export async function scanMarkets(
   _sportFilters?: string[],
-  priorityWeights?: { crypto?: number; weather?: number },
+  priorityWeights?: { crypto?: number; weather?: number; maxSpreadCents?: number },
 ): Promise<{
   candidates: ScanCandidate[];
   totalScanned: number;
@@ -488,6 +497,7 @@ export async function scanMarkets(
   try {
     scanPriorityCrypto = Math.max(0.5, priorityWeights?.crypto ?? 2.5);
     scanPriorityWeather = Math.max(0.5, priorityWeights?.weather ?? 2.5);
+    scanMaxSpreadDollars = Math.max(0.01, (priorityWeights?.maxSpreadCents ?? 5) / 100);
 
     // Fetch all markets across ALL categories — no volume pre-filter
     const markets = await getAllLiquidMarkets(10);

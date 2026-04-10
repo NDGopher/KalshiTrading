@@ -49,7 +49,7 @@ interface PaperTrade {
   macroBucket?: string;
   coarse?: string;
   sportLabel?: string;
-  slippageApplied?: number;
+  entrySpreadCents?: number;
 }
 
 interface PaperStats {
@@ -627,7 +627,9 @@ export default function Paper() {
                           {!isLive && <span className="text-muted-foreground/70">(entry)</span>}
                         </span>
                         <span>Cost: {formatCurrency(cost)}</span>
-                        {t.slippageApplied != null && <span className="text-muted-foreground/80">slip {t.slippageApplied.toFixed(2)}</span>}
+                        {t.entrySpreadCents != null && (
+                          <span className="text-muted-foreground/80">{t.entrySpreadCents}¢ sprd</span>
+                        )}
                         {t.edge != null && <span className="text-primary">{t.edge.toFixed(1)}% edge</span>}
                         {t.strategyName && <span className="text-muted-foreground/60">{t.strategyName}</span>}
                       </div>
@@ -676,7 +678,7 @@ export default function Paper() {
                       <th className="px-4 py-4 font-semibold">Strategy</th>
                       <th className="px-4 py-4 font-semibold">Side / Qty</th>
                       <th className="px-4 py-4 font-semibold text-right">Entry</th>
-                      <th className="px-4 py-4 font-semibold text-right">Slip</th>
+                      <th className="px-4 py-4 font-semibold text-right">Sprd ¢</th>
                       <th className="px-4 py-4 font-semibold text-right">Edge / Conf</th>
                       <th className="px-4 py-4 font-semibold text-right">Mark / Exit</th>
                       <th className="px-4 py-4 font-semibold text-right">P&L</th>
@@ -707,8 +709,17 @@ export default function Paper() {
                             <td className="px-4 py-3 text-[10px] text-muted-foreground uppercase max-w-[100px]">
                               {trade.coarse ?? trade.macroBucket ?? "—"}
                             </td>
-                            <td className="px-4 py-3 text-xs text-muted-foreground">
-                              {trade.strategyName ?? "—"}
+                            <td className="px-4 py-3 text-xs text-muted-foreground max-w-[200px]">
+                              <div>{trade.strategyName ?? "—"}</div>
+                              {trade.analystReasoning ? (
+                                <div
+                                  className="text-[9px] text-muted-foreground/70 truncate mt-0.5"
+                                  title={trade.analystReasoning}
+                                >
+                                  {trade.analystReasoning.slice(0, 44)}
+                                  {trade.analystReasoning.length > 44 ? "…" : ""}
+                                </div>
+                              ) : null}
                             </td>
                             <td className="px-4 py-3">
                               <div className="flex items-center gap-1.5">
@@ -720,7 +731,7 @@ export default function Paper() {
                               {formatCurrency(trade.entryPrice)}
                             </td>
                             <td className="px-4 py-3 font-mono text-right text-[10px] text-muted-foreground">
-                              {trade.slippageApplied != null ? trade.slippageApplied.toFixed(2) : "0.01"}
+                              {trade.entrySpreadCents != null ? trade.entrySpreadCents : "—"}
                             </td>
                             <td className="px-4 py-3 text-right text-xs">
                               {trade.edge != null && (

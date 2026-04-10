@@ -1,14 +1,10 @@
-import {
-  kalshiCoarseMacroGroup,
-  kalshiMarketBucket,
-  kalshiSportLabel,
-  kalshiSportBucket,
-} from "@workspace/backtester";
+import { kalshiCoarseMacroGroup, kalshiSportLabel } from "@workspace/backtester";
 import { createOrder } from "../kalshi-client.js";
 import { db, tradesTable, paperTradesTable, tradingSettingsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import type { RiskDecision } from "./risk-manager.js";
-import { compactKeeperReasoning, EDGE_EXECUTION_SLIPPAGE } from "./analyst.js";
+import { compactKeeperReasoning } from "./analyst.js";
+import { spreadCentsFromDollars, takerSpreadDollars } from "./execution-policy.js";
 
 export interface ExecutionResult {
   decision: RiskDecision;
@@ -107,6 +103,7 @@ async function executePaperTrade(decision: RiskDecision): Promise<ExecutionResul
   }
 
   const flags = Array.isArray(audit.flags) ? audit.flags : [];
+  const spreadCents = spreadCentsFromDollars(takerSpreadDollars(candidate, analysis.side));
 
   let paperTrade: { id: number };
   try {
@@ -117,6 +114,7 @@ async function executePaperTrade(decision: RiskDecision): Promise<ExecutionResul
         title: candidate.market.title || candidate.market.ticker,
         side: analysis.side,
         entryPrice,
+        entrySpreadCents: spreadCents,
         quantity,
         status: "open",
         strategyName: decision.strategyName || null,
@@ -160,17 +158,13 @@ async function executePaperTrade(decision: RiskDecision): Promise<ExecutionResul
   }
 
   const sport = kalshiSportLabel(candidate.market.ticker);
-  const bucket = kalshiSportBucket(candidate.market.ticker);
-  const macroBucket = kalshiMarketBucket(candidate.market);
   const coarse = kalshiCoarseMacroGroup(candidate.market);
-  const categoryField = (candidate.market.category || "").trim() || macroBucket;
   const winProb = analysis.side === "yes" ? analysis.modelProbability : 1 - analysis.modelProbability;
   const expectedEdgePerContract = winProb - entryPrice;
   const expectedPnlUsdApprox = expectedEdgePerContract * decision.positionSize;
   const dollarSize = cost;
   console.info(
-    `[PAPER_TRADE] strategy=${decision.strategyName ?? "?"} ticker=${candidate.market.ticker} sport=${sport} tickerBucket=${bucket} macroBucket=${macroBucket} coarse=${coarse} category=${categoryField} side=${analysis.side.toUpperCase()} ` +
-      `ask=${entryPrice.toFixed(4)} slippageApplied=${EDGE_EXECUTION_SLIPPAGE} contracts=${decision.positionSize} dollars=$${dollarSize.toFixed(2)} edge_pp=${analysis.edge.toFixed(2)} expectedPnlUsd~=${expectedPnlUsdApprox.toFixed(3)} | ${keeperReason}`,
+    `[PAPER_TRADE] strategy=${decision.strategyName ?? "?"} ticker=${candidate.market.ticker} sport=${sport} bucket=${coarse} ask=${entryPrice.toFixed(4)} contracts=${decision.positionSize} dollars=$${dollarSize.toFixed(2)} spreadCents=${spreadCents} | ${keeperReason}`,
   );
   console.info(
     "[PAPER_TRADE_JSON]",
@@ -178,12 +172,10 @@ async function executePaperTrade(decision: RiskDecision): Promise<ExecutionResul
       timestamp: new Date().toISOString(),
       ticker: candidate.market.ticker,
       sport,
-      tickerBucket: bucket,
-      macroBucket,
-      coarse,
-      category: categoryField,
+      bucket: coarse,
       side: analysis.side,
       entryAsk: entryPrice,
+      spreadCents,
       contracts: decision.positionSize,
       dollarNotional: dollarSize,
       strategyName: decision.strategyName ?? null,
@@ -191,7 +183,6 @@ async function executePaperTrade(decision: RiskDecision): Promise<ExecutionResul
       edgePp: analysis.edge,
       expectedPnlUsdApprox,
       actualFillPrice: entryPrice,
-      slippageApplied: EDGE_EXECUTION_SLIPPAGE,
     }),
   );
 

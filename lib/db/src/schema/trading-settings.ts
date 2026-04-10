@@ -12,6 +12,8 @@ export const tradingSettingsTable = pgTable("trading_settings", {
   /** 0 = no cap (Kelly + maxPositionPct still bound size). >0 = max concurrent open positions. */
   maxSimultaneousPositions: integer("max_simultaneous_positions").notNull().default(0),
   minEdge: real("min_edge").notNull().default(6),
+  /** Reject candidates if YES bid–ask width exceeds this (cents). */
+  maxSpreadCents: integer("max_spread_cents").notNull().default(5),
   minLiquidity: real("min_liquidity").notNull().default(100),
   minTimeToExpiry: integer("min_time_to_expiry").notNull().default(10),
   confidencePenaltyPct: real("confidence_penalty_pct").notNull().default(8),
