@@ -43,6 +43,8 @@ async function settingsToResponse(settings: typeof tradingSettingsTable.$inferSe
         "Pure Value",
       ],
     targetBetUsd: settings.targetBetUsd ?? 15,
+    cryptoPriorityWeight: settings.cryptoPriorityWeight ?? 2.5,
+    weatherPriorityWeight: settings.weatherPriorityWeight ?? 2.5,
     kalshiApiKeySet: !!(settings.kalshiApiKey || process.env.KALSHI_API_KEY),
     kalshiBaseUrl: settings.kalshiBaseUrl || null,
   };
@@ -96,6 +98,10 @@ router.put("/settings", async (req, res): Promise<void> => {
     updateData.enabledStrategies = body.enabledStrategies.filter((s: unknown) => typeof s === "string");
   if (body.targetBetUsd !== undefined)
     updateData.targetBetUsd = clampNum(body.targetBetUsd, 5, 50, current.targetBetUsd ?? 15);
+  if (body.cryptoPriorityWeight !== undefined)
+    updateData.cryptoPriorityWeight = clampNum(body.cryptoPriorityWeight, 0.5, 10, current.cryptoPriorityWeight ?? 2.5);
+  if (body.weatherPriorityWeight !== undefined)
+    updateData.weatherPriorityWeight = clampNum(body.weatherPriorityWeight, 0.5, 10, current.weatherPriorityWeight ?? 2.5);
   if (body.kalshiApiKey !== undefined && typeof body.kalshiApiKey === "string")
     updateData.kalshiApiKey = body.kalshiApiKey;
   if (body.kalshiBaseUrl !== undefined)

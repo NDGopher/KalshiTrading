@@ -10,7 +10,7 @@ import { formatCurrency } from "@/lib/utils";
 import { format } from "date-fns";
 import {
   FileText, RefreshCw, RotateCcw, TrendingUp, TrendingDown, Wallet,
-  Target, Activity, BarChart3, AlertTriangle, Wifi, WifiOff, ExternalLink,
+  Target, Activity, BarChart3, Wifi, WifiOff, ExternalLink,
   ChevronDown, ChevronUp, LineChart,
 } from "lucide-react";
 import {
@@ -46,6 +46,10 @@ interface PaperTrade {
   currentPrice: number | null;
   priceSource: "live" | "entry_fallback" | "settled" | null;
   unrealizedPnl: number | null;
+  macroBucket?: string;
+  coarse?: string;
+  sportLabel?: string;
+  slippageApplied?: number;
 }
 
 interface PaperStats {
@@ -114,7 +118,7 @@ function usePaperTrades() {
   return useQuery({
     queryKey: ["/api/paper-trades"],
     queryFn: async () => {
-      const res = await fetch(`${API_BASE}/paper-trades?limit=200&enrichLive=1`);
+      const res = await fetch(`${API_BASE}/paper-trades?limit=200&enrichLive=1&macro=1`);
       const data = await res.json();
       return (data.trades || data) as PaperTrade[];
     },
@@ -239,7 +243,6 @@ export default function Paper() {
   const filteredTrades = allTrades.filter((t) => filter === "all" || t.status === filter);
   const openTrades = allTrades.filter(t => t.status === "open");
   const anyLivePrices = openTrades.some(t => t.priceSource === "live");
-  const allFallback = openTrades.length > 0 && openTrades.every(t => t.priceSource === "entry_fallback");
 
   const isPositive = (val?: number | null) => (val || 0) >= 0;
   const isPaperActive = overview?.paperTradingMode;
@@ -322,13 +325,6 @@ export default function Paper() {
             </Button>
           </div>
         </div>
-
-        {allFallback && (
-          <div className="flex items-center gap-2 text-xs text-yellow-400 bg-yellow-500/10 border border-yellow-500/20 rounded-lg px-4 py-2">
-            <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-            <span>Live Kalshi prices unavailable — open positions shown at entry price. P&L updates when prices are accessible or trades resolve.</span>
-          </div>
-        )}
 
         {/* Stat cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -620,14 +616,18 @@ export default function Paper() {
                       </div>
                       <div className="flex items-center gap-3 mt-2 text-[10px] text-muted-foreground flex-wrap">
                         <Badge variant={t.side === "yes" ? "success" : "destructive"} className="text-[10px] h-4">{t.side.toUpperCase()}</Badge>
+                        {(t.coarse || t.macroBucket) && (
+                          <span className="text-[9px] uppercase tracking-wide text-primary/90">{t.coarse ?? t.macroBucket}</span>
+                        )}
                         <span className="font-mono">{t.quantity} @ {formatCurrency(t.entryPrice)}</span>
                         <span className="flex items-center gap-1">
-                          {isLive ? <Wifi className="w-2.5 h-2.5 text-success" /> : <WifiOff className="w-2.5 h-2.5 text-yellow-400" />}
-                          <span className="text-muted-foreground/60">Mark:</span>
-                          <span className={`font-mono ${isLive ? "text-white" : "text-yellow-400"}`}>{formatCurrency(livePrice)}</span>
-                          {!isLive && <span className="text-yellow-400/70">(entry)</span>}
+                          {isLive ? <Wifi className="w-2.5 h-2.5 text-success" /> : <WifiOff className="w-2.5 h-2.5 text-muted-foreground" />}
+                          <span className="text-muted-foreground/60">Mark (ask):</span>
+                          <span className={`font-mono ${isLive ? "text-white" : "text-muted-foreground"}`}>{formatCurrency(livePrice)}</span>
+                          {!isLive && <span className="text-muted-foreground/70">(entry)</span>}
                         </span>
                         <span>Cost: {formatCurrency(cost)}</span>
+                        {t.slippageApplied != null && <span className="text-muted-foreground/80">slip {t.slippageApplied.toFixed(2)}</span>}
                         {t.edge != null && <span className="text-primary">{t.edge.toFixed(1)}% edge</span>}
                         {t.strategyName && <span className="text-muted-foreground/60">{t.strategyName}</span>}
                       </div>
@@ -672,14 +672,16 @@ export default function Paper() {
                     <tr>
                       <th className="px-4 py-4 font-semibold">Date</th>
                       <th className="px-4 py-4 font-semibold">Market</th>
+                      <th className="px-4 py-4 font-semibold">Bucket</th>
                       <th className="px-4 py-4 font-semibold">Strategy</th>
                       <th className="px-4 py-4 font-semibold">Side / Qty</th>
                       <th className="px-4 py-4 font-semibold text-right">Entry</th>
+                      <th className="px-4 py-4 font-semibold text-right">Slip</th>
                       <th className="px-4 py-4 font-semibold text-right">Edge / Conf</th>
                       <th className="px-4 py-4 font-semibold text-right">Mark / Exit</th>
                       <th className="px-4 py-4 font-semibold text-right">P&L</th>
                       <th className="px-4 py-4 font-semibold text-center">Status</th>
-                      <th className="px-4 py-4 font-semibold text-center">AI</th>
+                      <th className="px-4 py-4 font-semibold text-center">Notes</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/5">
@@ -702,6 +704,9 @@ export default function Paper() {
                                 <ExternalLink className="w-2.5 h-2.5" />
                               </a>
                             </td>
+                            <td className="px-4 py-3 text-[10px] text-muted-foreground uppercase max-w-[100px]">
+                              {trade.coarse ?? trade.macroBucket ?? "—"}
+                            </td>
                             <td className="px-4 py-3 text-xs text-muted-foreground">
                               {trade.strategyName ?? "—"}
                             </td>
@@ -713,6 +718,9 @@ export default function Paper() {
                             </td>
                             <td className="px-4 py-3 font-mono text-right text-xs text-white">
                               {formatCurrency(trade.entryPrice)}
+                            </td>
+                            <td className="px-4 py-3 font-mono text-right text-[10px] text-muted-foreground">
+                              {trade.slippageApplied != null ? trade.slippageApplied.toFixed(2) : "0.01"}
                             </td>
                             <td className="px-4 py-3 text-right text-xs">
                               {trade.edge != null && (
@@ -726,8 +734,8 @@ export default function Paper() {
                               <div className="flex flex-col items-end gap-0.5">
                                 {trade.status === "open" ? (
                                   <div className="flex items-center gap-1">
-                                    {isLive ? <Wifi className="w-2.5 h-2.5 text-success" /> : <WifiOff className="w-2.5 h-2.5 text-yellow-400" />}
-                                    <span className={`font-mono ${isLive ? "text-white" : "text-yellow-400"}`}>{formatCurrency(livePrice)}</span>
+                                    {isLive ? <Wifi className="w-2.5 h-2.5 text-success" /> : <WifiOff className="w-2.5 h-2.5 text-muted-foreground" />}
+                                    <span className={`font-mono ${isLive ? "text-white" : "text-muted-foreground"}`}>{formatCurrency(livePrice)}</span>
                                   </div>
                                 ) : (
                                   <span className="font-mono text-muted-foreground">{formatCurrency(trade.exitPrice ?? 0)}</span>
@@ -763,11 +771,11 @@ export default function Paper() {
                           </tr>
                           {isExpanded && trade.analystReasoning && (
                             <tr>
-                              <td colSpan={10} className="px-6 pb-4 pt-0 bg-black/20">
+                              <td colSpan={12} className="px-6 pb-4 pt-0 bg-black/20">
                                 <div className="rounded-lg border border-white/5 bg-white/[0.02] p-3 text-xs text-muted-foreground leading-relaxed">
                                   <div className="flex items-center gap-1.5 text-purple-400 font-medium mb-2">
                                     <LineChart className="w-3.5 h-3.5" />
-                                    AI Reasoning
+                                    Keeper reasoning
                                   </div>
                                   <p>{trade.analystReasoning}</p>
                                   {trade.modelProbability != null && (

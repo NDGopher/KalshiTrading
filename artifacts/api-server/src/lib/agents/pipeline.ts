@@ -7,7 +7,7 @@ import {
   withTransactionStatementTimeout,
   type DbClient,
 } from "@workspace/db";
-import { eq, sql, inArray } from "drizzle-orm";
+import { eq, gte, sql, inArray } from "drizzle-orm";
 import { scanMarkets, SCANNER_ANALYSIS_SLICE } from "./scanner.js";
 import { analyzeMarketsRuleBased } from "./analyst.js";
 import { auditTrades, type AuditResult } from "./auditor.js";
@@ -265,7 +265,10 @@ export async function runTradingCycle(): Promise<CycleResult> {
     updateAgentStatus("Scanner", "running");
     let scanResult;
     try {
-      scanResult = await scanMarkets(settings.sportFilters as string[]);
+      scanResult = await scanMarkets(settings.sportFilters as string[], {
+        crypto: settings.cryptoPriorityWeight ?? 2.5,
+        weather: settings.weatherPriorityWeight ?? 2.5,
+      });
       const scanDuration = (Date.now() - scanStart) / 1000;
       const sample = scanResult.candidates.slice(0, 12).map((c) => c.market.ticker);
       console.log(
@@ -360,6 +363,8 @@ export async function runTradingCycle(): Promise<CycleResult> {
               category: opportunityCategoryLabel(
                 analysis.candidate.market.ticker,
                 analysis.candidate.market.category,
+                analysis.candidate.market.event_ticker,
+                analysis.candidate.market.series_ticker,
               ),
               currentYesPrice: analysis.candidate.yesPrice,
               modelProbability: analysis.modelProbability,
@@ -428,6 +433,23 @@ export async function runTradingCycle(): Promise<CycleResult> {
     // Tracks trades approved THIS cycle so the reverse middle detector can see
     // intra-cycle positions before they are written to the DB.
     const intraCycleTrades: Array<{ kalshiTicker: string; side: string }> = [];
+
+    const startOfUtcDay = new Date();
+    startOfUtcDay.setUTCHours(0, 0, 0, 0);
+    const tradedTodaySet = new Set<string>();
+    if (paperMode) {
+      try {
+        const todayRows = await withTransactionStatementTimeout(PIPELINE_DB_MS, async (tx: DbClient) =>
+          tx
+            .select({ kalshiTicker: paperTradesTable.kalshiTicker })
+            .from(paperTradesTable)
+            .where(gte(paperTradesTable.createdAt, startOfUtcDay)),
+        );
+        for (const r of todayRows) tradedTodaySet.add(r.kalshiTicker);
+      } catch {
+        /* non-fatal */
+      }
+    }
 
     // Build a game-key → count map from currently open DB positions.
     // This prevents adding a 3rd bet on a game where we already have 2 open.
@@ -527,6 +549,11 @@ export async function runTradingCycle(): Promise<CycleResult> {
         continue;
       }
 
+      if (paperMode && tradedTodaySet.has(ticker)) {
+        console.log(`[Pipeline] Same-day ticker skip: ${ticker} already had a paper trade today (1-per-ticker/day)`);
+        continue;
+      }
+
       const strategyName = strategyMatches[0].strategyName;
       const strategyReason = strategyMatches[0].reason;
       const decision = await assessRisk(audit, {
@@ -557,6 +584,7 @@ export async function runTradingCycle(): Promise<CycleResult> {
           kalshiTicker: audit.analysis.candidate.market.ticker,
           side: audit.analysis.side,
         });
+        if (paperMode) tradedTodaySet.add(audit.analysis.candidate.market.ticker);
       }
     }
     const riskApproved = riskDecisions.filter((d) => d.approved);
@@ -754,7 +782,10 @@ export async function scanAndDiscover(): Promise<ScanDiscoverResult> {
   }
 
   updateAgentStatus("Scanner", "running");
-  const scanResult = await scanMarkets(settings.sportFilters as string[]);
+  const scanResult = await scanMarkets(settings.sportFilters as string[], {
+    crypto: settings.cryptoPriorityWeight ?? 2.5,
+    weather: settings.weatherPriorityWeight ?? 2.5,
+  });
   updateAgentStatus("Scanner", "idle", `Scanned ${scanResult.totalScanned} markets, found ${scanResult.candidates.length} candidates`);
 
   if (scanResult.candidates.length === 0) {

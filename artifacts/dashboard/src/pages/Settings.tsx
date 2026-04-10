@@ -10,15 +10,12 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { FileText, Shield, Layers, CheckCircle2, XCircle } from "lucide-react";
 
-const ALL_STRATEGIES = [
-  { name: "Pure Value", description: "Buys when model probability diverges meaningfully from market implied odds — works across all market types.", color: "#a78bfa" },
-  { name: "Sharp Money", description: "Follows elevated volume/liquidity flow — high activity signals informed ('sharp') traders are moving the market.", color: "#34d399" },
-  { name: "Contrarian Reversal", description: "Bets against sharp price overreactions when the AI model identifies the market has overshot fair value.", color: "#f59e0b" },
-  { name: "Momentum", description: "Follows strong directional price moves backed by model confidence in high-activity periods.", color: "#60a5fa" },
-  { name: "Late Efficiency", description: "Exploits spread inefficiencies in the final 36 hours before settlement when pricing hasn't converged.", color: "#f87171" },
-  { name: "Dip Buy", description: "Buys when a pregame market drops ≥8% below its 24h rolling mean with no news catalyst — mean reversion back to fair value.", color: "#22d3ee" },
-  { name: "Sharp Arb", description: "Trades when Kalshi's price deviates ≥3pp from Pinnacle's no-vig fair line. Requires ODDS_API_KEY. Near-certain +EV when it fires.", color: "#fb923c" },
-  { name: "Market Making", description: "Posts limit orders on both sides of wide-spread markets (≥5¢ spread) to earn the bid-ask as a liquidity provider. Best for flat markets with no directional signal.", color: "#e879f9" },
+/** Production paper/live stack: rule-based keepers only (no Odds API / LLM). */
+const KEEPER_STRATEGIES = [
+  { name: "Pure Value", description: "Enters when blind model probability diverges from the market after a 1¢ execution cushion.", color: "#a78bfa" },
+  { name: "Volume Imbalance", description: "Uses live 24h tape imbalance vs mid — requires real Kalshi volume (not DB estimates).", color: "#60a5fa" },
+  { name: "Whale Flow", description: "Large-print proxy on the live tape when volume and liquidity spike together.", color: "#34d399" },
+  { name: "Dip Buy", description: "Mean-reversion when price sits well below the 24h rolling mean (price-history from DB).", color: "#22d3ee" },
 ];
 
 interface SettingsData {
@@ -38,6 +35,9 @@ interface SettingsData {
   paperTradingMode: boolean;
   paperBalance: number;
   enabledStrategies: string[] | null;
+  targetBetUsd?: number;
+  cryptoPriorityWeight?: number;
+  weatherPriorityWeight?: number;
   kalshiApiKeySet: boolean;
   kalshiBaseUrl: string | null;
 }
@@ -77,7 +77,7 @@ export default function Settings() {
   const [connectionStatus, setConnectionStatus] = useState<{ success: boolean; message: string } | null>(null);
   const [paperMode, setPaperMode] = useState(false);
   const [togglingPaper, setTogglingPaper] = useState(false);
-  const [enabledStrategies, setEnabledStrategies] = useState<string[]>(ALL_STRATEGIES.map(s => s.name));
+  const [enabledStrategies, setEnabledStrategies] = useState<string[]>(KEEPER_STRATEGIES.map(s => s.name));
   const [strategySaving, setStrategySaving] = useState(false);
   
   const updateMutation = useUpdateSettings({
@@ -103,7 +103,7 @@ export default function Settings() {
         kellyFraction: settings.kellyFraction,
         maxDrawdownPct: settings.maxDrawdownPct,
         maxConsecutiveLosses: settings.maxConsecutiveLosses,
-        maxSimultaneousPositions: settings.maxSimultaneousPositions || 8,
+        maxSimultaneousPositions: settings.maxSimultaneousPositions ?? 0,
         minEdge: settings.minEdge,
         minLiquidity: settings.minLiquidity,
         minTimeToExpiry: settings.minTimeToExpiry,
@@ -114,10 +114,12 @@ export default function Settings() {
       setKalshiBaseUrl(settings.kalshiBaseUrl || "");
       setPaperMode(settings.paperTradingMode || false);
       const loaded = settings.enabledStrategies;
+      const allowed = new Set(KEEPER_STRATEGIES.map((s) => s.name));
       if (Array.isArray(loaded) && loaded.length > 0) {
-        setEnabledStrategies(loaded);
+        const filtered = loaded.filter((s): s is string => typeof s === "string" && allowed.has(s));
+        setEnabledStrategies(filtered.length > 0 ? filtered : KEEPER_STRATEGIES.map((s) => s.name));
       } else {
-        setEnabledStrategies(ALL_STRATEGIES.map(s => s.name));
+        setEnabledStrategies(KEEPER_STRATEGIES.map(s => s.name));
       }
     }
   }, [settings, reset]);
@@ -290,7 +292,7 @@ export default function Settings() {
               </CardHeader>
               <CardContent className="p-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {ALL_STRATEGIES.map((strategy) => {
+                  {KEEPER_STRATEGIES.map((strategy) => {
                     const isEnabled = enabledStrategies.includes(strategy.name);
                     return (
                       <button
@@ -324,7 +326,7 @@ export default function Settings() {
                   })}
                 </div>
                 <p className="text-xs text-muted-foreground mt-4">
-                  {enabledStrategies.length} of {ALL_STRATEGIES.length} strategies active. 
+                  {enabledStrategies.length} of {KEEPER_STRATEGIES.length} keepers active. 
                   Changes take effect on the next pipeline cycle.
                 </p>
               </CardContent>

@@ -23,9 +23,27 @@ function deterministicHash(s: string): number {
 
 export { checkBudget };
 
+/** Conservative execution cushion on every edge / Kelly sizing (backtest-aligned). */
+export const EDGE_EXECUTION_SLIPPAGE = 0.01;
+
 /** Legacy hook — API cost tracking removed; pipeline always allowed. */
 async function checkBudget(): Promise<{ allowed: boolean; reason?: string }> {
   return { allowed: true };
+}
+
+/** YES taker: ask + 1¢ (capped). */
+export function effectiveYesBuyPrice(candidate: ScanCandidate): number {
+  const base = candidate.yesAsk ?? candidate.yesPrice;
+  return Math.min(0.99, base + EDGE_EXECUTION_SLIPPAGE);
+}
+
+/**
+ * NO taker: spec YES +1¢ / NO −1¢ on edge math — use ask − 1¢ when comparing NO probability
+ * (slightly optimistic NO fill vs ask-only; still bounded).
+ */
+export function effectiveNoBuyPrice(candidate: ScanCandidate): number {
+  const base = candidate.noAsk ?? 1 - candidate.yesPrice;
+  return Math.min(0.99, Math.max(0.01, base - EDGE_EXECUTION_SLIPPAGE));
 }
 
 /** Blind pricing math aligned with JBecker replay (`blindReplayAnalysisForTick`). No LLM. */
@@ -43,7 +61,11 @@ export function analyzeMarketRuleBased(candidate: ScanCandidate): AnalysisResult
   const noise = ((hash % 100) - 50) / 2200;
   const modelProb = Math.max(0.04, Math.min(0.96, yesPrice + skew + noise + (hashFrac - 0.5) * 0.06));
   const side: "yes" | "no" = modelProb > yesPrice ? "yes" : "no";
-  const edge = Math.abs(modelProb - yesPrice) * 100;
+  const pNo = 1 - modelProb;
+  const edge =
+    side === "yes"
+      ? Math.abs(modelProb - effectiveYesBuyPrice(candidate)) * 100
+      : Math.abs(pNo - effectiveNoBuyPrice(candidate)) * 100;
   const volumeBoost = Math.min(0.1, Math.max(0, candidate.volume24h) / 7000);
   const confidence = Math.min(0.88, 0.34 + edge / 110 + volumeBoost + hashFrac * 0.05);
 

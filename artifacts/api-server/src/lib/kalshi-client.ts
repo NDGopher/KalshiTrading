@@ -307,6 +307,38 @@ export async function getOrderbook(ticker: string): Promise<KalshiOrderbookPaylo
  * Best-effort YES probability for mark-to-market when GET /market quote fields are all "0.0000"
  * but the book still has bids (common after Kalshi's orderbook_fp migration).
  */
+/** Best YES ask from orderbook_fp: YES ask = 1 − (best NO bid). */
+export function bestYesAskFromOrderbookPayload(data: KalshiOrderbookPayload): number {
+  const fp = data.orderbook_fp;
+  if (fp?.no_dollars?.[0]?.[0] != null) {
+    const bestNoBid = kalshiPositiveDollars(fp.no_dollars[0][0]);
+    if (bestNoBid > 0 && bestNoBid < 1) return parseFloat((1 - bestNoBid).toFixed(6));
+  }
+  const leg = data.orderbook;
+  if (leg?.no?.[0]?.[0] != null) {
+    const nc = leg.no[0][0];
+    const nb = nc != null && nc > 0 ? nc / 100 : 0;
+    if (nb > 0 && nb < 1) return parseFloat((1 - nb).toFixed(6));
+  }
+  return 0;
+}
+
+/** Best NO ask from orderbook_fp: NO ask = 1 − (best YES bid). */
+export function bestNoAskFromOrderbookPayload(data: KalshiOrderbookPayload): number {
+  const fp = data.orderbook_fp;
+  if (fp?.yes_dollars?.[0]?.[0] != null) {
+    const bestYesBid = kalshiPositiveDollars(fp.yes_dollars[0][0]);
+    if (bestYesBid > 0 && bestYesBid < 1) return parseFloat((1 - bestYesBid).toFixed(6));
+  }
+  const leg = data.orderbook;
+  if (leg?.yes?.[0]?.[0] != null) {
+    const yc = leg.yes[0][0];
+    const yb = yc != null && yc > 0 ? yc / 100 : 0;
+    if (yb > 0 && yb < 1) return parseFloat((1 - yb).toFixed(6));
+  }
+  return 0;
+}
+
 export function midYesPriceFromOrderbookPayload(data: KalshiOrderbookPayload): number {
   const fp = data.orderbook_fp;
   if (fp && ((fp.yes_dollars?.length ?? 0) > 0 || (fp.no_dollars?.length ?? 0) > 0)) {
@@ -327,6 +359,66 @@ export function midYesPriceFromOrderbookPayload(data: KalshiOrderbookPayload): n
     if (yb > 0 && implied > 0) return parseFloat(((yb + implied) / 2).toFixed(4));
     if (yb > 0) return yb;
     if (implied > 0) return implied;
+  }
+  return 0;
+}
+
+/** YES ask for paper marks / execution display — snapshot first, then list, then orderbook_fp. */
+export async function getBestYesAskPrice(ticker: string): Promise<number> {
+  try {
+    const { market } = await getMarket(ticker);
+    const a = getMarketYesAsk(market);
+    if (a > 0.005 && a < 0.995) return a;
+  } catch {
+    /* 404 / auth */
+  }
+  try {
+    const q = new URLSearchParams({ ticker, limit: "1", status: "open" });
+    const { markets } = await kalshiFetch<{ markets?: KalshiMarket[] }>(`/markets?${q.toString()}`);
+    const m = markets?.find((x) => x.ticker === ticker) ?? markets?.[0];
+    if (m?.ticker === ticker) {
+      const a = getMarketYesAsk(m);
+      if (a > 0.005 && a < 0.995) return a;
+    }
+  } catch {
+    /* bad filter */
+  }
+  try {
+    const ob = await getOrderbook(ticker);
+    const a = bestYesAskFromOrderbookPayload(ob);
+    if (a > 0.005 && a < 0.995) return a;
+  } catch {
+    /* rate limit */
+  }
+  return 0;
+}
+
+/** NO ask — snapshot / list / orderbook_fp (1 − best YES bid). */
+export async function getBestNoAskPrice(ticker: string): Promise<number> {
+  try {
+    const { market } = await getMarket(ticker);
+    const a = getMarketNoAsk(market);
+    if (a > 0.005 && a < 0.995) return a;
+  } catch {
+    /* 404 / auth */
+  }
+  try {
+    const q = new URLSearchParams({ ticker, limit: "1", status: "open" });
+    const { markets } = await kalshiFetch<{ markets?: KalshiMarket[] }>(`/markets?${q.toString()}`);
+    const m = markets?.find((x) => x.ticker === ticker) ?? markets?.[0];
+    if (m?.ticker === ticker) {
+      const a = getMarketNoAsk(m);
+      if (a > 0.005 && a < 0.995) return a;
+    }
+  } catch {
+    /* bad filter */
+  }
+  try {
+    const ob = await getOrderbook(ticker);
+    const a = bestNoAskFromOrderbookPayload(ob);
+    if (a > 0.005 && a < 0.995) return a;
+  } catch {
+    /* rate limit */
   }
   return 0;
 }
@@ -354,6 +446,8 @@ export async function getBestYesMarkPrice(ticker: string): Promise<number> {
   }
   try {
     const ob = await getOrderbook(ticker);
+    const ask = bestYesAskFromOrderbookPayload(ob);
+    if (ask > 0.005 && ask < 0.995) return ask;
     const m = midYesPriceFromOrderbookPayload(ob);
     if (m > 0.005 && m < 0.995) return m;
   } catch {
@@ -554,6 +648,9 @@ export async function getAllLiquidMarkets(_maxPages = 10): Promise<KalshiMarket[
     "KXATPGAMETOTAL",    // ATP tennis
     "KXWBCTOTAL",        // WBC/MLB run totals
     "KXBTCD",            // Bitcoin daily binary — primary backtest (Pure Value) series
+    "KXETHD",            // ETH daily binaries
+    "KXDOGE",            // DOGE binaries
+    "KXBTCE",            // BTC strike/expiry binaries
   ];
 
   const allMarketsRaw: KalshiMarket[] = [];
@@ -568,9 +665,11 @@ export async function getAllLiquidMarkets(_maxPages = 10): Promise<KalshiMarket[
         ? 2
         : category === "Crypto"
           ? 4
-          : HIGH_VALUE_CATEGORIES.has(category)
-            ? 3
-            : 2;
+          : category === "Weather"
+            ? 4
+            : HIGH_VALUE_CATEGORIES.has(category)
+              ? 3
+              : 2;
     for (let page = 0; page < maxPages; page++) {
       await delay(300);
       const result = await fetchOnePage(category, cursor);

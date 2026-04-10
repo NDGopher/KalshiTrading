@@ -156,6 +156,14 @@ export function kalshiSportBucket(ticker: string): string {
   return "Other";
 }
 
+/** Daily high / temp-bin style weather contracts (HIGHCHI, HIGHMIA, HIGHAUS, …). */
+export function kalshiIsWeatherTicker(ticker: string): boolean {
+  const t = ticker.toUpperCase();
+  if (t.startsWith("HIGH") && t.length >= 6) return true;
+  if (t.includes("WEATHER") || t.includes("TMAX") || t.includes("TMIN")) return true;
+  return false;
+}
+
 export function aggregateSportBuckets(trades: SimulatedTrade[]): SportBucketMetrics[] {
   const m = new Map<string, { trades: number; wins: number; pnl: number }>();
   for (const tr of trades) {

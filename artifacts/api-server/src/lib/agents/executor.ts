@@ -8,7 +8,7 @@ import { createOrder } from "../kalshi-client.js";
 import { db, tradesTable, paperTradesTable, tradingSettingsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import type { RiskDecision } from "./risk-manager.js";
-import { compactKeeperReasoning } from "./analyst.js";
+import { compactKeeperReasoning, EDGE_EXECUTION_SLIPPAGE } from "./analyst.js";
 
 export interface ExecutionResult {
   decision: RiskDecision;
@@ -170,7 +170,7 @@ async function executePaperTrade(decision: RiskDecision): Promise<ExecutionResul
   const dollarSize = cost;
   console.info(
     `[PAPER_TRADE] strategy=${decision.strategyName ?? "?"} ticker=${candidate.market.ticker} sport=${sport} tickerBucket=${bucket} macroBucket=${macroBucket} coarse=${coarse} category=${categoryField} side=${analysis.side.toUpperCase()} ` +
-      `ask=${entryPrice.toFixed(4)} contracts=${decision.positionSize} dollars=$${dollarSize.toFixed(2)} edge_pp=${analysis.edge.toFixed(2)} expectedPnlUsd~=${expectedPnlUsdApprox.toFixed(3)} | ${keeperReason}`,
+      `ask=${entryPrice.toFixed(4)} slippageApplied=${EDGE_EXECUTION_SLIPPAGE} contracts=${decision.positionSize} dollars=$${dollarSize.toFixed(2)} edge_pp=${analysis.edge.toFixed(2)} expectedPnlUsd~=${expectedPnlUsdApprox.toFixed(3)} | ${keeperReason}`,
   );
   console.info(
     "[PAPER_TRADE_JSON]",
@@ -191,6 +191,7 @@ async function executePaperTrade(decision: RiskDecision): Promise<ExecutionResul
       edgePp: analysis.edge,
       expectedPnlUsdApprox,
       actualFillPrice: entryPrice,
+      slippageApplied: EDGE_EXECUTION_SLIPPAGE,
     }),
   );
 

@@ -6,7 +6,7 @@ import {
   type DbClient,
 } from "@workspace/db";
 import { desc, eq, sql } from "drizzle-orm";
-import { getBestYesMarkPrice } from "../lib/kalshi-client.js";
+import { getBestNoAskPrice, getBestYesAskPrice } from "../lib/kalshi-client.js";
 import {
   kalshiCoarseMacroGroup,
   kalshiMarketBucket,
@@ -19,6 +19,9 @@ const router = Router();
 const RESET_TIMEOUT_MS = Math.min(120_000, Number(process.env.DB_RESET_STATEMENT_TIMEOUT_MS) || 45_000);
 const ROUTE_DB_TIMEOUT_MS = Math.min(120_000, Number(process.env.DB_ROUTE_STATEMENT_TIMEOUT_MS) || 60_000);
 const LIVE_ENRICH_CONCURRENCY = Math.min(8, Math.max(1, Number(process.env.PAPER_LIVE_ENRICH_CONCURRENCY) || 4));
+
+/** Edge / Kelly cushion applied in rule-based analyst (shown on Paper UI). */
+export const PAPER_EDGE_SLIPPAGE_APPLIED = 0.01;
 
 function macroFieldsForTicker(ticker: string): { macroBucket: string; coarse: string; sportLabel: string } {
   const m = { ticker };
@@ -49,16 +52,15 @@ async function fetchLivePrice(ticker: string, side: string, entryPrice: number):
     return { currentPrice: entryPrice, priceSource: "entry_fallback" };
   }
   try {
-    // Kalshi v2 often returns yes_bid_dollars/yes_ask_dollars as "0.0000" on GET /markets/{ticker} while
-    // real prices live on GET /markets/{ticker}/orderbook as orderbook_fp.yes_dollars / no_dollars.
-    const yesPx = await getBestYesMarkPrice(ticker);
-    const mark =
-      sideNorm === "yes" ? yesPx : yesPx > 0 && yesPx < 1 ? parseFloat((1 - yesPx).toFixed(4)) : 0;
-    if (mark > 0.005 && mark < 0.995) {
-      return { currentPrice: mark, priceSource: "live" };
+    if (sideNorm === "yes") {
+      const ask = await getBestYesAskPrice(ticker);
+      if (ask > 0.005 && ask < 0.995) return { currentPrice: ask, priceSource: "live" };
+    } else {
+      const noAsk = await getBestNoAskPrice(ticker);
+      if (noAsk > 0.005 && noAsk < 0.995) return { currentPrice: noAsk, priceSource: "live" };
     }
   } catch {
-    /* defensive — getBestYesMarkPrice already swallows */
+    /* defensive */
   }
   return { currentPrice: entryPrice, priceSource: "entry_fallback" };
 }
@@ -113,7 +115,7 @@ router.get("/paper-trades", async (req, res) => {
         } else {
           row = { ...t, currentPrice: t.entryPrice, priceSource: "entry_fallback" as const, unrealizedPnl: 0 };
         }
-        if (withMacro) Object.assign(row, macroFieldsForTicker(t.kalshiTicker));
+        Object.assign(row, macroFieldsForTicker(t.kalshiTicker), { slippageApplied: PAPER_EDGE_SLIPPAGE_APPLIED });
         return row;
       });
       return res.json({
@@ -124,9 +126,11 @@ router.get("/paper-trades", async (req, res) => {
     }
 
     const enriched = await enrichTradesWithLivePrices(trades);
-    const out = withMacro
-      ? enriched.map((t) => ({ ...t, ...macroFieldsForTicker(t.kalshiTicker) }))
-      : enriched;
+    const out = enriched.map((t) => ({
+      ...t,
+      ...macroFieldsForTicker(t.kalshiTicker),
+      slippageApplied: PAPER_EDGE_SLIPPAGE_APPLIED,
+    }));
     return res.json({
       trades: out,
       enrichLive: true,

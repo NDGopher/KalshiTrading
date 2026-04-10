@@ -931,6 +931,16 @@ components:
           type: boolean
         paperBalance:
           type: number
+        enabledStrategies:
+          type: array
+          items:
+            type: string
+        targetBetUsd:
+          type: number
+        cryptoPriorityWeight:
+          type: number
+        weatherPriorityWeight:
+          type: number
         kalshiApiKeySet:
           type: boolean
         kalshiBaseUrl:
@@ -951,8 +961,11 @@ components:
         - pipelineActive
         - paperTradingMode
         - paperBalance
-        - dailyBudgetUsd
-        - monthlyBudgetUsd
+        - enabledStrategies
+        - targetBetUsd
+        - cryptoPriorityWeight
+        - weatherPriorityWeight
+        - kalshiApiKeySet
 
     UpdateSettingsBody:
       type: object
@@ -986,6 +999,16 @@ components:
         paperTradingMode:
           type: boolean
         paperBalance:
+          type: number
+        enabledStrategies:
+          type: array
+          items:
+            type: string
+        targetBetUsd:
+          type: number
+        cryptoPriorityWeight:
+          type: number
+        weatherPriorityWeight:
           type: number
 
     PortfolioBalance:
