@@ -3,6 +3,8 @@
  * No Anthropic or other LLM calls (see `analyzeMarketRuleBased`).
  */
 import {
+  HP_KEEPER_MIN_EDGE_PP,
+  isHighPriorityCategory,
   isPriorityMacroAuditEdgeCandidate,
   PRIORITY_MACRO_AUDIT_MIN_EDGE_PP,
   type ScanCandidate,
@@ -41,6 +43,12 @@ async function checkBudget(): Promise<{ allowed: boolean; reason?: string }> {
   return { allowed: true };
 }
 
+function auditMinEdgePpForCandidate(candidate: ScanCandidate): number | undefined {
+  if (isHighPriorityCategory(candidate.market)) return HP_KEEPER_MIN_EDGE_PP;
+  if (isPriorityMacroAuditEdgeCandidate(candidate)) return PRIORITY_MACRO_AUDIT_MIN_EDGE_PP;
+  return undefined;
+}
+
 /** Blind pricing math aligned with JBecker replay (`blindReplayAnalysisForTick`). No LLM. */
 export function analyzeMarketRuleBased(candidate: ScanCandidate): AnalysisResult {
   const yesPrice = candidate.yesPrice;
@@ -71,7 +79,7 @@ export function analyzeMarketRuleBased(candidate: ScanCandidate): AnalysisResult
     confidence,
     side,
     reasoning: `RB: ${edge.toFixed(1)}pp, ${(confidence * 100).toFixed(0)}% conf, mid=${(yesPrice * 100).toFixed(1)}¢`,
-    auditMinEdge: isPriorityMacroAuditEdgeCandidate(candidate) ? PRIORITY_MACRO_AUDIT_MIN_EDGE_PP : undefined,
+    auditMinEdge: auditMinEdgePpForCandidate(candidate),
   };
 }
 

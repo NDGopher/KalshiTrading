@@ -64,6 +64,7 @@ export async function writeCycleDebugJson(params: {
       spread: c.spread,
       edgePp: analysis?.edge ?? null,
       confidence: analysis?.confidence ?? null,
+      strategyMinEdgePpEffective: analysis?.strategyMinEdgePp ?? null,
       snapshotsAvailable: ph?.snapshots ?? 0,
       isHighPriorityCategory: hp.hp,
       reasonForHP: hp.reason,

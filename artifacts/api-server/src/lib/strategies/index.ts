@@ -1,4 +1,6 @@
+import { kalshiMarketBucket } from "@workspace/backtester";
 import type { ScanCandidate } from "../agents/scanner.js";
+import { isHighPriorityCategory } from "../agents/scanner.js";
 import type { AnalysisResult } from "../agents/analyst.js";
 
 export interface StrategyMetadata {
@@ -16,9 +18,14 @@ export interface Strategy {
   shouldTrade(analysis: AnalysisResult): { trade: boolean; reason: string; metadata?: StrategyMetadata };
 }
 
-/** Min edge (pp) for keeper gates — pipeline sets `strategyMinEdgePp` (4.5 macro vs DB minEdge for sports/other). */
+/** Min edge (pp) for keeper gates — pipeline sets `strategyMinEdgePp` (HP 4.0 / macro 4.5 / DB minEdge). */
 function keeperMinEdgePp(analysis: AnalysisResult): number {
   return analysis.strategyMinEdgePp ?? 6;
+}
+
+/** Dip Buy snapshot floor: lower for HP markets only (live thin history). */
+export function dipBuyMinSnapshots(candidate: ScanCandidate): number {
+  return isHighPriorityCategory(candidate.market) ? 3 : 8;
 }
 
 /** Rule-based floor aligned with paper tuning / backtests. */
@@ -108,7 +115,7 @@ const dipBuy: Strategy = {
     return candidates.filter((c) => {
       const h = c.priceHistory;
       if (!h?.isDip) return false;
-      if (h.snapshots < 8) return false;
+      if (h.snapshots < dipBuyMinSnapshots(c)) return false;
       return c.hoursToExpiry > 4 && c.yesPrice > 0.1 && c.yesPrice < 0.9;
     });
   },
@@ -219,25 +226,76 @@ export function diagnoseStrategyMiss(analysis: AnalysisResult, enabledStrategyNa
   return parts.join(" || ");
 }
 
-/** Per-enabled-strategy gate outcomes for cycle debug JSON. */
+/** Per-enabled-strategy gate outcomes for cycle debug JSON + logs. */
 export function keeperDebugStatuses(
   analysis: AnalysisResult,
   enabledStrategyNames?: string[],
-): Array<{ strategyName: string; selectPassed: boolean; tradePassed: boolean; reason: string }> {
+): Array<{
+  strategyName: string;
+  selectPassed: boolean;
+  tradePassed: boolean;
+  reason: string;
+  minKeeperEdgePp: number;
+  dipSnapshotsRequired: number | null;
+  selectDetail: string;
+}> {
   const activeStrategies = enabledStrategyNames
     ? strategies.filter((s) => enabledStrategyNames.includes(s.name))
     : strategies;
+  const minEdge = keeperMinEdgePp(analysis);
+  const dipNeed = dipBuyMinSnapshots(analysis.candidate);
   return activeStrategies.map((strategy) => {
     const candidateMatch = strategy.selectCandidates([analysis.candidate]);
     const selectPassed = candidateMatch.length > 0;
     const result = selectPassed
       ? strategy.shouldTrade(analysis)
       : { trade: false as const, reason: `failed selectCandidates (${selectGateSummary(analysis.candidate)})` };
+    const h = analysis.candidate.priceHistory;
+    let selectDetail = !selectPassed
+      ? result.reason
+      : result.trade
+        ? "passed select + trade"
+        : `passed selectCandidates; trade failed: ${result.reason}`;
+    if (!selectPassed && strategy.name === "Dip Buy") {
+      selectDetail = `Dip Buy gates: isDip=${h?.isDip ?? false} snapshots=${h?.snapshots ?? 0} (need≥${dipNeed} for ${isHighPriorityCategory(analysis.candidate.market) ? "HP" : "non-HP"}) hrs>${analysis.candidate.hoursToExpiry > 4} band=${analysis.candidate.yesPrice > 0.1 && analysis.candidate.yesPrice < 0.9}`;
+    }
+    if (!selectPassed && strategy.name === "Whale Flow") {
+      selectDetail = `Whale Flow: hasLiveData=${analysis.candidate.hasLiveData} whalePrint=${analysis.candidate.replayWhalePrint === true}`;
+    }
+    if (!selectPassed && strategy.name === "Volume Imbalance") {
+      const im = analysis.candidate.replayFlowImbalance;
+      selectDetail = `Volume Imbalance: hasLiveData=${analysis.candidate.hasLiveData} imb=${im != null ? im.toFixed(3) : "null"} (need|imb|>0.45)`;
+    }
+    if (!selectPassed && strategy.name === "Pure Value") {
+      selectDetail = `Pure Value: yesMid=${analysis.candidate.yesPrice.toFixed(3)} (need 0.10–0.90)`;
+    }
     return {
       strategyName: strategy.name,
       selectPassed,
       tradePassed: result.trade,
       reason: result.reason,
+      minKeeperEdgePp: minEdge,
+      dipSnapshotsRequired: strategy.name === "Dip Buy" ? dipNeed : null,
+      selectDetail,
     };
   });
+}
+
+/** After rule-based analysis: one line per candidate with zero keeper matches (visibility). */
+export function logKeeperRejectsForAnalyses(
+  analyses: AnalysisResult[],
+  enabledStrategyNames?: string[],
+): void {
+  for (const a of analyses) {
+    if (evaluateStrategies(a, enabledStrategyNames).length > 0) continue;
+    const c = a.candidate;
+    const m = c.market;
+    const ph = c.priceHistory;
+    const snaps = ph?.snapshots ?? 0;
+    const bucket = kalshiMarketBucket(m);
+    const diag = diagnoseStrategyMiss(a, enabledStrategyNames);
+    console.info(
+      `[Pipeline] Keeper reject: ticker=${m.ticker} bucket=${bucket} edge=${a.edge.toFixed(2)}pp conf=${(a.confidence * 100).toFixed(1)}% snapshots=${snaps} hp=${isHighPriorityCategory(m)} reason=${diag}`,
+    );
+  }
 }

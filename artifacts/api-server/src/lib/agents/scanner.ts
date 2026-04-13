@@ -625,6 +625,9 @@ export function isCryptoPriorityCandidate(c: ScanCandidate): boolean {
 /** Lower auditor / keeper edge floor (pp) for Weather, Politics, Mention, Crypto only — sports stay at DB minEdge. */
 export const PRIORITY_MACRO_AUDIT_MIN_EDGE_PP = 4.5;
 
+/** Keeper + auditor edge floor (pp) for `isHighPriorityCategory` markets only (live-friendly vs 4.5 macro slice). */
+export const HP_KEEPER_MIN_EDGE_PP = 4.0;
+
 const MIN_WEATHER_ANALYSIS_SLICE = 60;
 const MIN_POLITICS_ANALYSIS_SLICE = 40;
 const MIN_MENTION_ANALYSIS_SLICE = 30;

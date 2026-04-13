@@ -9,6 +9,8 @@ import {
 } from "@workspace/db";
 import { eq, gte, sql, inArray } from "drizzle-orm";
 import {
+  HP_KEEPER_MIN_EDGE_PP,
+  isHighPriorityCategory,
   isPriorityMacroAuditEdgeCandidate,
   PRIORITY_MACRO_AUDIT_MIN_EDGE_PP,
   scanMarkets,
@@ -38,7 +40,7 @@ function opportunityCategoryLabel(
     series_ticker: seriesTicker || undefined,
   });
 }
-import { diagnoseStrategyMiss, evaluateStrategies } from "../strategies/index.js";
+import { diagnoseStrategyMiss, evaluateStrategies, logKeeperRejectsForAnalyses } from "../strategies/index.js";
 import { takerSpreadDollars } from "./execution-policy.js";
 import { startNewsFetcher } from "./news-fetcher.js";
 import { startStrategyLearnerSchedule } from "./strategy-learner.js";
@@ -319,10 +321,15 @@ export async function runTradingCycle(): Promise<CycleResult> {
     try {
       analyses = analyzeMarketsRuleBased(topCandidates);
       for (const a of analyses) {
-        a.strategyMinEdgePp = isPriorityMacroAuditEdgeCandidate(a.candidate)
-          ? PRIORITY_MACRO_AUDIT_MIN_EDGE_PP
-          : settings.minEdge;
+        if (isHighPriorityCategory(a.candidate.market)) {
+          a.strategyMinEdgePp = HP_KEEPER_MIN_EDGE_PP;
+        } else if (isPriorityMacroAuditEdgeCandidate(a.candidate)) {
+          a.strategyMinEdgePp = PRIORITY_MACRO_AUDIT_MIN_EDGE_PP;
+        } else {
+          a.strategyMinEdgePp = settings.minEdge;
+        }
       }
+      logKeeperRejectsForAnalyses(analyses, enabledStrategies);
       try {
         await writeCycleDebugJson({
           cycleId: liveCycleId ?? "unknown",
@@ -518,13 +525,10 @@ export async function runTradingCycle(): Promise<CycleResult> {
         const sportFine = kalshiSportLabel(m.ticker);
         const sportBucket = kalshiSportBucket(m.ticker);
         const diag = diagnoseStrategyMiss(audit.analysis, enabledStrategies);
-        const ya = c.yesAsk != null ? c.yesAsk.toFixed(4) : "?";
-        const na = c.noAsk != null ? c.noAsk.toFixed(4) : "?";
+        const snaps = c.priceHistory?.snapshots ?? 0;
         console.log(
-          `[Pipeline] No-strategy skip: ticker=${m.ticker} sportBucket=${sportBucket} sportLabel=${sportFine} category=${cat} ` +
-            `side=${audit.analysis.side} edge=${audit.analysis.edge.toFixed(2)}pp ` +
-            `modelConf=${(audit.analysis.confidence * 100).toFixed(1)}% adjConf=${(audit.adjustedConfidence * 100).toFixed(1)}% ` +
-            `yesMid=${(c.yesPrice ?? 0).toFixed(3)} yesAsk=${ya} noAsk=${na} | ${diag}`,
+          `[Pipeline] No-strategy skip (post-audit): ticker=${m.ticker} bucket=${kalshiMarketBucket(m)} sportBucket=${sportBucket} sportLabel=${sportFine} category=${cat} ` +
+            `edge=${audit.analysis.edge.toFixed(2)}pp conf=${(audit.analysis.confidence * 100).toFixed(1)}% adjConf=${(audit.adjustedConfidence * 100).toFixed(1)}% snapshots=${snaps} hp=${isHighPriorityCategory(m)} | ${diag}`,
         );
         continue;
       }
@@ -855,10 +859,15 @@ export async function scanAndDiscover(): Promise<ScanDiscoverResult> {
   updateAgentStatus("Analyst", "running");
   const analyses = analyzeMarketsRuleBased(topCandidates);
   for (const a of analyses) {
-    a.strategyMinEdgePp = isPriorityMacroAuditEdgeCandidate(a.candidate)
-      ? PRIORITY_MACRO_AUDIT_MIN_EDGE_PP
-      : settings.minEdge;
+    if (isHighPriorityCategory(a.candidate.market)) {
+      a.strategyMinEdgePp = HP_KEEPER_MIN_EDGE_PP;
+    } else if (isPriorityMacroAuditEdgeCandidate(a.candidate)) {
+      a.strategyMinEdgePp = PRIORITY_MACRO_AUDIT_MIN_EDGE_PP;
+    } else {
+      a.strategyMinEdgePp = settings.minEdge;
+    }
   }
+  logKeeperRejectsForAnalyses(analyses, (settings.enabledStrategies as string[] | null) ?? undefined);
   updateAgentStatus("Analyst", "idle", `Analyzed ${analyses.length} markets`);
 
   updateAgentStatus("Auditor", "running");
