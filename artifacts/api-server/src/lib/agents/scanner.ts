@@ -26,6 +26,7 @@ import { rejectsWideBookForTrading } from "./execution-policy.js";
  * Scanner sizing (live paper + future live) — **no Odds API / sharp lines**.
  * - **Pool 600**: **160–200** non-sports (Weather → Politics → Mention → Crypto, then other macro); **sports fill remainder**.
  * - **Analysis 350**: same high-priority category order at the front of the slice; then other non-sports; then sports.
+ * - `isHighPriorityCategory` (Weather/Politics/Mention/Crypto): looser pre-pool YES band + liq floors; **5¢ spread** unchanged.
  * - Relaxed vol/liq for Crypto/Politics/Mention/Weather/Other; Economics uses a tighter relaxed pass. **KXBTCD** boosted.
  * - **Enrich top 350**: price-history only (DB, batched 20 tickers).
  *
@@ -145,6 +146,29 @@ function diversityQuotaBucket(c: ScanCandidate): "Politics" | "Crypto" | "Econom
   return diversityQuotaBucketFromMarket(c.market);
 }
 
+/**
+ * Weather, Politics, Mention, Crypto — not sports. Pre-pool liquidity / YES band can be relaxed;
+ * spread cap (`rejectsWideBookForTrading`) stays strict for every market.
+ */
+export function isHighPriorityCategory(market: KalshiMarket): boolean {
+  if (isStrictSportsLikeMarket(market)) return false;
+  if (mentionFromMarket(market)) return true;
+  if (kalshiIsWeatherTicker(market.ticker)) return true;
+  const cat = (market.category || "").toLowerCase();
+  if (
+    cat.includes("weather") ||
+    cat.includes("climate") ||
+    cat.includes("temperature") ||
+    cat.includes("forecast")
+  ) {
+    return true;
+  }
+  const b = kalshiMarketBucket(market);
+  if (b === "Politics" || b === "Mention" || b === "Crypto") return true;
+  const d = diversityQuotaBucketFromMarket(market);
+  return d === "Politics" || d === "Mention" || d === "Crypto";
+}
+
 function isCryptoScanCandidate(c: ScanCandidate): boolean {
   return diversityQuotaBucket(c) === "Crypto" || kalshiSportBucket(c.market.ticker) === "Crypto";
 }
@@ -233,6 +257,7 @@ function compositeScore(candidate: ScanCandidate): number {
 
 function buildCandidateFromKalshi(market: KalshiMarket): ScanCandidate | null {
   if (isExcludedKalshiStructuralJunk(market)) return null;
+  const hp = isHighPriorityCategory(market);
   const now = new Date();
   const rawAsk = getMarketYesAsk(market);
   const rawBid = getMarketYesBid(market);
@@ -241,7 +266,10 @@ function buildCandidateFromKalshi(market: KalshiMarket): ScanCandidate | null {
   // Hard floor: < 10¢ or > 90¢ means the market has already priced in the outcome
   // (or the game is over and we'd be betting into near-certain settled contracts).
   // We have zero information advantage at the extremes — skip entirely.
-  if (!yesPrice || yesPrice < 0.10 || yesPrice > 0.90) return null;
+  // High-priority macro: slightly wider band so thin books still reach pool reorder (spread still capped at 5¢).
+  const yesLo = hp ? 0.07 : 0.1;
+  const yesHi = hp ? 0.93 : 0.9;
+  if (!yesPrice || yesPrice < yesLo || yesPrice > yesHi) return null;
 
   const noPrice = 1 - yesPrice;
   // Actual ask prices for execution — what you pay when you buy YES or NO
@@ -261,10 +289,13 @@ function buildCandidateFromKalshi(market: KalshiMarket): ScanCandidate | null {
 
   // Liquidity floor: markets with zero volume AND under $50 liquidity have no
   // real price discovery signal — skip them regardless of category.
-  if (volume24h === 0 && liquidity < 50) return null;
+  // High-priority macro: lower floor so Weather/Politics/Mention/Crypto survive pre-pool.
+  if (volume24h === 0 && liquidity < (hp ? 22 : 50)) return null;
 
   // Near-expiry illiquid ghost markets — spread is meaningless and fills are impossible
-  if (hoursToExpiry < 4 && volume24h < 10 && liquidity < 100) return null;
+  if (hp) {
+    if (hoursToExpiry < 4 && volume24h < 5 && liquidity < 45) return null;
+  } else if (hoursToExpiry < 4 && volume24h < 10 && liquidity < 100) return null;
 
   const { imbalance, whalePrint } = updateLiveTapeFlow(market.ticker, yesPrice, volume24h);
   const candidate: ScanCandidate = {
@@ -293,6 +324,7 @@ function buildCandidateRelaxedPriorityMacro(market: KalshiMarket): ScanCandidate
   if (isStrictSportsLikeMarket(market)) return null;
   if (!isPriorityBacktestBucketFromMarket(market)) return null;
 
+  const hp = isHighPriorityCategory(market);
   const now = new Date();
   const rawAsk = getMarketYesAsk(market);
   const rawBid = getMarketYesBid(market);
@@ -314,7 +346,9 @@ function buildCandidateRelaxedPriorityMacro(market: KalshiMarket): ScanCandidate
   if (hoursToExpiry < 0.5) return null;
   if (hoursToExpiry > MAX_HOURS_TO_EXPIRY) return null;
 
-  if (hoursToExpiry < 3 && yesPrice < 0.06 && volume24h < 1) return null;
+  if (hp) {
+    if (hoursToExpiry < 2 && yesPrice < 0.04 && volume24h < 1) return null;
+  } else if (hoursToExpiry < 3 && yesPrice < 0.06 && volume24h < 1) return null;
 
   const { imbalance, whalePrint } = updateLiveTapeFlow(market.ticker, yesPrice, volume24h);
   const candidate: ScanCandidate = {
@@ -327,7 +361,7 @@ function buildCandidateRelaxedPriorityMacro(market: KalshiMarket): ScanCandidate
     volume24h,
     liquidity,
     hoursToExpiry,
-    hasLiveData: volume24h > 0 || liquidity >= 50,
+    hasLiveData: volume24h > 0 || liquidity >= (hp ? 22 : 50),
     replayFlowImbalance: imbalance,
     replayWhalePrint: whalePrint,
   };
@@ -520,8 +554,18 @@ async function scanFromCachedDb(): Promise<{ candidates: ScanCandidate[]; totalS
     seen.add(row.kalshiTicker);
 
     const price = row.lastPrice || 0;
-    // Same 10–90¢ hard floor as live path: skip near-certain / post-game markets
-    if (price < 0.10 || price > 0.90) continue;
+    if (!price) continue;
+
+    const marketForHp: KalshiMarket = {
+      ...(row.rawData as object),
+      ticker: row.kalshiTicker,
+      title: row.title || row.kalshiTicker,
+      category: row.category || "Unknown",
+    } as KalshiMarket;
+    const hpRow = isHighPriorityCategory(marketForHp);
+    const yLo = hpRow ? 0.07 : 0.1;
+    const yHi = hpRow ? 0.93 : 0.9;
+    if (price < yLo || price > yHi) continue;
 
     const expiresAt = new Date(row.closeTime || row.expirationTime || now);
     const hoursToExpiry = (expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60);
@@ -536,7 +580,7 @@ async function scanFromCachedDb(): Promise<{ candidates: ScanCandidate[]; totalS
     const typicalVolume = price < 0.15 ? 500 : price < 0.30 ? 2000 : 5000;
 
     const market: KalshiMarket = {
-      ...(row.rawData as object),
+      ...marketForHp,
       ticker: row.kalshiTicker,
       title: row.title || row.kalshiTicker,
       category: row.category || "Unknown",

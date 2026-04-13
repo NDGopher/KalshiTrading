@@ -626,6 +626,7 @@ export async function getAllLiquidMarkets(_maxPages = 10): Promise<KalshiMarket[
     "Sports",
     "Entertainment",
     "Weather",
+    "Science",    // climate / science-adjacent — thin; merged + deduped; scanner applies HP floors
   ];
 
   // Game-day series with REAL pre-game prices (20-80¢), proven in backtests.
@@ -682,9 +683,11 @@ export async function getAllLiquidMarkets(_maxPages = 10): Promise<KalshiMarket[
             ? 4
             : category === "Politics"
               ? 4
-              : HIGH_VALUE_CATEGORIES.has(category)
-                ? 3
-                : 2;
+              : category === "Science"
+                ? 2
+                : HIGH_VALUE_CATEGORIES.has(category)
+                  ? 3
+                  : 2;
     for (let page = 0; page < maxPages; page++) {
       await delay(300);
       const result = await fetchOnePage(category, cursor);
