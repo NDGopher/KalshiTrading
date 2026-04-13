@@ -18,14 +18,16 @@ export interface Strategy {
   shouldTrade(analysis: AnalysisResult): { trade: boolean; reason: string; metadata?: StrategyMetadata };
 }
 
-/** Min edge (pp) for keeper gates — pipeline sets `strategyMinEdgePp` (HP 4.0 / macro 4.5 / DB minEdge). */
+/** Min edge (pp) for keeper gates — pipeline sets `strategyMinEdgePp` (HP 3.5 / macro 4.5 / DB minEdge). */
 function keeperMinEdgePp(analysis: AnalysisResult): number {
   return analysis.strategyMinEdgePp ?? 6;
 }
 
-/** Dip Buy snapshot floor: lower for HP markets only (live thin history). */
+/** Dip Buy snapshot floor: HP + live book → 3; otherwise 8 (non-HP unchanged). */
 export function dipBuyMinSnapshots(candidate: ScanCandidate): number {
-  return isHighPriorityCategory(candidate.market) ? 3 : 8;
+  if (!isHighPriorityCategory(candidate.market)) return 8;
+  if (candidate.hasLiveData) return 3;
+  return 8;
 }
 
 /** Rule-based floor aligned with paper tuning / backtests. */
@@ -257,7 +259,10 @@ export function keeperDebugStatuses(
         ? "passed select + trade"
         : `passed selectCandidates; trade failed: ${result.reason}`;
     if (!selectPassed && strategy.name === "Dip Buy") {
-      selectDetail = `Dip Buy gates: isDip=${h?.isDip ?? false} snapshots=${h?.snapshots ?? 0} (need≥${dipNeed} for ${isHighPriorityCategory(analysis.candidate.market) ? "HP" : "non-HP"}) hrs>${analysis.candidate.hoursToExpiry > 4} band=${analysis.candidate.yesPrice > 0.1 && analysis.candidate.yesPrice < 0.9}`;
+      const hp = isHighPriorityCategory(analysis.candidate.market);
+      const live = analysis.candidate.hasLiveData;
+      const tier = hp && live ? "HP+live→min3" : hp ? "HP+synth→min8" : "non-HP→min8";
+      selectDetail = `Dip Buy gates: isDip=${h?.isDip ?? false} snapshots=${h?.snapshots ?? 0} (need≥${dipNeed}; ${tier}) hrs>${analysis.candidate.hoursToExpiry > 4} band=${analysis.candidate.yesPrice > 0.1 && analysis.candidate.yesPrice < 0.9}`;
     }
     if (!selectPassed && strategy.name === "Whale Flow") {
       selectDetail = `Whale Flow: hasLiveData=${analysis.candidate.hasLiveData} whalePrint=${analysis.candidate.replayWhalePrint === true}`;

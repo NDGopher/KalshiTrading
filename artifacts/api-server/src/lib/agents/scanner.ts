@@ -626,7 +626,7 @@ export function isCryptoPriorityCandidate(c: ScanCandidate): boolean {
 export const PRIORITY_MACRO_AUDIT_MIN_EDGE_PP = 4.5;
 
 /** Keeper + auditor edge floor (pp) for `isHighPriorityCategory` markets only (live-friendly vs 4.5 macro slice). */
-export const HP_KEEPER_MIN_EDGE_PP = 4.0;
+export const HP_KEEPER_MIN_EDGE_PP = 3.5;
 
 const MIN_WEATHER_ANALYSIS_SLICE = 60;
 const MIN_POLITICS_ANALYSIS_SLICE = 40;

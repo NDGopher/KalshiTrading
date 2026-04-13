@@ -1,4 +1,4 @@
-import { kalshiCoarseMacroGroup, kalshiSportLabel } from "@workspace/backtester";
+import { kalshiCoarseMacroGroup, kalshiMarketBucket, kalshiSportLabel } from "@workspace/backtester";
 import {
   createOrder,
   getOrderbook,
@@ -205,10 +205,16 @@ async function executePaperTrade(decision: RiskDecision): Promise<ExecutionResul
 
   const sport = kalshiSportLabel(candidate.market.ticker);
   const coarse = kalshiCoarseMacroGroup(candidate.market);
+  const bucket = kalshiMarketBucket(candidate.market);
+  const snaps = candidate.priceHistory?.snapshots ?? 0;
   const winProb = analysis.side === "yes" ? analysis.modelProbability : 1 - analysis.modelProbability;
   const expectedEdgePerContract = winProb - entryPrice;
   const expectedPnlUsdApprox = expectedEdgePerContract * decision.positionSize;
   const dollarSize = cost;
+  const triggerReason = (decision.strategyReason ?? keeperReason).replace(/\|/g, "/").slice(0, 220);
+  console.info(
+    `[PAPER_TRADE_TRIGGER] strategy=${decision.strategyName ?? "?"} ticker=${candidate.market.ticker} bucket=${bucket} edge=${analysis.edge.toFixed(2)}pp conf=${(audit.adjustedConfidence * 100).toFixed(1)}% snapshots=${snaps} reason=${triggerReason}`,
+  );
   console.info(
     `[PAPER_TRADE] strategy=${decision.strategyName ?? "?"} ticker=${candidate.market.ticker} sport=${sport} bucket=${coarse} ask=${entryPrice.toFixed(4)} contracts=${decision.positionSize} dollars=$${dollarSize.toFixed(2)} spreadCents=${spreadCents} | ${keeperReason}`,
   );
