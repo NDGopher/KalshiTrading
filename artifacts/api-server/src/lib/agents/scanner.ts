@@ -26,7 +26,7 @@ import { rejectsWideBookForTrading } from "./execution-policy.js";
  * Scanner sizing (live paper + future live) — **no Odds API / sharp lines**.
  * - **Pool 600**: **160–200** non-sports (Weather → Politics → Mention → Crypto, then other macro); **sports fill remainder**.
  * - **Analysis 350**: same high-priority category order at the front of the slice; then other non-sports; then sports.
- * - `isHighPriorityCategory` (Weather/Politics/Mention/Crypto): pre-pool YES 5–95¢, min liq $20, looser ghost filter; **5¢ spread** unchanged.
+ * - `isHighPriorityCategory` (Weather/Politics/Mention/Crypto): pre-pool YES 3–97¢, min liq $15, ghost h<4∧vol<3∧liq<35; **5¢ spread** unchanged.
  * - Relaxed vol/liq for Crypto/Politics/Mention/Weather/Other; Economics uses a tighter relaxed pass. **KXBTCD** boosted.
  * - **Enrich top 350**: price-history only (DB, batched 20 tickers).
  *
@@ -147,13 +147,16 @@ function diversityQuotaBucket(c: ScanCandidate): "Politics" | "Crypto" | "Econom
 }
 
 /**
- * Weather, Politics, Mention, Crypto — not sports. Pre-pool liquidity / YES band can be relaxed;
- * spread cap (`rejectsWideBookForTrading`) stays strict for every market.
+ * Weather, Politics, Mention, Crypto — ticker- and category-explicit so wrong API `category` still gets HP floors.
+ * Pure game markets stay non-HP via `isStrictSportsLikeMarket` after category/ticker heuristics.
+ * Spread cap (`rejectsWideBookForTrading`) stays strict for every market.
  */
 export function isHighPriorityCategory(market: KalshiMarket): boolean {
-  if (isStrictSportsLikeMarket(market)) return false;
-  if (mentionFromMarket(market)) return true;
   if (kalshiIsWeatherTicker(market.ticker)) return true;
+  if (mentionFromMarket(market)) return true;
+  const sb = kalshiSportBucket(market.ticker);
+  if (sb === "Politics" || sb === "Crypto" || sb === "Mention") return true;
+
   const cat = (market.category || "").toLowerCase();
   if (
     cat.includes("weather") ||
@@ -163,10 +166,45 @@ export function isHighPriorityCategory(market: KalshiMarket): boolean {
   ) {
     return true;
   }
+  if (cat.includes("politic")) return true;
+  if (cat.includes("mention")) return true;
+  if (cat.includes("crypto") || cat.includes("digital")) return true;
+
+  if (isStrictSportsLikeMarket(market)) return false;
+
   const b = kalshiMarketBucket(market);
   if (b === "Politics" || b === "Mention" || b === "Crypto") return true;
   const d = diversityQuotaBucketFromMarket(market);
   return d === "Politics" || d === "Mention" || d === "Crypto";
+}
+
+/** Log `[Scanner] Dropped early` only for likely macro (avoid noise on every sports market). */
+function shouldLogScannerEarlyDrop(m: KalshiMarket): boolean {
+  if (isHighPriorityCategory(m)) return true;
+  const cat = (m.category || "").toLowerCase();
+  if (kalshiIsWeatherTicker(m.ticker) || kalshiIsMentionTicker(m.ticker)) return true;
+  const sb = kalshiSportBucket(m.ticker);
+  if (sb === "Politics" || sb === "Crypto" || sb === "Mention") return true;
+  if (
+    cat.includes("weather") ||
+    cat.includes("climate") ||
+    cat.includes("politic") ||
+    cat.includes("mention") ||
+    cat.includes("crypto")
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function logScannerDroppedEarly(market: KalshiMarket, reason: string): void {
+  if (!shouldLogScannerEarlyDrop(market)) return;
+  const cat = market.category ?? "";
+  const dq = diversityQuotaBucketFromMarket(market);
+  const kb = kalshiMarketBucket(market);
+  console.info(
+    `[Scanner] Dropped early: ticker=${market.ticker} category=${cat} bucket=${dq}/${kb} reason=${reason}`,
+  );
 }
 
 function isCryptoScanCandidate(c: ScanCandidate): boolean {
@@ -256,7 +294,10 @@ function compositeScore(candidate: ScanCandidate): number {
 }
 
 function buildCandidateFromKalshi(market: KalshiMarket): ScanCandidate | null {
-  if (isExcludedKalshiStructuralJunk(market)) return null;
+  if (isExcludedKalshiStructuralJunk(market)) {
+    logScannerDroppedEarly(market, "excluded");
+    return null;
+  }
   const hp = isHighPriorityCategory(market);
   const now = new Date();
   const rawAsk = getMarketYesAsk(market);
@@ -266,10 +307,13 @@ function buildCandidateFromKalshi(market: KalshiMarket): ScanCandidate | null {
   // Hard floor: < 10¢ or > 90¢ means the market has already priced in the outcome
   // (or the game is over and we'd be betting into near-certain settled contracts).
   // We have zero information advantage at the extremes — skip entirely.
-  // High-priority macro: slightly wider band so thin books still reach pool reorder (spread still capped at 5¢).
-  const yesLo = hp ? 0.07 : 0.1;
-  const yesHi = hp ? 0.93 : 0.9;
-  if (!yesPrice || yesPrice < yesLo || yesPrice > yesHi) return null;
+  // High-priority macro: wider interior band; spread still capped at 5¢ via rejectsWideBookForTrading.
+  const yesLo = hp ? 0.03 : 0.1;
+  const yesHi = hp ? 0.97 : 0.9;
+  if (!yesPrice || yesPrice < yesLo || yesPrice > yesHi) {
+    logScannerDroppedEarly(market, "narrow_band");
+    return null;
+  }
 
   const noPrice = 1 - yesPrice;
   // Actual ask prices for execution — what you pay when you buy YES or NO
@@ -284,18 +328,33 @@ function buildCandidateFromKalshi(market: KalshiMarket): ScanCandidate | null {
   );
   const hoursToExpiry = (expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60);
 
-  if (hoursToExpiry < 0.5) return null;
-  if (hoursToExpiry > MAX_HOURS_TO_EXPIRY) return null;
+  if (hoursToExpiry < 0.5) {
+    logScannerDroppedEarly(market, "expiry");
+    return null;
+  }
+  if (hoursToExpiry > MAX_HOURS_TO_EXPIRY) {
+    logScannerDroppedEarly(market, "expiry");
+    return null;
+  }
 
   // Liquidity floor: markets with zero volume AND under $50 liquidity have no
   // real price discovery signal — skip them regardless of category.
   // High-priority macro: lower floor so Weather/Politics/Mention/Crypto survive pre-pool.
-  if (volume24h === 0 && liquidity < (hp ? 20 : 50)) return null;
+  if (volume24h === 0 && liquidity < (hp ? 15 : 50)) {
+    logScannerDroppedEarly(market, "low_liquidity");
+    return null;
+  }
 
   // Near-expiry illiquid ghost markets — spread is meaningless and fills are impossible
   if (hp) {
-    if (hoursToExpiry < 4 && volume24h < 5 && liquidity < 40) return null;
-  } else if (hoursToExpiry < 4 && volume24h < 10 && liquidity < 100) return null;
+    if (hoursToExpiry < 4 && volume24h < 3 && liquidity < 35) {
+      logScannerDroppedEarly(market, "ghost");
+      return null;
+    }
+  } else if (hoursToExpiry < 4 && volume24h < 10 && liquidity < 100) {
+    logScannerDroppedEarly(market, "ghost");
+    return null;
+  }
 
   const { imbalance, whalePrint } = updateLiveTapeFlow(market.ticker, yesPrice, volume24h);
   const candidate: ScanCandidate = {
@@ -312,7 +371,10 @@ function buildCandidateFromKalshi(market: KalshiMarket): ScanCandidate | null {
     replayFlowImbalance: imbalance,
     replayWhalePrint: whalePrint,
   };
-  if (rejectsWideBookForTrading(candidate, scanMaxSpreadDollars)) return null;
+  if (rejectsWideBookForTrading(candidate, scanMaxSpreadDollars)) {
+    logScannerDroppedEarly(market, "spread");
+    return null;
+  }
   return candidate;
 }
 
@@ -329,7 +391,9 @@ function buildCandidateRelaxedPriorityMacro(market: KalshiMarket): ScanCandidate
   const rawAsk = getMarketYesAsk(market);
   const rawBid = getMarketYesBid(market);
   const yesPrice = getMarketYesPrice(market);
-  if (!yesPrice || yesPrice < 0.015 || yesPrice > 0.985) return null;
+  const yesLoR = hp ? 0.03 : 0.015;
+  const yesHiR = hp ? 0.97 : 0.985;
+  if (!yesPrice || yesPrice < yesLoR || yesPrice > yesHiR) return null;
 
   const noPrice = 1 - yesPrice;
   const yesAsk = rawAsk > 0 ? rawAsk : yesPrice;
@@ -361,7 +425,7 @@ function buildCandidateRelaxedPriorityMacro(market: KalshiMarket): ScanCandidate
     volume24h,
     liquidity,
     hoursToExpiry,
-    hasLiveData: volume24h > 0 || liquidity >= (hp ? 20 : 50),
+    hasLiveData: volume24h > 0 || liquidity >= (hp ? 15 : 50),
     replayFlowImbalance: imbalance,
     replayWhalePrint: whalePrint,
   };
@@ -563,8 +627,8 @@ async function scanFromCachedDb(): Promise<{ candidates: ScanCandidate[]; totalS
       category: row.category || "Unknown",
     } as KalshiMarket;
     const hpRow = isHighPriorityCategory(marketForHp);
-    const yLo = hpRow ? 0.05 : 0.1;
-    const yHi = hpRow ? 0.95 : 0.9;
+    const yLo = hpRow ? 0.03 : 0.1;
+    const yHi = hpRow ? 0.97 : 0.9;
     if (price < yLo || price > yHi) continue;
 
     const expiresAt = new Date(row.closeTime || row.expirationTime || now);
