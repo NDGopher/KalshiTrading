@@ -634,9 +634,14 @@ export async function runTradingCycle(): Promise<CycleResult> {
     let execStart = Date.now();
     updateAgentStatus("Executor", "running");
     let executed = 0;
+    let thinBookSkips = 0;
+    if (paperMode && riskApproved.length > 0) {
+      console.info(`[Pipeline] Paper execution queue (pre depth): ${riskApproved.length} risk-approved candidate(s)`);
+    }
     for (const decision of riskApproved) {
       const result = await executeTrade(decision, paperMode);
       if (result.executed) executed++;
+      else if (result.thinBookSkipped) thinBookSkips++;
       else if (result.error) {
         const t = decision.audit.analysis.candidate.market.ticker;
         console.warn(`[Executor] skipped ${t}: ${result.error}`);
@@ -644,6 +649,11 @@ export async function runTradingCycle(): Promise<CycleResult> {
     }
     const execDuration = (Date.now() - execStart) / 1000;
     const modeLabel = paperMode ? " (paper)" : "";
+    if (paperMode && riskApproved.length > 0) {
+      console.info(
+        `[Pipeline] Paper depth gate: ${executed} executed, ${thinBookSkips} thin-book skip(s), ${riskApproved.length} candidate(s) pre-depth`,
+      );
+    }
     updateAgentStatus("Executor", "idle", `Executed ${executed}/${riskApproved.length} trades${modeLabel}`);
     agentResults.push({ agentName: "Executor", status: "success", duration: execDuration, details: `${executed}/${riskApproved.length} executed${modeLabel}` });
 

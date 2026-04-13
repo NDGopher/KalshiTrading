@@ -1,5 +1,11 @@
 import { kalshiCoarseMacroGroup, kalshiSportLabel } from "@workspace/backtester";
-import { createOrder } from "../kalshi-client.js";
+import {
+  createOrder,
+  getOrderbook,
+  contractsAtTakerAskDepth,
+  bestYesAskFromOrderbookPayload,
+  bestNoAskFromOrderbookPayload,
+} from "../kalshi-client.js";
 import { db, tradesTable, paperTradesTable, tradingSettingsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import type { RiskDecision } from "./risk-manager.js";
@@ -13,7 +19,12 @@ export interface ExecutionResult {
   tradeId?: number;
   error?: string;
   paper?: boolean;
+  /** Paper only: skipped because resting size at the taker ask was below the depth floor. */
+  thinBookSkipped?: boolean;
 }
+
+/** Minimum contracts visible at the taker ask on the live book before we simulate a paper fill. */
+const MIN_PAPER_ASK_DEPTH_CONTRACTS = 50;
 
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 2000;
@@ -65,6 +76,41 @@ async function executePaperTrade(decision: RiskDecision): Promise<ExecutionResul
       paper: true,
     };
   }
+
+  let depthAtAsk = 0;
+  try {
+    const ob = await getOrderbook(candidate.market.ticker);
+    depthAtAsk = contractsAtTakerAskDepth(ob, analysis.side, entryPrice);
+    if (depthAtAsk < MIN_PAPER_ASK_DEPTH_CONTRACTS) {
+      if (analysis.side === "yes") {
+        const best = bestYesAskFromOrderbookPayload(ob);
+        if (best > 0 && Math.abs(best - entryPrice) <= 0.01) {
+          depthAtAsk = Math.max(depthAtAsk, contractsAtTakerAskDepth(ob, "yes", best));
+        }
+      } else {
+        const best = bestNoAskFromOrderbookPayload(ob);
+        if (best > 0 && Math.abs(best - entryPrice) <= 0.01) {
+          depthAtAsk = Math.max(depthAtAsk, contractsAtTakerAskDepth(ob, "no", best));
+        }
+      }
+    }
+  } catch {
+    depthAtAsk = 0;
+  }
+  if (depthAtAsk < MIN_PAPER_ASK_DEPTH_CONTRACTS) {
+    const askStr = entryPrice.toFixed(4);
+    console.info(
+      `[Pipeline] Thin book skip: ticker=${candidate.market.ticker} depth=${depthAtAsk} at ask=${askStr}`,
+    );
+    return {
+      decision,
+      executed: false,
+      error: `Thin book: depth ${depthAtAsk} at ask ${askStr} (need ≥${MIN_PAPER_ASK_DEPTH_CONTRACTS})`,
+      paper: true,
+      thinBookSkipped: true,
+    };
+  }
+
   const cost = decision.positionSize * entryPrice;
   const keeperReason = compactKeeperReasoning(analysis, decision.strategyReason ?? null);
 

@@ -26,7 +26,7 @@ import { rejectsWideBookForTrading } from "./execution-policy.js";
  * Scanner sizing (live paper + future live) — **no Odds API / sharp lines**.
  * - **Pool 600**: **160–200** non-sports (Weather → Politics → Mention → Crypto, then other macro); **sports fill remainder**.
  * - **Analysis 350**: same high-priority category order at the front of the slice; then other non-sports; then sports.
- * - `isHighPriorityCategory` (Weather/Politics/Mention/Crypto): looser pre-pool YES band + liq floors; **5¢ spread** unchanged.
+ * - `isHighPriorityCategory` (Weather/Politics/Mention/Crypto): pre-pool YES 5–95¢, min liq $20, looser ghost filter; **5¢ spread** unchanged.
  * - Relaxed vol/liq for Crypto/Politics/Mention/Weather/Other; Economics uses a tighter relaxed pass. **KXBTCD** boosted.
  * - **Enrich top 350**: price-history only (DB, batched 20 tickers).
  *
@@ -290,11 +290,11 @@ function buildCandidateFromKalshi(market: KalshiMarket): ScanCandidate | null {
   // Liquidity floor: markets with zero volume AND under $50 liquidity have no
   // real price discovery signal — skip them regardless of category.
   // High-priority macro: lower floor so Weather/Politics/Mention/Crypto survive pre-pool.
-  if (volume24h === 0 && liquidity < (hp ? 22 : 50)) return null;
+  if (volume24h === 0 && liquidity < (hp ? 20 : 50)) return null;
 
   // Near-expiry illiquid ghost markets — spread is meaningless and fills are impossible
   if (hp) {
-    if (hoursToExpiry < 4 && volume24h < 5 && liquidity < 45) return null;
+    if (hoursToExpiry < 4 && volume24h < 5 && liquidity < 40) return null;
   } else if (hoursToExpiry < 4 && volume24h < 10 && liquidity < 100) return null;
 
   const { imbalance, whalePrint } = updateLiveTapeFlow(market.ticker, yesPrice, volume24h);
@@ -361,7 +361,7 @@ function buildCandidateRelaxedPriorityMacro(market: KalshiMarket): ScanCandidate
     volume24h,
     liquidity,
     hoursToExpiry,
-    hasLiveData: volume24h > 0 || liquidity >= (hp ? 22 : 50),
+    hasLiveData: volume24h > 0 || liquidity >= (hp ? 20 : 50),
     replayFlowImbalance: imbalance,
     replayWhalePrint: whalePrint,
   };
@@ -563,8 +563,8 @@ async function scanFromCachedDb(): Promise<{ candidates: ScanCandidate[]; totalS
       category: row.category || "Unknown",
     } as KalshiMarket;
     const hpRow = isHighPriorityCategory(marketForHp);
-    const yLo = hpRow ? 0.07 : 0.1;
-    const yHi = hpRow ? 0.93 : 0.9;
+    const yLo = hpRow ? 0.05 : 0.1;
+    const yHi = hpRow ? 0.95 : 0.9;
     if (price < yLo || price > yHi) continue;
 
     const expiresAt = new Date(row.closeTime || row.expirationTime || now);
@@ -686,7 +686,7 @@ export async function scanMarkets(
     const rawC = candidates.filter(isCryptoPriorityCandidate).length;
     const rawS = candidates.filter(isSportsCandidate).length;
     console.info(
-      `[Scanner] Raw pass (pre-pool): Weather=${rawW} | Politics=${rawP} | Mention=${rawM} | Crypto=${rawC} | Sports=${rawS}`,
+      `[Scanner] Raw pass (pre-pool): Weather=${rawW} | Politics=${rawP} | Mention=${rawM} | Crypto=${rawC} | Sports=${rawS} | Total candidates=${candidates.length} | Scanned markets=${markets.length}`,
     );
 
     const byScore = (a: ScanCandidate, b: ScanCandidate) => compositeScore(b) - compositeScore(a);
@@ -759,7 +759,7 @@ export async function scanMarkets(
     const nCrypto = topCandidates.filter(isCryptoPriorityCandidate).length;
     const nSp = topCandidates.filter(isSportsCandidate).length;
     console.info(
-      `[Scanner] Priority inclusion: Weather=${nWeather} | Politics=${nPolitics} | Mention=${nMention} | Crypto=${nCrypto} | Sports=${nSp} | Total pool ${topCandidates.length}`,
+      `[Scanner] Priority inclusion: Weather=${nWeather} | Politics=${nPolitics} | Mention=${nMention} | Crypto=${nCrypto} | Sports=${nSp} | Pool size=${topCandidates.length} | Pre-pool candidates=${candidates.length}`,
     );
 
     // If API returned nothing usable, fall through to the DB cache

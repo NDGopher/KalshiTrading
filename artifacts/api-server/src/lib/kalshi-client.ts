@@ -349,6 +349,71 @@ export function bestNoAskFromOrderbookPayload(data: KalshiOrderbookPayload): num
   return 0;
 }
 
+function orderbookLevelContracts(v: unknown): number {
+  if (typeof v === "number" && Number.isFinite(v)) return Math.max(0, Math.floor(v));
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
+}
+
+/**
+ * Resting size at the taker ask within ~0.4¢ of `askDollars` (sum of matching levels).
+ * YES ask comes from NO bid side (`orderbook_fp.no_dollars`); NO ask from YES bid side (`yes_dollars`).
+ */
+export function contractsAtTakerAskDepth(
+  data: KalshiOrderbookPayload,
+  side: "yes" | "no",
+  askDollars: number,
+): number {
+  const tol = 0.004;
+  const fp = data.orderbook_fp;
+  if (side === "yes" && fp?.no_dollars?.length) {
+    let total = 0;
+    for (const row of fp.no_dollars) {
+      const noBid = kalshiPositiveDollars(row[0]);
+      const qty = orderbookLevelContracts(row[1]);
+      const impliedYesAsk =
+        noBid > 0 && noBid < 1 ? parseFloat((1 - noBid).toFixed(6)) : 0;
+      if (impliedYesAsk > 0 && Math.abs(impliedYesAsk - askDollars) <= tol) total += qty;
+    }
+    return total;
+  }
+  if (side === "no" && fp?.yes_dollars?.length) {
+    let total = 0;
+    for (const row of fp.yes_dollars) {
+      const yesBid = kalshiPositiveDollars(row[0]);
+      const qty = orderbookLevelContracts(row[1]);
+      const impliedNoAsk =
+        yesBid > 0 && yesBid < 1 ? parseFloat((1 - yesBid).toFixed(6)) : 0;
+      if (impliedNoAsk > 0 && Math.abs(impliedNoAsk - askDollars) <= tol) total += qty;
+    }
+    return total;
+  }
+  const leg = data.orderbook;
+  if (side === "yes" && leg?.no?.length) {
+    let total = 0;
+    for (const row of leg.no) {
+      const nc = row[0];
+      const nb = nc != null && nc > 0 ? nc / 100 : 0;
+      const implied = nb > 0 && nb < 1 ? parseFloat((1 - nb).toFixed(6)) : 0;
+      const qty = orderbookLevelContracts(row[1]);
+      if (implied > 0 && Math.abs(implied - askDollars) <= tol) total += qty;
+    }
+    return total;
+  }
+  if (side === "no" && leg?.yes?.length) {
+    let total = 0;
+    for (const row of leg.yes) {
+      const yc = row[0];
+      const yb = yc != null && yc > 0 ? yc / 100 : 0;
+      const implied = yb > 0 && yb < 1 ? parseFloat((1 - yb).toFixed(6)) : 0;
+      const qty = orderbookLevelContracts(row[1]);
+      if (implied > 0 && Math.abs(implied - askDollars) <= tol) total += qty;
+    }
+    return total;
+  }
+  return 0;
+}
+
 export function midYesPriceFromOrderbookPayload(data: KalshiOrderbookPayload): number {
   const fp = data.orderbook_fp;
   if (fp && ((fp.yes_dollars?.length ?? 0) > 0 || (fp.no_dollars?.length ?? 0) > 0)) {
