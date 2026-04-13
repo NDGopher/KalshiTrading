@@ -26,7 +26,7 @@ import { rejectsWideBookForTrading } from "./execution-policy.js";
  * Scanner sizing (live paper + future live) — **no Odds API / sharp lines**.
  * - **Pool 700**: **160–200** non-sports (Weather → Politics → Mention → Crypto, then other macro); **sports fill remainder**.
  * - **Analysis 400**: same high-priority category order at the front of the slice; then other non-sports; then sports.
- * - `isHighPriorityCategory`: explicit KXHIGH/mentions/WTI/gas + keywords (ticker/event/series/category); same strict pre-pool YES/liq/ghost as all markets; macro bypass for structural junk only; **5¢ spread** unchanged.
+ * - `isHighPriorityCategory`: explicit KXHIGH/mentions/WTI/gas + ticker/event/series keywords; strict 10–90¢, $50 liq, ghost 4h/10vol/$100 for all; structural junk bypass **only** explicit macro tickers (not broad weather/mention); **5¢ spread** unchanged.
  * - Relaxed vol/liq for Crypto/Politics/Mention/Weather/Other; Economics uses a tighter relaxed pass. **KXBTCD** boosted.
  * - **Enrich top 400**: price-history only (DB, batched 20 tickers).
  *
@@ -159,7 +159,7 @@ function explicitHighVolumeMacroHp(m: KalshiMarket): HpClassification | null {
 /** Keyword macro HP — skipped for strict sports so NFL/NBA volume is unchanged. */
 function politicsKeywordMacroBlob(m: KalshiMarket): boolean {
   if (isStrictSportsLikeMarket(m)) return false;
-  const blob = `${m.ticker || ""} ${m.event_ticker || ""} ${m.series_ticker || ""} ${m.category || ""}`.toLowerCase();
+  const blob = `${m.ticker || ""} ${m.event_ticker || ""} ${m.series_ticker || ""}`.toLowerCase();
   return blob.includes("election") || blob.includes("president");
 }
 
@@ -177,7 +177,7 @@ function explicitMentionTierBlob(m: KalshiMarket): boolean {
 
 function keywordSubstringMacroHp(m: KalshiMarket): HpClassification | null {
   if (isStrictSportsLikeMarket(m)) return null;
-  const blob = `${m.ticker || ""} ${m.event_ticker || ""} ${m.series_ticker || ""} ${m.category || ""}`.toLowerCase();
+  const blob = `${m.ticker || ""} ${m.event_ticker || ""} ${m.series_ticker || ""}`.toLowerCase();
   const keywords = [
     "election",
     "president",
@@ -299,16 +299,16 @@ export function isHighPriorityCategory(market: KalshiMarket): boolean {
   return classifyHpMarket(market).hp;
 }
 
-/** Known macro/weather/mention families — never drop as KXMV-style structural junk (title/API quirks). */
-function scannerBypassStructuralJunk(m: KalshiMarket): boolean {
-  if (explicitHighVolumeMacroHp(m) != null) return true;
-  if (weatherSignalsMarket(m)) return true;
-  if (mentionSignalsMarket(m)) return true;
-  return false;
+/**
+ * Structural junk bypass: **only** explicit backtest macro tickers (KXHIGH*, mentions, WTI, KXAAAGASD).
+ * Broad weather/mention signals stay subject to multivariate/junk rules so sports volume is unaffected.
+ */
+function scannerStructuralJunkBypassExplicitMacrosOnly(m: KalshiMarket): boolean {
+  return explicitHighVolumeMacroHp(m) != null;
 }
 
 function isStructuralJunkForScanner(m: KalshiMarket): boolean {
-  if (scannerBypassStructuralJunk(m)) return false;
+  if (scannerStructuralJunkBypassExplicitMacrosOnly(m)) return false;
   return isExcludedKalshiStructuralJunk(m);
 }
 
