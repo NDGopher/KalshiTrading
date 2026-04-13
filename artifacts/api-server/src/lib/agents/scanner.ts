@@ -26,7 +26,7 @@ import { rejectsWideBookForTrading } from "./execution-policy.js";
  * Scanner sizing (live paper + future live) — **no Odds API / sharp lines**.
  * - **Pool 700**: **160–200** non-sports (Weather → Politics → Mention → Crypto, then other macro); **sports fill remainder**.
  * - **Analysis 400**: same high-priority category order at the front of the slice; then other non-sports; then sports.
- * - `isHighPriorityCategory` (Weather/Politics/Mention/Crypto): pre-pool YES 1–99¢, min liq $8, ghost h<4∧vol<1∧liq<25; **5¢ spread** unchanged.
+ * - `isHighPriorityCategory`: explicit KXHIGH/KXMENTION/KXWTI/gas + keywords; pre-pool YES 0.5–99.5¢, min liq $5, ghost vol<1∧liq<20; **5¢ spread** unchanged.
  * - Relaxed vol/liq for Crypto/Politics/Mention/Weather/Other; Economics uses a tighter relaxed pass. **KXBTCD** boosted.
  * - **Enrich top 400**: price-history only (DB, batched 20 tickers).
  *
@@ -111,14 +111,86 @@ function mentionFromMarket(m: KalshiMarket): boolean {
   return false;
 }
 
+/** Uppercase ticker / event / series triple for prefix checks. */
+function marketTickerTripleUpper(m: KalshiMarket): [string, string, string] {
+  return [(m.ticker || "").toUpperCase(), (m.event_ticker || "").toUpperCase(), (m.series_ticker || "").toUpperCase()];
+}
+
+/** KXHIGH* climate bins (backtest-heavy); not matched by kalshiIsWeatherTicker alone. */
+function isKxHighClimateSeries(m: KalshiMarket): boolean {
+  return marketTickerTripleUpper(m).some((s) => s.startsWith("KXHIGH"));
+}
+
 /** Weather heuristics on market ticker, event_ticker, and series_ticker. */
 function weatherSignalsMarket(m: KalshiMarket): boolean {
+  if (isKxHighClimateSeries(m)) return true;
   if (kalshiIsWeatherTicker(m.ticker)) return true;
   const et = m.event_ticker || "";
   const st = m.series_ticker || "";
   if (et && kalshiIsWeatherTicker(et)) return true;
   if (st && kalshiIsWeatherTicker(st)) return true;
   return false;
+}
+
+/**
+ * Backtest-style macro tickers: KXHIGH*, mentions, WTI, AAA gas.
+ * Runs before bucket/category so opaque child tickers still get HP floors.
+ */
+function explicitHighVolumeMacroHp(m: KalshiMarket): HpClassification | null {
+  const parts = marketTickerTripleUpper(m);
+  if (parts.some((s) => s.startsWith("KXHIGH"))) return { hp: true, reason: "explicit_KXHIGH" };
+  const mentionRoots = [
+    "KXTRUMPMENTION",
+    "KXMENTION",
+    "KXINMENTION",
+    "KXCORPMENTION",
+    "KXSTOCKMENTION",
+  ];
+  for (const root of mentionRoots) {
+    if (parts.some((s) => s.startsWith(root) || s.includes(`${root}-`) || s.includes(`-${root}`)))
+      return { hp: true, reason: `explicit_${root}` };
+  }
+  if (parts.some((s) => s.startsWith("KXWTIW") || s.startsWith("KXWTI")))
+    return { hp: true, reason: "explicit_KXWTI" };
+  if (parts.some((s) => s.startsWith("KXAAAGASD"))) return { hp: true, reason: "explicit_KXAAAGASD" };
+  return null;
+}
+
+/** Keyword macro HP — skipped for strict sports so NFL/NBA volume is unchanged. */
+function politicsKeywordMacroBlob(m: KalshiMarket): boolean {
+  if (isStrictSportsLikeMarket(m)) return false;
+  const blob = `${m.ticker || ""} ${m.event_ticker || ""} ${m.series_ticker || ""}`.toLowerCase();
+  return blob.includes("election") || blob.includes("president");
+}
+
+/** TRUMPMENTION / corp mention series on opaque child tickers — Raw pass Mention tier. */
+function explicitMentionTierBlob(m: KalshiMarket): boolean {
+  const u = `${m.ticker || ""}${m.event_ticker || ""}${m.series_ticker || ""}`.toUpperCase();
+  return (
+    u.includes("TRUMPMENTION") ||
+    u.includes("KXMENTION") ||
+    u.includes("KXINMENTION") ||
+    u.includes("KXCORPMENTION") ||
+    u.includes("KXSTOCKMENTION")
+  );
+}
+
+function keywordSubstringMacroHp(m: KalshiMarket): HpClassification | null {
+  if (isStrictSportsLikeMarket(m)) return null;
+  const blob = `${m.ticker || ""} ${m.event_ticker || ""} ${m.series_ticker || ""}`.toLowerCase();
+  const keywords = [
+    "election",
+    "president",
+    "climate",
+    "temperature",
+    "forecast",
+    "mention",
+    "earnings",
+  ] as const;
+  for (const k of keywords) {
+    if (blob.includes(k)) return { hp: true, reason: `keyword_${k}` };
+  }
+  return null;
 }
 
 /** Mention heuristics including explicit series/event ticker patterns. */
@@ -176,6 +248,11 @@ export type HpClassification = { hp: boolean; reason: string };
 let hpClassifyCache: Map<string, HpClassification> | null = null;
 
 function classifyHpMarketImpl(market: KalshiMarket): HpClassification {
+  const ex = explicitHighVolumeMacroHp(market);
+  if (ex) return ex;
+  const kw = keywordSubstringMacroHp(market);
+  if (kw) return kw;
+
   if (weatherSignalsMarket(market)) return { hp: true, reason: "weather_ticker_or_series" };
   if (mentionSignalsMarket(market)) return { hp: true, reason: "mention_market" };
 
@@ -273,6 +350,7 @@ function isWeatherScanCandidate(c: ScanCandidate): boolean {
 
 /** Relaxed fetch: Crypto + Politics + Mention + Weather + Other (not Economics-only). */
 function isPriorityBacktestBucketFromMarket(m: KalshiMarket): boolean {
+  if (explicitHighVolumeMacroHp(m) != null) return true;
   if (weatherSignalsMarket(m)) return true;
   const cat = (m.category || "").toLowerCase();
   if (
@@ -364,8 +442,8 @@ function buildCandidateFromKalshi(
   // (or the game is over and we'd be betting into near-certain settled contracts).
   // We have zero information advantage at the extremes — skip entirely.
   // High-priority macro: wider interior band; spread still capped at 5¢ via rejectsWideBookForTrading.
-  const yesLo = hp ? 0.01 : 0.1;
-  const yesHi = hp ? 0.99 : 0.9;
+  const yesLo = hp ? 0.005 : 0.1;
+  const yesHi = hp ? 0.995 : 0.9;
   if (!yesPrice || yesPrice < yesLo || yesPrice > yesHi) {
     logScannerDroppedEarly(market, "narrow_band");
     return null;
@@ -398,7 +476,7 @@ function buildCandidateFromKalshi(
   // Liquidity floor: markets with zero volume AND under $50 liquidity have no
   // real price discovery signal — skip them regardless of category.
   // High-priority macro: lower floor so Weather/Politics/Mention/Crypto survive pre-pool.
-  if (volume24h === 0 && liquidity < (hp ? 8 : 50)) {
+  if (volume24h === 0 && liquidity < (hp ? 5 : 50)) {
     logScannerDroppedEarly(market, "low_liquidity");
     return null;
   }
@@ -406,7 +484,7 @@ function buildCandidateFromKalshi(
 
   // Near-expiry illiquid ghost markets — spread is meaningless and fills are impossible
   if (hp) {
-    if (hoursToExpiry < 4 && volume24h < 1 && liquidity < 25) {
+    if (hoursToExpiry < 4 && volume24h < 1 && liquidity < 20) {
       logScannerDroppedEarly(market, "ghost");
       return null;
     }
@@ -452,8 +530,8 @@ function buildCandidateRelaxedPriorityMacro(market: KalshiMarket): ScanCandidate
   const rawAsk = getMarketYesAsk(market);
   const rawBid = getMarketYesBid(market);
   const yesPrice = getMarketYesPrice(market);
-  const yesLoR = hp ? 0.01 : 0.015;
-  const yesHiR = hp ? 0.99 : 0.985;
+  const yesLoR = hp ? 0.005 : 0.015;
+  const yesHiR = hp ? 0.995 : 0.985;
   if (!yesPrice || yesPrice < yesLoR || yesPrice > yesHiR) return null;
 
   const noPrice = 1 - yesPrice;
@@ -486,7 +564,7 @@ function buildCandidateRelaxedPriorityMacro(market: KalshiMarket): ScanCandidate
     volume24h,
     liquidity,
     hoursToExpiry,
-    hasLiveData: volume24h > 0 || liquidity >= (hp ? 8 : 50),
+    hasLiveData: volume24h > 0 || liquidity >= (hp ? 5 : 50),
     replayFlowImbalance: imbalance,
     replayWhalePrint: whalePrint,
   };
@@ -556,13 +634,15 @@ function isWeatherPriorityCandidate(c: ScanCandidate): boolean {
 function isPoliticsPriorityCandidate(c: ScanCandidate): boolean {
   if (isSportsCandidate(c)) return false;
   if (diversityQuotaBucket(c) === "Politics") return true;
-  return kalshiMarketBucket(c.market) === "Politics";
+  if (kalshiMarketBucket(c.market) === "Politics") return true;
+  return politicsKeywordMacroBlob(c.market);
 }
 
 function isMentionPriorityCandidate(c: ScanCandidate): boolean {
   if (isSportsCandidate(c)) return false;
   if (diversityQuotaBucket(c) === "Mention") return true;
-  return mentionFromMarket(c.market);
+  if (mentionFromMarket(c.market)) return true;
+  return explicitMentionTierBlob(c.market);
 }
 
 function isCryptoPriorityCandidate(c: ScanCandidate): boolean {
@@ -688,8 +768,8 @@ async function scanFromCachedDb(): Promise<{ candidates: ScanCandidate[]; totalS
       category: row.category || "Unknown",
     } as KalshiMarket;
     const hpRow = isHighPriorityCategory(marketForHp);
-    const yLo = hpRow ? 0.01 : 0.1;
-    const yHi = hpRow ? 0.99 : 0.9;
+    const yLo = hpRow ? 0.005 : 0.1;
+    const yHi = hpRow ? 0.995 : 0.9;
     if (price < yLo || price > yHi) continue;
 
     const expiresAt = new Date(row.closeTime || row.expirationTime || now);
