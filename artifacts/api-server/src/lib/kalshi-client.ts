@@ -1,4 +1,5 @@
 import { db, tradingSettingsTable } from "@workspace/db";
+import { knownGoodMacroStructuralJunkBypass } from "./kalshi-macro-hp.js";
 
 const DEFAULT_BASE_URL = "https://api.elections.kalshi.com/trade-api/v2";
 
@@ -734,7 +735,27 @@ export async function getAllLiquidMarkets(_maxPages = 10): Promise<KalshiMarket[
   const HIGH_VALUE_CATEGORIES = new Set(["Politics", "Economics", "Financials", "Crypto", "Entertainment"]);
 
   // Earnings / pop-culture mention series (often thin in generic category pages).
-  const MENTION_SERIES = ["KXMENTION", "KXINMENTION", "KXCORPMENTION", "KXSTOCKMENTION"];
+  const MENTION_SERIES = [
+    "KXTRUMPMENTION",
+    "KXMENTION",
+    "KXINMENTION",
+    "KXCORPMENTION",
+    "KXSTOCKMENTION",
+  ];
+
+  /** Macro series often tagged multivariate / missing from category pages — explicit sweep. */
+  const MACRO_SERIES_SWEEP = [
+    "KXTRUMPMENTION",
+    "KXHIGHNY",
+    "KXHIGHPHIL",
+    "KXHIGHCHI",
+    "KXHIGHMIA",
+    "KXHIGHAUS",
+    "KXHIGHLAX",
+    "KXWTI",
+    "KXWTIW",
+    "KXAAAGASD",
+  ] as const;
 
   // Phase 1: Category sweep (extra page for politics/crypto/economics — backtest-heavy buckets)
   for (const category of CATEGORIES) {
@@ -804,6 +825,25 @@ export async function getAllLiquidMarkets(_maxPages = 10): Promise<KalshiMarket[
     console.log(`[Scanner] Mention-series sweep: +${mentionSeriesCount} markets`);
   }
 
+  let macroSeriesCount = 0;
+  for (const seriesTicker of MACRO_SERIES_SWEEP) {
+    await delay(300);
+    try {
+      const params: Parameters<typeof getMarkets>[0] = { limit: 100, status: "open", series_ticker: seriesTicker };
+      const result = await getMarkets(params);
+      if (result.markets && result.markets.length > 0) {
+        allMarketsRaw.push(...result.markets);
+        macroSeriesCount += result.markets.length;
+        console.log(`[Scanner] series=${seriesTicker}: +${result.markets.length} macro markets`);
+      }
+    } catch {
+      // Series absent or rate limited
+    }
+  }
+  if (macroSeriesCount > 0) {
+    console.log(`[Scanner] Macro-series sweep: +${macroSeriesCount} markets`);
+  }
+
   // Deduplicate by ticker (same market can appear in category and series results)
   const seen = new Set<string>();
   const allMarkets: KalshiMarket[] = [];
@@ -815,7 +855,9 @@ export async function getAllLiquidMarkets(_maxPages = 10): Promise<KalshiMarket[
   }
 
   const preJunk = allMarkets.length;
-  const noJunk = allMarkets.filter((m) => !isExcludedKalshiStructuralJunk(m));
+  const noJunk = allMarkets.filter(
+    (m) => knownGoodMacroStructuralJunkBypass(m) || !isExcludedKalshiStructuralJunk(m),
+  );
   const junkDropped = preJunk - noJunk.length;
   if (junkDropped > 0) {
     console.log(`[Scanner] getAllLiquidMarkets: dropped ${junkDropped} multivariate/extended-combo tickers`);

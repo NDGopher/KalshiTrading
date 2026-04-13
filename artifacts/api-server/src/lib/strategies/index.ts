@@ -218,3 +218,26 @@ export function diagnoseStrategyMiss(analysis: AnalysisResult, enabledStrategyNa
   }
   return parts.join(" || ");
 }
+
+/** Per-enabled-strategy gate outcomes for cycle debug JSON. */
+export function keeperDebugStatuses(
+  analysis: AnalysisResult,
+  enabledStrategyNames?: string[],
+): Array<{ strategyName: string; selectPassed: boolean; tradePassed: boolean; reason: string }> {
+  const activeStrategies = enabledStrategyNames
+    ? strategies.filter((s) => enabledStrategyNames.includes(s.name))
+    : strategies;
+  return activeStrategies.map((strategy) => {
+    const candidateMatch = strategy.selectCandidates([analysis.candidate]);
+    const selectPassed = candidateMatch.length > 0;
+    const result = selectPassed
+      ? strategy.shouldTrade(analysis)
+      : { trade: false as const, reason: `failed selectCandidates (${selectGateSummary(analysis.candidate)})` };
+    return {
+      strategyName: strategy.name,
+      selectPassed,
+      tradePassed: result.trade,
+      reason: result.reason,
+    };
+  });
+}

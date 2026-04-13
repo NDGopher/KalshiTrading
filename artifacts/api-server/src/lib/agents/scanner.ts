@@ -10,6 +10,15 @@ import {
   isExcludedKalshiStructuralJunk,
   type KalshiMarket,
 } from "../kalshi-client.js";
+import {
+  explicitHighVolumeMacroHp,
+  explicitMentionTierBlob,
+  isStrictSportsLikeMarket,
+  keywordSubstringMacroHp,
+  knownGoodMacroStructuralJunkBypass,
+  marketTickerTripleUpper,
+  politicsKeywordMacroBlob,
+} from "../kalshi-macro-hp.js";
 import { db, historicalMarketsTable } from "@workspace/db";
 import { ne, desc } from "drizzle-orm";
 import { batchGetPriceHistory, type PriceHistory } from "../price-history.js";
@@ -26,7 +35,7 @@ import { rejectsWideBookForTrading } from "./execution-policy.js";
  * Scanner sizing (live paper + future live) — **no Odds API / sharp lines**.
  * - **Pool 700**: **160–200** non-sports (Weather → Politics → Mention → Crypto, then other macro); **sports fill remainder**.
  * - **Analysis 400**: same high-priority category order at the front of the slice; then other non-sports; then sports.
- * - `isHighPriorityCategory`: explicit KXHIGH/mentions/WTI/gas + ticker/event/series keywords (incl. gas price); strict 10–90¢, $50 liq, ghost 4h/10vol/$100 for all; structural junk bypass = explicit macros **or** same keyword set (not category); **5¢ spread** unchanged.
+ * - `isHighPriorityCategory`: explicit KXHIGH/mentions/WTI/gas + ticker/event/series/**category** keywords (incl. gas price); strict 10–90¢, $50 liq, ghost 4h/10vol/$100 for all; structural junk bypass = explicit macros **or** same keyword set on ticker/event/series/category (strict sports unchanged); **5¢ spread** unchanged. Universe fetch uses the same bypass (`getAllLiquidMarkets`).
  * - Relaxed vol/liq for Crypto/Politics/Mention/Weather/Other; Economics uses a tighter relaxed pass. **KXBTCD** boosted.
  * - **Enrich top 400**: price-history only (DB, batched 20 tickers).
  *
@@ -111,12 +120,18 @@ function mentionFromMarket(m: KalshiMarket): boolean {
   return false;
 }
 
-/** Uppercase ticker / event / series triple for prefix checks. */
-function marketTickerTripleUpper(m: KalshiMarket): [string, string, string] {
-  return [(m.ticker || "").toUpperCase(), (m.event_ticker || "").toUpperCase(), (m.series_ticker || "").toUpperCase()];
+/** HP markets dropped on strict path (cycle JSON). */
+export interface ScannerHpEarlyDropRow {
+  ticker: string;
+  event_ticker: string;
+  series_ticker: string;
+  category: string;
+  reason: string;
 }
 
-/** KXHIGH* climate bins (backtest-heavy); not matched by kalshiIsWeatherTicker alone. */
+let hpEarlyDropBuffer: ScannerHpEarlyDropRow[] | null = null;
+
+/** KXHIGH* climate bins (backtest-heavy). */
 function isKxHighClimateSeries(m: KalshiMarket): boolean {
   return marketTickerTripleUpper(m).some((s) => s.startsWith("KXHIGH"));
 }
@@ -132,76 +147,6 @@ function weatherSignalsMarket(m: KalshiMarket): boolean {
   return false;
 }
 
-/**
- * Backtest-style macro tickers: KXHIGH*, mentions, WTI, AAA gas.
- * Runs before bucket/category so opaque child tickers still get HP floors.
- */
-function explicitHighVolumeMacroHp(m: KalshiMarket): HpClassification | null {
-  const parts = marketTickerTripleUpper(m);
-  if (parts.some((s) => s.startsWith("KXHIGH"))) return { hp: true, reason: "explicit_KXHIGH" };
-  const mentionRoots = [
-    "KXTRUMPMENTION",
-    "KXMENTION",
-    "KXINMENTION",
-    "KXCORPMENTION",
-    "KXSTOCKMENTION",
-  ];
-  for (const root of mentionRoots) {
-    if (parts.some((s) => s.startsWith(root) || s.includes(root)))
-      return { hp: true, reason: `explicit_${root}` };
-  }
-  if (parts.some((s) => s.startsWith("KXWTIW") || s.startsWith("KXWTI")))
-    return { hp: true, reason: "explicit_KXWTI" };
-  if (parts.some((s) => s.startsWith("KXAAAGASD"))) return { hp: true, reason: "explicit_KXAAAGASD" };
-  return null;
-}
-
-/** Ticker + event + series (lowercase) — macro keyword HP + junk bypass use the same surface. */
-function macroTickerEventSeriesBlobLower(m: KalshiMarket): string {
-  return `${m.ticker || ""} ${m.event_ticker || ""} ${m.series_ticker || ""}`.toLowerCase();
-}
-
-/** Substrings for backtest-style macro HP classification and structural-junk bypass (ticker/event/series only). */
-const MACRO_HP_SUBSTRING_KEYWORDS = [
-  "election",
-  "president",
-  "climate",
-  "temperature",
-  "forecast",
-  "mention",
-  "earnings",
-  "gas price",
-  "gasprice",
-] as const;
-
-/** Keyword macro HP — skipped for strict sports so NFL/NBA volume is unchanged. */
-function politicsKeywordMacroBlob(m: KalshiMarket): boolean {
-  if (isStrictSportsLikeMarket(m)) return false;
-  const blob = macroTickerEventSeriesBlobLower(m);
-  return blob.includes("election") || blob.includes("president");
-}
-
-/** TRUMPMENTION / corp mention series on opaque child tickers — Raw pass Mention tier. */
-function explicitMentionTierBlob(m: KalshiMarket): boolean {
-  const u = `${m.ticker || ""}${m.event_ticker || ""}${m.series_ticker || ""}`.toUpperCase();
-  return (
-    u.includes("TRUMPMENTION") ||
-    u.includes("KXMENTION") ||
-    u.includes("KXINMENTION") ||
-    u.includes("KXCORPMENTION") ||
-    u.includes("KXSTOCKMENTION")
-  );
-}
-
-function keywordSubstringMacroHp(m: KalshiMarket): HpClassification | null {
-  if (isStrictSportsLikeMarket(m)) return null;
-  const blob = macroTickerEventSeriesBlobLower(m);
-  for (const k of MACRO_HP_SUBSTRING_KEYWORDS) {
-    if (blob.includes(k)) return { hp: true, reason: `keyword_${k.replace(/\s+/g, "_")}` };
-  }
-  return null;
-}
-
 /** Mention heuristics including explicit series/event ticker patterns. */
 function mentionSignalsMarket(m: KalshiMarket): boolean {
   if (mentionFromMarket(m)) return true;
@@ -215,18 +160,6 @@ function mentionSignalsMarket(m: KalshiMarket): boolean {
 function isNonSportsCategory(candidate: ScanCandidate): boolean {
   const cat = candidate.market.category || "";
   return NON_SPORTS_CATEGORIES.some((nc) => cat.includes(nc));
-}
-
-/** True when we should keep tight liquidity/price floors (game markets only). */
-function isStrictSportsLikeMarket(m: KalshiMarket): boolean {
-  const cat = (m.category || "").toLowerCase();
-  if (kalshiIsWeatherTicker(m.ticker)) return false;
-  if (mentionFromMarket(m)) return false;
-  if (cat.includes("politic") || cat.includes("crypto") || cat.includes("economic")) return false;
-  if (cat.includes("financial") && !cat.includes("sport")) return false;
-  if (cat.includes("entertainment") || cat.includes("weather") || cat.includes("science")) return false;
-  if (cat.includes("sport")) return true;
-  return kalshiMarketBucket(m) === "Sports";
 }
 
 /** Coarse bucket for diversity quotas — prefer Kalshi API category, then ticker. */
@@ -252,6 +185,45 @@ function diversityQuotaBucket(c: ScanCandidate): "Politics" | "Crypto" | "Econom
  * Spread cap (`rejectsWideBookForTrading`) stays strict for every market.
  */
 export type HpClassification = { hp: boolean; reason: string };
+
+/** Per-scan counters: HP markets surviving each strict-path gate (aggregate over universe). */
+export interface HpStrictFunnelSnapshot {
+  attempts: number;
+  afterJunk: number;
+  afterBand: number;
+  afterExpiry: number;
+  afterLowLiq: number;
+  afterGhost: number;
+  afterSpread: number;
+}
+
+/** Scanner stats attached to `scanMarkets` for pipeline cycle JSON. */
+export interface ScannerCycleDebugSnapshot {
+  rawPass: {
+    weather: number;
+    politics: number;
+    mention: number;
+    crypto: number;
+    sports: number;
+    totalCandidates: number;
+    marketsScanned: number;
+  };
+  priorityInclusion: {
+    weather: number;
+    politics: number;
+    mention: number;
+    crypto: number;
+    sports: number;
+    poolSize: number;
+    prePoolTotal: number;
+  };
+  hpUniverse: number;
+  hpStrictFunnel: HpStrictFunnelSnapshot;
+  hpStrictPass: number;
+  hpRelaxedPass: number;
+  hpInPool: number;
+  hpEarlyDrops: ScannerHpEarlyDropRow[];
+}
 
 /** Cleared after each `scanMarkets` live pass so `classifyHpMarket` stays O(1) per ticker. */
 let hpClassifyCache: Map<string, HpClassification> | null = null;
@@ -308,31 +280,9 @@ export function isHighPriorityCategory(market: KalshiMarket): boolean {
   return classifyHpMarket(market).hp;
 }
 
-/**
- * Structural junk bypass: explicit KXHIGH/mentions/WTI/gas tickers **or** same macro substring keywords
- * on ticker/event/series (not category). Strict sports unchanged — no bypass.
- */
-function scannerStructuralJunkBypassKnownGoodMacros(m: KalshiMarket): boolean {
-  if (explicitHighVolumeMacroHp(m) != null) return true;
-  if (isStrictSportsLikeMarket(m)) return false;
-  const blob = macroTickerEventSeriesBlobLower(m);
-  return MACRO_HP_SUBSTRING_KEYWORDS.some((k) => blob.includes(k));
-}
-
 function isStructuralJunkForScanner(m: KalshiMarket): boolean {
-  if (scannerStructuralJunkBypassKnownGoodMacros(m)) return false;
+  if (knownGoodMacroStructuralJunkBypass(m)) return false;
   return isExcludedKalshiStructuralJunk(m);
-}
-
-/** Per-scan counters: HP markets surviving each strict-path gate (aggregate over universe). */
-interface HpStrictFunnelSnapshot {
-  attempts: number;
-  afterJunk: number;
-  afterBand: number;
-  afterExpiry: number;
-  afterLowLiq: number;
-  afterGhost: number;
-  afterSpread: number;
 }
 
 function createHpStrictFunnel(): HpStrictFunnelSnapshot {
@@ -356,6 +306,15 @@ function logScannerDroppedEarly(market: KalshiMarket, reason: string): void {
   console.info(
     `[Scanner] Dropped early: ticker=${market.ticker} category=${cat} bucket=${dq}/${kb} reason=${reason}`,
   );
+  if (hpEarlyDropBuffer) {
+    hpEarlyDropBuffer.push({
+      ticker: market.ticker,
+      event_ticker: (market.event_ticker ?? "").slice(0, 200),
+      series_ticker: (market.series_ticker ?? "").slice(0, 200),
+      category: cat.slice(0, 200),
+      reason,
+    });
+  }
 }
 
 function isCryptoScanCandidate(c: ScanCandidate): boolean {
@@ -637,29 +596,29 @@ function buildCandidateRelaxedEconomicsMacro(market: KalshiMarket): ScanCandidat
   return candidate;
 }
 
-function isSportsCandidate(c: ScanCandidate): boolean {
+export function isSportsCandidate(c: ScanCandidate): boolean {
   return diversityQuotaBucket(c) === "Sports";
 }
 
-function isWeatherPriorityCandidate(c: ScanCandidate): boolean {
+export function isWeatherPriorityCandidate(c: ScanCandidate): boolean {
   return !isSportsCandidate(c) && isWeatherScanCandidate(c);
 }
 
-function isPoliticsPriorityCandidate(c: ScanCandidate): boolean {
+export function isPoliticsPriorityCandidate(c: ScanCandidate): boolean {
   if (isSportsCandidate(c)) return false;
   if (diversityQuotaBucket(c) === "Politics") return true;
   if (kalshiMarketBucket(c.market) === "Politics") return true;
   return politicsKeywordMacroBlob(c.market);
 }
 
-function isMentionPriorityCandidate(c: ScanCandidate): boolean {
+export function isMentionPriorityCandidate(c: ScanCandidate): boolean {
   if (isSportsCandidate(c)) return false;
   if (diversityQuotaBucket(c) === "Mention") return true;
   if (mentionFromMarket(c.market)) return true;
   return explicitMentionTierBlob(c.market);
 }
 
-function isCryptoPriorityCandidate(c: ScanCandidate): boolean {
+export function isCryptoPriorityCandidate(c: ScanCandidate): boolean {
   return isCryptoScanCandidate(c) && !isSportsCandidate(c);
 }
 
@@ -868,6 +827,7 @@ export async function scanMarkets(
   candidates: ScanCandidate[];
   totalScanned: number;
   source: "live" | "cached";
+  scannerCycleDebug?: ScannerCycleDebugSnapshot;
 }> {
   try {
     scanPriorityCrypto = Math.max(0.5, priorityWeights?.crypto ?? 3.2);
@@ -879,6 +839,7 @@ export async function scanMarkets(
     // Fetch all markets across ALL categories — no volume pre-filter
     const markets = await getAllLiquidMarkets(10);
     hpClassifyCache = new Map();
+    hpEarlyDropBuffer = [];
     const candidates: ScanCandidate[] = [];
     const hpFunnel = createHpStrictFunnel();
     const hpUniverse = markets.filter((m) => isHighPriorityCategory(m)).length;
@@ -1071,7 +1032,40 @@ export async function scanMarkets(
       `[Scanner] Analysis slice (first ${SCANNER_ANALYSIS_SLICE}): ${sliceLine} | non-sports total=${nsHead} | targets W≥${MIN_WEATHER_ANALYSIS_SLICE} P≥${MIN_POLITICS_ANALYSIS_SLICE} M≥${MIN_MENTION_ANALYSIS_SLICE} C≥${MIN_CRYPTO_ANALYSIS_SLICE} (when available)`,
     );
 
-    return { candidates: finalCandidates, totalScanned: markets.length, source: "live" };
+    const scannerCycleDebug: ScannerCycleDebugSnapshot = {
+      rawPass: {
+        weather: rawW,
+        politics: rawP,
+        mention: rawM,
+        crypto: rawC,
+        sports: rawS,
+        totalCandidates: candidates.length,
+        marketsScanned: markets.length,
+      },
+      priorityInclusion: {
+        weather: nWeather,
+        politics: nPolitics,
+        mention: nMention,
+        crypto: nCrypto,
+        sports: nSp,
+        poolSize: topCandidates.length,
+        prePoolTotal: candidates.length,
+      },
+      hpUniverse,
+      hpStrictFunnel: { ...hpFunnel },
+      hpStrictPass,
+      hpRelaxedPass,
+      hpInPool,
+      hpEarlyDrops: hpEarlyDropBuffer ? [...hpEarlyDropBuffer] : [],
+    };
+    hpEarlyDropBuffer = null;
+
+    return {
+      candidates: finalCandidates,
+      totalScanned: markets.length,
+      source: "live",
+      scannerCycleDebug,
+    };
   } catch (err: unknown) {
     const errMsg = err instanceof Error ? err.message : String(err);
     const isRateLimit = errMsg.includes("429") || errMsg.includes("too_many_requests");
@@ -1109,5 +1103,6 @@ export async function scanMarkets(
     throw err;
   } finally {
     hpClassifyCache = null;
+    hpEarlyDropBuffer = null;
   }
 }

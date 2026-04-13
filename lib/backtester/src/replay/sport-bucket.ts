@@ -103,6 +103,7 @@ export function kalshiCoarseMacroGroup(market: {
 export function kalshiIsMentionTicker(ticker: string): boolean {
   const t = (ticker || "").toUpperCase();
   if (!t) return false;
+  if (t.startsWith("KXTRUMPMENTION")) return true;
   if (t.startsWith("KXMENTION")) return true;
   if (t.startsWith("KXINMENTION")) return true;
   if (t.startsWith("KXCORPMENTION")) return true;
@@ -176,9 +177,10 @@ export function kalshiSportBucket(ticker: string): string {
   return "Other";
 }
 
-/** Daily high / temp-bin style weather contracts (HIGHCHI, HIGHMIA, HIGHAUS, …). */
+/** Daily high / temp-bin style weather contracts (KXHIGH*, HIGHCHI, …). */
 export function kalshiIsWeatherTicker(ticker: string): boolean {
   const t = ticker.toUpperCase();
+  if (t.startsWith("KXHIGH")) return true;
   if (t.startsWith("HIGH") && t.length >= 6) return true;
   if (t.includes("WEATHER") || t.includes("TMAX") || t.includes("TMIN")) return true;
   return false;

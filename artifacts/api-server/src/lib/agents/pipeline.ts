@@ -14,6 +14,7 @@ import {
   scanMarkets,
   SCANNER_ANALYSIS_SLICE,
 } from "./scanner.js";
+import { writeCycleDebugJson } from "./cycle-debug-json.js";
 import { analyzeMarketsRuleBased } from "./analyst.js";
 import { auditTrades, type AuditResult } from "./auditor.js";
 import { assessRisk, type RiskDecision } from "./risk-manager.js";
@@ -321,6 +322,17 @@ export async function runTradingCycle(): Promise<CycleResult> {
         a.strategyMinEdgePp = isPriorityMacroAuditEdgeCandidate(a.candidate)
           ? PRIORITY_MACRO_AUDIT_MIN_EDGE_PP
           : settings.minEdge;
+      }
+      try {
+        await writeCycleDebugJson({
+          cycleId: liveCycleId ?? "unknown",
+          scanResult,
+          analyses,
+          enabledStrategies: enabledStrategies,
+        });
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        console.warn(`[Scanner] Debug JSON write failed (non-fatal): ${msg.slice(0, 200)}`);
       }
       const analysisDuration = (Date.now() - analysisStart) / 1000;
       const withEdge = analyses.filter((a) => a.edge > 0);
