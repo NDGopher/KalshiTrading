@@ -151,12 +151,27 @@ function isCryptoScanCandidate(c: ScanCandidate): boolean {
 
 function isWeatherScanCandidate(c: ScanCandidate): boolean {
   const cat = (c.market.category || "").toLowerCase();
-  return cat.includes("weather") || kalshiIsWeatherTicker(c.market.ticker);
+  return (
+    cat.includes("weather") ||
+    cat.includes("climate") ||
+    cat.includes("temperature") ||
+    cat.includes("forecast") ||
+    kalshiIsWeatherTicker(c.market.ticker)
+  );
 }
 
 /** Relaxed fetch: Crypto + Politics + Mention + Weather + Other (not Economics-only). */
 function isPriorityBacktestBucketFromMarket(m: KalshiMarket): boolean {
   if (kalshiIsWeatherTicker(m.ticker)) return true;
+  const cat = (m.category || "").toLowerCase();
+  if (
+    cat.includes("weather") ||
+    cat.includes("climate") ||
+    cat.includes("temperature") ||
+    cat.includes("forecast")
+  ) {
+    return true;
+  }
   if (mentionFromMarket(m)) return true;
   const d = diversityQuotaBucketFromMarket(m);
   return d === "Crypto" || d === "Politics" || d === "Mention" || d === "Other";
@@ -192,6 +207,12 @@ function compositeScore(candidate: ScanCandidate): number {
   const cryptoW =
     (isCryptoScanCandidate(candidate) ? scanPriorityCrypto * 1.15 : 0) +
     (isWeatherScanCandidate(candidate) ? scanPriorityWeather * 1.2 : 0);
+  /** Large ranking boost so macro markets survive the 600 pool vs sports volume. */
+  const tierRankBoost =
+    (isWeatherPriorityCandidate(candidate) ? 32 : 0) +
+    (isPoliticsPriorityCandidate(candidate) ? 28 : 0) +
+    (isMentionPriorityCandidate(candidate) ? 28 : 0) +
+    (isCryptoPriorityCandidate(candidate) ? 22 : 0);
   return (
     proximity * 3 +
     volNorm * 1.5 +
@@ -205,7 +226,8 @@ function compositeScore(candidate: ScanCandidate): number {
     mentionW +
     kxbtcdBonus +
     btcSweetSpot +
-    cryptoW
+    cryptoW +
+    tierRankBoost
   );
 }
 
@@ -373,58 +395,84 @@ function isWeatherPriorityCandidate(c: ScanCandidate): boolean {
 }
 
 function isPoliticsPriorityCandidate(c: ScanCandidate): boolean {
-  return !isSportsCandidate(c) && diversityQuotaBucket(c) === "Politics";
+  if (isSportsCandidate(c)) return false;
+  if (diversityQuotaBucket(c) === "Politics") return true;
+  return kalshiMarketBucket(c.market) === "Politics";
 }
 
 function isMentionPriorityCandidate(c: ScanCandidate): boolean {
-  return !isSportsCandidate(c) && diversityQuotaBucket(c) === "Mention";
+  if (isSportsCandidate(c)) return false;
+  if (diversityQuotaBucket(c) === "Mention") return true;
+  return mentionFromMarket(c.market);
 }
 
 function isCryptoPriorityCandidate(c: ScanCandidate): boolean {
   return isCryptoScanCandidate(c) && !isSportsCandidate(c);
 }
 
+/** Lower auditor / keeper edge floor (pp) for Weather, Politics, Mention, Crypto only — sports stay at DB minEdge. */
+export const PRIORITY_MACRO_AUDIT_MIN_EDGE_PP = 4.5;
+
+const MIN_WEATHER_ANALYSIS_SLICE = 60;
+const MIN_POLITICS_ANALYSIS_SLICE = 40;
+const MIN_MENTION_ANALYSIS_SLICE = 30;
+const MIN_CRYPTO_ANALYSIS_SLICE = 50;
+
+export function isPriorityMacroAuditEdgeCandidate(c: ScanCandidate): boolean {
+  if (isSportsCandidate(c)) return false;
+  return (
+    isWeatherPriorityCandidate(c) ||
+    isPoliticsPriorityCandidate(c) ||
+    isMentionPriorityCandidate(c) ||
+    isCryptoPriorityCandidate(c)
+  );
+}
+
 /**
- * Analysis slice head: Weather → Politics → Mention → Crypto (score order within each tier),
- * then remaining non-sports, then sports. Tail: rest in score order (pool length = SCANNER_POOL_SIZE).
+ * Analysis slice: reserve up to 60/40/30/50 (when available) for Weather / Politics / Mention / Crypto by score,
+ * then fill remaining slots in tier order, then other non-sports, then sports. Tail = rest of pool.
  */
 function reorderPoolHighPriorityCategoriesFirst(pool: ScanCandidate[]): ScanCandidate[] {
   const slice = SCANNER_ANALYSIS_SLICE;
   const byScore = (a: ScanCandidate, b: ScanCandidate) => compositeScore(b) - compositeScore(a);
   const sorted = [...pool].sort(byScore);
 
-  const takeTier = (pred: (c: ScanCandidate) => boolean): ScanCandidate[] => {
-    const out: ScanCandidate[] = [];
-    const tierSeen = new Set<string>();
-    for (const c of sorted) {
-      if (!pred(c)) continue;
-      if (tierSeen.has(c.market.ticker)) continue;
-      tierSeen.add(c.market.ticker);
-      out.push(c);
-    }
-    out.sort(byScore);
-    return out;
-  };
-
-  const weatherT = takeTier(isWeatherPriorityCandidate);
-  const politicsT = takeTier(isPoliticsPriorityCandidate);
-  const mentionT = takeTier(isMentionPriorityCandidate);
-  const cryptoT = takeTier(isCryptoPriorityCandidate);
+  const weatherAll = pool.filter(isWeatherPriorityCandidate).sort(byScore);
+  const politicsAll = pool.filter(isPoliticsPriorityCandidate).sort(byScore);
+  const mentionAll = pool.filter(isMentionPriorityCandidate).sort(byScore);
+  const cryptoAll = pool.filter(isCryptoPriorityCandidate).sort(byScore);
 
   const head: ScanCandidate[] = [];
   const seen = new Set<string>();
-  const appendTier = (tier: ScanCandidate[]) => {
+
+  const pushMinFromTier = (tier: ScanCandidate[], minWant: number) => {
+    let taken = 0;
     for (const c of tier) {
       if (head.length >= slice) return;
+      if (taken >= minWant) break;
       if (seen.has(c.market.ticker)) continue;
       head.push(c);
       seen.add(c.market.ticker);
+      taken++;
     }
   };
-  appendTier(weatherT);
-  appendTier(politicsT);
-  appendTier(mentionT);
-  appendTier(cryptoT);
+
+  pushMinFromTier(weatherAll, MIN_WEATHER_ANALYSIS_SLICE);
+  pushMinFromTier(politicsAll, MIN_POLITICS_ANALYSIS_SLICE);
+  pushMinFromTier(mentionAll, MIN_MENTION_ANALYSIS_SLICE);
+  pushMinFromTier(cryptoAll, MIN_CRYPTO_ANALYSIS_SLICE);
+
+  const fillRestOfMacroTiers = () => {
+    for (const tier of [weatherAll, politicsAll, mentionAll, cryptoAll]) {
+      for (const c of tier) {
+        if (head.length >= slice) return;
+        if (seen.has(c.market.ticker)) continue;
+        head.push(c);
+        seen.add(c.market.ticker);
+      }
+    }
+  };
+  fillRestOfMacroTiers();
 
   const restNonSports = sorted.filter((c) => !isSportsCandidate(c) && !seen.has(c.market.ticker));
   for (const c of restNonSports) {
@@ -588,6 +636,14 @@ export async function scanMarkets(
     console.info(
       `[Scanner] candidates: ${strictOk} strict + ${relaxedAdded} relaxed macro/non-sports → ${candidates.length} total from ${markets.length} markets`,
     );
+    const rawW = candidates.filter(isWeatherPriorityCandidate).length;
+    const rawP = candidates.filter(isPoliticsPriorityCandidate).length;
+    const rawM = candidates.filter(isMentionPriorityCandidate).length;
+    const rawC = candidates.filter(isCryptoPriorityCandidate).length;
+    const rawS = candidates.filter(isSportsCandidate).length;
+    console.info(
+      `[Scanner] Raw pass (pre-pool): Weather=${rawW} | Politics=${rawP} | Mention=${rawM} | Crypto=${rawC} | Sports=${rawS}`,
+    );
 
     const byScore = (a: ScanCandidate, b: ScanCandidate) => compositeScore(b) - compositeScore(a);
     candidates.sort(byScore);
@@ -726,7 +782,7 @@ export async function scanMarkets(
     const nsHead = head.filter((c) => !isSportsCandidate(c)).length;
     const sliceLine = `Weather=${head.filter(isWeatherPriorityCandidate).length} | Politics=${head.filter(isPoliticsPriorityCandidate).length} | Mention=${head.filter(isMentionPriorityCandidate).length} | Crypto=${head.filter(isCryptoPriorityCandidate).length} | Sports=${head.filter(isSportsCandidate).length}`;
     console.info(
-      `[Scanner] Analysis slice (first ${SCANNER_ANALYSIS_SLICE}): ${sliceLine} | non-sports total=${nsHead} (high-priority categories first)`,
+      `[Scanner] Analysis slice (first ${SCANNER_ANALYSIS_SLICE}): ${sliceLine} | non-sports total=${nsHead} | targets W≥${MIN_WEATHER_ANALYSIS_SLICE} P≥${MIN_POLITICS_ANALYSIS_SLICE} M≥${MIN_MENTION_ANALYSIS_SLICE} C≥${MIN_CRYPTO_ANALYSIS_SLICE} (when available)`,
     );
 
     return { candidates: finalCandidates, totalScanned: markets.length, source: "live" };

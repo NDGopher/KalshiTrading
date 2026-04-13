@@ -2,7 +2,11 @@
  * Market analysis for the trading pipeline — **keeper-only / rule-based**.
  * No Anthropic or other LLM calls (see `analyzeMarketRuleBased`).
  */
-import type { ScanCandidate } from "./scanner.js";
+import {
+  isPriorityMacroAuditEdgeCandidate,
+  PRIORITY_MACRO_AUDIT_MIN_EDGE_PP,
+  type ScanCandidate,
+} from "./scanner.js";
 
 export interface AnalysisResult {
   candidate: ScanCandidate;
@@ -11,6 +15,10 @@ export interface AnalysisResult {
   confidence: number;
   side: "yes" | "no";
   reasoning: string;
+  /** When set, auditor uses this edge floor (pp) instead of global minEdge — priority macro only. */
+  auditMinEdge?: number;
+  /** Set in pipeline after analysis: min edge (pp) for keeper `shouldTrade` (priority vs sports/other). */
+  strategyMinEdgePp?: number;
 }
 
 function deterministicHash(s: string): number {
@@ -63,6 +71,7 @@ export function analyzeMarketRuleBased(candidate: ScanCandidate): AnalysisResult
     confidence,
     side,
     reasoning: `RB: ${edge.toFixed(1)}pp, ${(confidence * 100).toFixed(0)}% conf, mid=${(yesPrice * 100).toFixed(1)}¢`,
+    auditMinEdge: isPriorityMacroAuditEdgeCandidate(candidate) ? PRIORITY_MACRO_AUDIT_MIN_EDGE_PP : undefined,
   };
 }
 

@@ -31,8 +31,9 @@ export function auditTrade(
     flags.push(`Wide spread ($${analysis.candidate.spread.toFixed(4)})`);
   }
 
-  if (analysis.edge < settings.minEdge) {
-    flags.push(`Insufficient edge (${analysis.edge.toFixed(1)}%, min ${settings.minEdge}%)`);
+  const edgeFloor = analysis.auditMinEdge ?? settings.minEdge;
+  if (analysis.edge < edgeFloor) {
+    flags.push(`Insufficient edge (${analysis.edge.toFixed(1)}%, min ${edgeFloor}%)`);
   }
 
   // Confidence threshold: 20% minimum. Game-day sports markets routinely land at 25-35%

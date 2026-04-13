@@ -16,9 +16,12 @@ export interface Strategy {
   shouldTrade(analysis: AnalysisResult): { trade: boolean; reason: string; metadata?: StrategyMetadata };
 }
 
-/** Matches paper-mode auditor floor `max(3, settings.minEdge - 2)` so approved rows can match a keeper. */
-const KEEPER_EDGE_PP = 4;
-/** Rule-based floor aligned with paper tuning / backtests (edge still gated by KEEPER_EDGE_PP). */
+/** Min edge (pp) for keeper gates — pipeline sets `strategyMinEdgePp` (4.5 macro vs DB minEdge for sports/other). */
+function keeperMinEdgePp(analysis: AnalysisResult): number {
+  return analysis.strategyMinEdgePp ?? 6;
+}
+
+/** Rule-based floor aligned with paper tuning / backtests. */
 const PURE_VALUE_MIN_CONFIDENCE = 0.35;
 
 // ─── Pure Value ─────────────────────────────────────────────────────────────
@@ -36,7 +39,7 @@ const pureValue: Strategy = {
         reason: `Edge claim ${analysis.edge.toFixed(0)}pp exceeds 20pp sanity cap`,
       };
     }
-    if (analysis.edge >= KEEPER_EDGE_PP && analysis.confidence >= PURE_VALUE_MIN_CONFIDENCE) {
+    if (analysis.edge >= keeperMinEdgePp(analysis) && analysis.confidence >= PURE_VALUE_MIN_CONFIDENCE) {
       return {
         trade: true,
         reason: `Pure Value: ${analysis.edge.toFixed(1)}pp edge, ${(analysis.confidence * 100).toFixed(0)}% confidence`,
@@ -60,7 +63,7 @@ const whaleFlow: Strategy = {
   },
   shouldTrade(analysis) {
     if (!analysis.candidate.replayWhalePrint) return { trade: false, reason: "No whale print" };
-    if (analysis.edge >= KEEPER_EDGE_PP && analysis.confidence >= 0.38) {
+    if (analysis.edge >= keeperMinEdgePp(analysis) && analysis.confidence >= 0.38) {
       return {
         trade: true,
         reason: `Whale Flow: ${analysis.edge.toFixed(1)}pp edge, ${(analysis.confidence * 100).toFixed(0)}% conf, whale print`,
@@ -87,7 +90,7 @@ const volumeImbalance: Strategy = {
     if (analysis.side !== side) {
       return { trade: false, reason: "Flow not aligned with price signal" };
     }
-    if (analysis.edge >= KEEPER_EDGE_PP && analysis.confidence >= 0.36) {
+    if (analysis.edge >= keeperMinEdgePp(analysis) && analysis.confidence >= 0.36) {
       return {
         trade: true,
         reason: `Volume Imbalance: ${analysis.edge.toFixed(1)}pp flow edge, imb=${im.toFixed(2)}`,
@@ -117,7 +120,7 @@ const dipBuy: Strategy = {
     const hoursLeft = analysis.candidate.hoursToExpiry;
     const hoursSinceDrop = h.hoursSincePeak;
 
-    if (h.isLiquidityFlush && analysis.edge >= KEEPER_EDGE_PP && analysis.confidence >= 0.34 && hoursLeft > 4) {
+    if (h.isLiquidityFlush && analysis.edge >= keeperMinEdgePp(analysis) && analysis.confidence >= 0.34 && hoursLeft > 4) {
       return {
         trade: true,
         reason: `Dip Buy: ${analysis.edge.toFixed(1)}pp edge, flush −${priceDropPct.toFixed(0)}% vs mean`,
@@ -132,7 +135,7 @@ const dipBuy: Strategy = {
       };
     }
 
-    if (analysis.edge >= KEEPER_EDGE_PP && analysis.confidence >= 0.35 && hoursLeft > 4) {
+    if (analysis.edge >= keeperMinEdgePp(analysis) && analysis.confidence >= 0.35 && hoursLeft > 4) {
       return {
         trade: true,
         reason: `Dip Buy: ${analysis.edge.toFixed(1)}pp edge, −${priceDropPct.toFixed(0)}% vs ${h.snapshots}pt mean`,

@@ -145,7 +145,13 @@ router.get("/portfolio/balance", async (_req, res): Promise<void> => {
   }
 });
 
+/** Skip further position sync attempts until this timestamp (ms) after a 429. */
+let positionSyncSkipUntilMs = 0;
+
 async function syncPositionsFromKalshi(): Promise<void> {
+  if (Date.now() < positionSyncSkipUntilMs) {
+    return;
+  }
   try {
     const positionsData = await getPositions({ settlement_status: "unsettled" });
 
@@ -180,6 +186,12 @@ async function syncPositionsFromKalshi(): Promise<void> {
       });
     }
   } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("429") || msg.toLowerCase().includes("too_many")) {
+      positionSyncSkipUntilMs = Date.now() + 60_000;
+      console.warn("[Kalshi] Rate limited (429) — skipping position sync this cycle");
+      return;
+    }
     console.error("Position sync error:", err);
   }
 }

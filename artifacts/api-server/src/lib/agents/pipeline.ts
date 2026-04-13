@@ -8,7 +8,12 @@ import {
   type DbClient,
 } from "@workspace/db";
 import { eq, gte, sql, inArray } from "drizzle-orm";
-import { scanMarkets, SCANNER_ANALYSIS_SLICE } from "./scanner.js";
+import {
+  isPriorityMacroAuditEdgeCandidate,
+  PRIORITY_MACRO_AUDIT_MIN_EDGE_PP,
+  scanMarkets,
+  SCANNER_ANALYSIS_SLICE,
+} from "./scanner.js";
 import { analyzeMarketsRuleBased } from "./analyst.js";
 import { auditTrades, type AuditResult } from "./auditor.js";
 import { assessRisk, type RiskDecision } from "./risk-manager.js";
@@ -312,6 +317,11 @@ export async function runTradingCycle(): Promise<CycleResult> {
     let analyses;
     try {
       analyses = analyzeMarketsRuleBased(topCandidates);
+      for (const a of analyses) {
+        a.strategyMinEdgePp = isPriorityMacroAuditEdgeCandidate(a.candidate)
+          ? PRIORITY_MACRO_AUDIT_MIN_EDGE_PP
+          : settings.minEdge;
+      }
       const analysisDuration = (Date.now() - analysisStart) / 1000;
       const withEdge = analyses.filter((a) => a.edge > 0);
       const topForLog = topCandidates.slice(0, 8).map((c) => `${c.market.ticker}@${(c.yesPrice * 100).toFixed(0)}¢`);
@@ -330,13 +340,13 @@ export async function runTradingCycle(): Promise<CycleResult> {
 
     let auditStart = Date.now();
     updateAgentStatus("Auditor", "running");
-    const auditMinEdge = paperMode ? Math.max(3, settings.minEdge - 2) : settings.minEdge;
     const auditMinLiquidity = paperMode ? 0 : settings.minLiquidity;
     const auditResults = auditTrades(analyses, {
       minLiquidity: auditMinLiquidity,
       minTimeToExpiry: settings.minTimeToExpiry,
       confidencePenaltyPct: settings.confidencePenaltyPct,
-      minEdge: auditMinEdge,
+      /** Sports / Economics / Other use DB minEdge; Weather/Politics/Mention/Crypto use analysis.auditMinEdge (4.5pp). */
+      minEdge: settings.minEdge,
     });
     const approvedRaw = auditResults.filter((a) => a.approved);
     const approved = dedupeApprovedOnePerGame(approvedRaw);
@@ -822,6 +832,11 @@ export async function scanAndDiscover(): Promise<ScanDiscoverResult> {
 
   updateAgentStatus("Analyst", "running");
   const analyses = analyzeMarketsRuleBased(topCandidates);
+  for (const a of analyses) {
+    a.strategyMinEdgePp = isPriorityMacroAuditEdgeCandidate(a.candidate)
+      ? PRIORITY_MACRO_AUDIT_MIN_EDGE_PP
+      : settings.minEdge;
+  }
   updateAgentStatus("Analyst", "idle", `Analyzed ${analyses.length} markets`);
 
   updateAgentStatus("Auditor", "running");
