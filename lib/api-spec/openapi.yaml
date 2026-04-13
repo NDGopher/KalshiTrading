@@ -943,6 +943,10 @@ components:
           type: number
         weatherPriorityWeight:
           type: number
+        politicsPriorityWeight:
+          type: number
+        mentionPriorityWeight:
+          type: number
         kalshiApiKeySet:
           type: boolean
         kalshiBaseUrl:
@@ -968,6 +972,8 @@ components:
         - targetBetUsd
         - cryptoPriorityWeight
         - weatherPriorityWeight
+        - politicsPriorityWeight
+        - mentionPriorityWeight
         - kalshiApiKeySet
 
     UpdateSettingsBody:
@@ -1014,6 +1020,10 @@ components:
         cryptoPriorityWeight:
           type: number
         weatherPriorityWeight:
+          type: number
+        politicsPriorityWeight:
+          type: number
+        mentionPriorityWeight:
           type: number
 
     PortfolioBalance:

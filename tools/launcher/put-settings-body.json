@@ -8,6 +8,8 @@
   "minEdge": 6,
   "maxSpreadCents": 5,
   "kellyFraction": 0.28,
-  "cryptoPriorityWeight": 2.5,
-  "weatherPriorityWeight": 2.5
+  "cryptoPriorityWeight": 3.2,
+  "weatherPriorityWeight": 3.2,
+  "politicsPriorityWeight": 3.2,
+  "mentionPriorityWeight": 3.2
 }

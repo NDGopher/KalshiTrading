@@ -31,8 +31,10 @@ export const tradingSettingsTable = pgTable("trading_settings", {
     "Dip Buy",
   ]),
   /** Scanner composite-score multipliers (typically ≥1). Higher = more pool/analysis priority. */
-  cryptoPriorityWeight: real("crypto_priority_weight").notNull().default(2.5),
-  weatherPriorityWeight: real("weather_priority_weight").notNull().default(2.5),
+  cryptoPriorityWeight: real("crypto_priority_weight").notNull().default(3.2),
+  weatherPriorityWeight: real("weather_priority_weight").notNull().default(3.2),
+  politicsPriorityWeight: real("politics_priority_weight").notNull().default(3.2),
+  mentionPriorityWeight: real("mention_priority_weight").notNull().default(3.2),
   kalshiApiKey: text("kalshi_api_key"),
   kalshiBaseUrl: text("kalshi_base_url"),
 });

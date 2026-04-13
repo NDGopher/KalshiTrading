@@ -79,8 +79,8 @@ export function kalshiMarketBucket(market: {
   return kalshiSportBucket(market.ticker);
 }
 
-/** Roll Kalshi buckets into Sports vs Politics/Crypto/Economics/Other for reporting. */
-export type KalshiCoarseMacro = "Sports" | "Politics" | "Crypto" | "Economics" | "Other";
+/** Roll Kalshi buckets into Sports vs Politics/Crypto/Economics/Mention/Other for reporting. */
+export type KalshiCoarseMacro = "Sports" | "Politics" | "Crypto" | "Economics" | "Mention" | "Other";
 
 export function kalshiCoarseMacroGroup(market: {
   ticker: string;
@@ -92,7 +92,24 @@ export function kalshiCoarseMacroGroup(market: {
   if (m === "Politics") return "Politics";
   if (m === "Crypto") return "Crypto";
   if (m === "Economics") return "Economics";
+  if (m === "Mention") return "Mention";
   return "Other";
+}
+
+/**
+ * Earnings / pop-culture mention contracts (KXMENTION*, INMENTION-style series, corp mention).
+ * Used by live scanner priority — keep patterns tight to avoid false positives.
+ */
+export function kalshiIsMentionTicker(ticker: string): boolean {
+  const t = (ticker || "").toUpperCase();
+  if (!t) return false;
+  if (t.startsWith("KXMENTION")) return true;
+  if (t.startsWith("KXINMENTION")) return true;
+  if (t.startsWith("KXCORPMENTION")) return true;
+  if (t.startsWith("KXSTOCKMENTION")) return true;
+  if (t.includes("EARNINGSMENT") || t.includes("EARNMENTION")) return true;
+  if (t.includes("MENTION") && t.startsWith("KX") && !t.startsWith("KXGAME")) return true;
+  return false;
 }
 
 /** Coarse bucket aligned with Learner's category heuristics. */
@@ -143,6 +160,9 @@ export function kalshiSportBucket(ticker: string): string {
     t.startsWith("KXPOLL")
   ) {
     return "Politics";
+  }
+  if (kalshiIsMentionTicker(t)) {
+    return "Mention";
   }
   if (
     t.startsWith("KXCPI") ||

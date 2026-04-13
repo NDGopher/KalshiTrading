@@ -14,27 +14,33 @@ import { db, historicalMarketsTable } from "@workspace/db";
 import { ne, desc } from "drizzle-orm";
 import { batchGetPriceHistory, type PriceHistory } from "../price-history.js";
 import { updateLiveTapeFlow } from "../live-tape-flow.js";
-import { kalshiIsWeatherTicker, kalshiMarketBucket, kalshiSportBucket } from "@workspace/backtester";
+import {
+  kalshiIsMentionTicker,
+  kalshiIsWeatherTicker,
+  kalshiMarketBucket,
+  kalshiSportBucket,
+} from "@workspace/backtester";
 import { rejectsWideBookForTrading } from "./execution-policy.js";
 
 /**
  * Scanner sizing (live paper + future live) — **no Odds API / sharp lines**.
- * - **Pool 500**: **120–160** non-sports (Crypto + Weather first, then other macro); **sports fill remainder**.
- * - **Analysis 250**: **every** qualifying Crypto + Weather in this pool ordered ahead of sports; then other non-sports; then sports.
- * - Relaxed vol/liq **only** for Crypto/Politics/Other/Weather; Economics uses a tighter relaxed pass. **KXBTCD** boosted.
- * - **Enrich top 250**: price-history only (DB, batched 20 tickers → ~13 rounds).
+ * - **Pool 600**: **160–200** non-sports (Weather → Politics → Mention → Crypto, then other macro); **sports fill remainder**.
+ * - **Analysis 350**: same high-priority category order at the front of the slice; then other non-sports; then sports.
+ * - Relaxed vol/liq for Crypto/Politics/Mention/Weather/Other; Economics uses a tighter relaxed pass. **KXBTCD** boosted.
+ * - **Enrich top 350**: price-history only (DB, batched 20 tickers).
  *
- * **Cycle budget:** Kalshi ~12–22s; persist 500 rows; enrich ~13 DB batches; analyst 250 ~2–6s.
- * **Target: full trading cycle under 40s** when Kalshi is healthy.
+ * **Cycle budget:** wider universe + fast pipeline (~20s observed); target full cycle **under 40s**.
  */
-export const SCANNER_POOL_SIZE = 500;
-export const SCANNER_ENRICH_TOP_N = 250;
+export const SCANNER_POOL_SIZE = 600;
+export const SCANNER_ENRICH_TOP_N = 350;
 /** Ranked candidates passed to rule-based analyst (same slice as price-history enrichment). */
-export const SCANNER_ANALYSIS_SLICE = 250;
+export const SCANNER_ANALYSIS_SLICE = 350;
 
 /** DB-driven scanner weights (set at each `scanMarkets` entry). */
-let scanPriorityCrypto = 2.5;
-let scanPriorityWeather = 2.5;
+let scanPriorityCrypto = 3.2;
+let scanPriorityWeather = 3.2;
+let scanPriorityPolitics = 3.2;
+let scanPriorityMention = 3.2;
 /** Max YES bid–ask width (dollars) for scanner pre-filter; from DB `max_spread_cents`. */
 let scanMaxSpreadDollars = 0.05;
 
@@ -89,7 +95,20 @@ const NON_SPORTS_CATEGORIES = [
   "Crypto",
   "Finance",
   "Digital",
+  "Mentions",
+  "Mention",
 ];
+
+function mentionFromMarket(m: KalshiMarket): boolean {
+  if (kalshiIsMentionTicker(m.ticker)) return true;
+  const et = m.event_ticker;
+  const st = m.series_ticker;
+  if (et && kalshiIsMentionTicker(et)) return true;
+  if (st && kalshiIsMentionTicker(st)) return true;
+  const cat = (m.category || "").toLowerCase();
+  if (cat.includes("mention")) return true;
+  return false;
+}
 
 function isNonSportsCategory(candidate: ScanCandidate): boolean {
   const cat = candidate.market.category || "";
@@ -99,6 +118,8 @@ function isNonSportsCategory(candidate: ScanCandidate): boolean {
 /** True when we should keep tight liquidity/price floors (game markets only). */
 function isStrictSportsLikeMarket(m: KalshiMarket): boolean {
   const cat = (m.category || "").toLowerCase();
+  if (kalshiIsWeatherTicker(m.ticker)) return false;
+  if (mentionFromMarket(m)) return false;
   if (cat.includes("politic") || cat.includes("crypto") || cat.includes("economic")) return false;
   if (cat.includes("financial") && !cat.includes("sport")) return false;
   if (cat.includes("entertainment") || cat.includes("weather") || cat.includes("science")) return false;
@@ -107,19 +128,20 @@ function isStrictSportsLikeMarket(m: KalshiMarket): boolean {
 }
 
 /** Coarse bucket for diversity quotas — prefer Kalshi API category, then ticker. */
-function diversityQuotaBucketFromMarket(m: KalshiMarket): "Politics" | "Crypto" | "Economics" | "Other" | "Sports" {
+function diversityQuotaBucketFromMarket(m: KalshiMarket): "Politics" | "Crypto" | "Economics" | "Mention" | "Other" | "Sports" {
   const cat = (m.category || "").toLowerCase();
   if (cat.includes("sport")) return "Sports";
+  if (mentionFromMarket(m)) return "Mention";
   if (cat.includes("politic")) return "Politics";
   if (cat.includes("crypto") || cat.includes("digital")) return "Crypto";
   if (cat.includes("economic") || cat.includes("financial") || cat.includes("finance")) return "Economics";
   const b = kalshiMarketBucket(m);
-  if (b === "Politics" || b === "Crypto" || b === "Economics") return b;
+  if (b === "Politics" || b === "Crypto" || b === "Economics" || b === "Mention") return b;
   if (b === "Sports") return "Sports";
   return "Other";
 }
 
-function diversityQuotaBucket(c: ScanCandidate): "Politics" | "Crypto" | "Economics" | "Other" | "Sports" {
+function diversityQuotaBucket(c: ScanCandidate): "Politics" | "Crypto" | "Economics" | "Mention" | "Other" | "Sports" {
   return diversityQuotaBucketFromMarket(c.market);
 }
 
@@ -132,10 +154,12 @@ function isWeatherScanCandidate(c: ScanCandidate): boolean {
   return cat.includes("weather") || kalshiIsWeatherTicker(c.market.ticker);
 }
 
-/** Relaxed fetch: Crypto + Politics + Other (not Economics-only). */
+/** Relaxed fetch: Crypto + Politics + Mention + Weather + Other (not Economics-only). */
 function isPriorityBacktestBucketFromMarket(m: KalshiMarket): boolean {
+  if (kalshiIsWeatherTicker(m.ticker)) return true;
+  if (mentionFromMarket(m)) return true;
   const d = diversityQuotaBucketFromMarket(m);
-  return d === "Crypto" || d === "Politics" || d === "Other";
+  return d === "Crypto" || d === "Politics" || d === "Mention" || d === "Other";
 }
 
 function compositeScore(candidate: ScanCandidate): number {
@@ -152,7 +176,11 @@ function compositeScore(candidate: ScanCandidate): number {
     dq !== "Sports" && (candidate.volume24h > 50 || candidate.liquidity > 200) ? 2.5 : 0;
   const categoryBonus =
     isNonSportsCategory(candidate) && candidate.volume24h > 30 ? 0.4 : 0;
-  const priorityMacroBonus = dq === "Crypto" || dq === "Politics" || dq === "Other" ? 2.2 : 0;
+  const priorityMacroBonus =
+    dq === "Crypto" || dq === "Politics" || dq === "Mention" || dq === "Other" ? 2.2 : 0;
+  const politicsW = dq === "Politics" ? scanPriorityPolitics * 1.18 : 0;
+  const mentionW =
+    dq === "Mention" || mentionFromMarket(candidate.market) ? scanPriorityMention * 1.22 : 0;
   const kxbtcdBonus = candidate.market.ticker.toUpperCase().startsWith("KXBTCD") ? 7.0 : 0;
   // Backtest: Pure Value on KXBTCD ~13–21¢ YES
   const btcSweetSpot =
@@ -163,7 +191,7 @@ function compositeScore(candidate: ScanCandidate): number {
       : 0;
   const cryptoW =
     (isCryptoScanCandidate(candidate) ? scanPriorityCrypto * 1.15 : 0) +
-    (isWeatherScanCandidate(candidate) ? scanPriorityWeather * 1.15 : 0);
+    (isWeatherScanCandidate(candidate) ? scanPriorityWeather * 1.2 : 0);
   return (
     proximity * 3 +
     volNorm * 1.5 +
@@ -173,6 +201,8 @@ function compositeScore(candidate: ScanCandidate): number {
     nonSportsBonus +
     categoryBonus +
     priorityMacroBonus +
+    politicsW +
+    mentionW +
     kxbtcdBonus +
     btcSweetSpot +
     cryptoW
@@ -338,32 +368,63 @@ function isSportsCandidate(c: ScanCandidate): boolean {
   return diversityQuotaBucket(c) === "Sports";
 }
 
+function isWeatherPriorityCandidate(c: ScanCandidate): boolean {
+  return !isSportsCandidate(c) && isWeatherScanCandidate(c);
+}
+
+function isPoliticsPriorityCandidate(c: ScanCandidate): boolean {
+  return !isSportsCandidate(c) && diversityQuotaBucket(c) === "Politics";
+}
+
+function isMentionPriorityCandidate(c: ScanCandidate): boolean {
+  return !isSportsCandidate(c) && diversityQuotaBucket(c) === "Mention";
+}
+
+function isCryptoPriorityCandidate(c: ScanCandidate): boolean {
+  return isCryptoScanCandidate(c) && !isSportsCandidate(c);
+}
+
 /**
- * First 250: all Crypto + Weather from this pool (score order), then other non-sports, then sports.
- * Tail: remaining tickers in score order (total length = SCANNER_POOL_SIZE).
+ * Analysis slice head: Weather → Politics → Mention → Crypto (score order within each tier),
+ * then remaining non-sports, then sports. Tail: rest in score order (pool length = SCANNER_POOL_SIZE).
  */
-function reorderPoolCryptoWeatherAnalysisFirst(pool: ScanCandidate[]): ScanCandidate[] {
+function reorderPoolHighPriorityCategoriesFirst(pool: ScanCandidate[]): ScanCandidate[] {
   const slice = SCANNER_ANALYSIS_SLICE;
   const byScore = (a: ScanCandidate, b: ScanCandidate) => compositeScore(b) - compositeScore(a);
   const sorted = [...pool].sort(byScore);
 
-  const cw: ScanCandidate[] = [];
-  const cwIds = new Set<string>();
-  for (const c of sorted) {
-    if (!isCryptoScanCandidate(c) && !isWeatherScanCandidate(c)) continue;
-    if (cwIds.has(c.market.ticker)) continue;
-    cw.push(c);
-    cwIds.add(c.market.ticker);
-  }
-  cw.sort(byScore);
+  const takeTier = (pred: (c: ScanCandidate) => boolean): ScanCandidate[] => {
+    const out: ScanCandidate[] = [];
+    const tierSeen = new Set<string>();
+    for (const c of sorted) {
+      if (!pred(c)) continue;
+      if (tierSeen.has(c.market.ticker)) continue;
+      tierSeen.add(c.market.ticker);
+      out.push(c);
+    }
+    out.sort(byScore);
+    return out;
+  };
+
+  const weatherT = takeTier(isWeatherPriorityCandidate);
+  const politicsT = takeTier(isPoliticsPriorityCandidate);
+  const mentionT = takeTier(isMentionPriorityCandidate);
+  const cryptoT = takeTier(isCryptoPriorityCandidate);
 
   const head: ScanCandidate[] = [];
   const seen = new Set<string>();
-  for (const c of cw) {
-    if (head.length >= slice) break;
-    head.push(c);
-    seen.add(c.market.ticker);
-  }
+  const appendTier = (tier: ScanCandidate[]) => {
+    for (const c of tier) {
+      if (head.length >= slice) return;
+      if (seen.has(c.market.ticker)) continue;
+      head.push(c);
+      seen.add(c.market.ticker);
+    }
+  };
+  appendTier(weatherT);
+  appendTier(politicsT);
+  appendTier(mentionT);
+  appendTier(cryptoT);
 
   const restNonSports = sorted.filter((c) => !isSportsCandidate(c) && !seen.has(c.market.ticker));
   for (const c of restNonSports) {
@@ -401,7 +462,7 @@ async function scanFromCachedDb(): Promise<{ candidates: ScanCandidate[]; totalS
     .from(historicalMarketsTable)
     .where(ne(historicalMarketsTable.status, "settled"))
     .orderBy(desc(historicalMarketsTable.snapshotAt))
-    .limit(500);
+    .limit(1200);
 
   const seen = new Set<string>();
   const candidates: ScanCandidate[] = [];
@@ -464,7 +525,7 @@ async function scanFromCachedDb(): Promise<{ candidates: ScanCandidate[]; totalS
   candidates.sort((a, b) => compositeScore(b) - compositeScore(a));
   const cap = Math.min(SCANNER_POOL_SIZE, candidates.length);
   const pool = candidates.slice(0, cap);
-  return { candidates: reorderPoolCryptoWeatherAnalysisFirst(pool), totalScanned: rows.length };
+  return { candidates: reorderPoolHighPriorityCategoriesFirst(pool), totalScanned: rows.length };
 }
 
 /**
@@ -488,15 +549,23 @@ async function enrichCandidates(candidates: ScanCandidate[]): Promise<void> {
  */
 export async function scanMarkets(
   _sportFilters?: string[],
-  priorityWeights?: { crypto?: number; weather?: number; maxSpreadCents?: number },
+  priorityWeights?: {
+    crypto?: number;
+    weather?: number;
+    politics?: number;
+    mention?: number;
+    maxSpreadCents?: number;
+  },
 ): Promise<{
   candidates: ScanCandidate[];
   totalScanned: number;
   source: "live" | "cached";
 }> {
   try {
-    scanPriorityCrypto = Math.max(0.5, priorityWeights?.crypto ?? 2.5);
-    scanPriorityWeather = Math.max(0.5, priorityWeights?.weather ?? 2.5);
+    scanPriorityCrypto = Math.max(0.5, priorityWeights?.crypto ?? 3.2);
+    scanPriorityWeather = Math.max(0.5, priorityWeights?.weather ?? 3.2);
+    scanPriorityPolitics = Math.max(0.5, priorityWeights?.politics ?? 3.2);
+    scanPriorityMention = Math.max(0.5, priorityWeights?.mention ?? 3.2);
     scanMaxSpreadDollars = Math.max(0.01, (priorityWeights?.maxSpreadCents ?? 5) / 100);
 
     // Fetch all markets across ALL categories — no volume pre-filter
@@ -523,29 +592,28 @@ export async function scanMarkets(
     const byScore = (a: ScanCandidate, b: ScanCandidate) => compositeScore(b) - compositeScore(a);
     candidates.sort(byScore);
 
-    const MIN_NON_SPORTS_IN_POOL = 140;
-    const MAX_NON_SPORTS_IN_POOL = 170;
+    const MIN_NON_SPORTS_IN_POOL = 160;
+    const MAX_NON_SPORTS_IN_POOL = 200;
 
-    const cryptoList = candidates.filter(isCryptoScanCandidate).sort(byScore);
-    const weatherOnly = candidates
-      .filter((c) => isWeatherScanCandidate(c) && !isCryptoScanCandidate(c))
-      .sort(byScore);
-    const cwMerged: ScanCandidate[] = [];
-    const cwSeen = new Set<string>();
-    for (const c of [...cryptoList, ...weatherOnly]) {
-      if (cwSeen.has(c.market.ticker)) continue;
-      cwSeen.add(c.market.ticker);
-      cwMerged.push(c);
-    }
-    cwMerged.sort(byScore);
+    const weatherList = candidates.filter(isWeatherPriorityCandidate).sort(byScore);
+    const politicsList = candidates.filter(isPoliticsPriorityCandidate).sort(byScore);
+    const mentionList = candidates.filter(isMentionPriorityCandidate).sort(byScore);
+    const cryptoList = candidates.filter(isCryptoPriorityCandidate).sort(byScore);
 
     const pickedNon: ScanCandidate[] = [];
     const pickedIds = new Set<string>();
-    for (const c of cwMerged) {
-      if (pickedNon.length >= MAX_NON_SPORTS_IN_POOL) break;
-      pickedNon.push(c);
-      pickedIds.add(c.market.ticker);
-    }
+    const pickTier = (list: ScanCandidate[]) => {
+      for (const c of list) {
+        if (pickedNon.length >= MAX_NON_SPORTS_IN_POOL) return;
+        if (pickedIds.has(c.market.ticker)) continue;
+        pickedNon.push(c);
+        pickedIds.add(c.market.ticker);
+      }
+    };
+    pickTier(weatherList);
+    pickTier(politicsList);
+    pickTier(mentionList);
+    pickTier(cryptoList);
 
     const otherNon = candidates
       .filter((c) => !isSportsCandidate(c) && !pickedIds.has(c.market.ticker))
@@ -585,11 +653,13 @@ export async function scanMarkets(
 
     const topCandidates = [...pickedNon, ...sportsPart].slice(0, SCANNER_POOL_SIZE);
 
-    const nCrypto = topCandidates.filter(isCryptoScanCandidate).length;
-    const nWeather = topCandidates.filter((c) => isWeatherScanCandidate(c) && !isCryptoScanCandidate(c)).length;
+    const nWeather = topCandidates.filter(isWeatherPriorityCandidate).length;
+    const nPolitics = topCandidates.filter(isPoliticsPriorityCandidate).length;
+    const nMention = topCandidates.filter(isMentionPriorityCandidate).length;
+    const nCrypto = topCandidates.filter(isCryptoPriorityCandidate).length;
     const nSp = topCandidates.filter(isSportsCandidate).length;
     console.info(
-      `[Scanner] Priority inclusion: Crypto=${nCrypto} | Weather=${nWeather} | Sports=${nSp} | Total pool ${topCandidates.length}`,
+      `[Scanner] Priority inclusion: Weather=${nWeather} | Politics=${nPolitics} | Mention=${nMention} | Crypto=${nCrypto} | Sports=${nSp} | Total pool ${topCandidates.length}`,
     );
 
     // If API returned nothing usable, fall through to the DB cache
@@ -651,13 +721,12 @@ export async function scanMarkets(
 
     // Re-sort after enrichment so dip/surge signals bubble up
     topCandidates.sort((a, b) => compositeScore(b) - compositeScore(a));
-    const finalCandidates = reorderPoolCryptoWeatherAnalysisFirst(topCandidates);
-    const nsHead = finalCandidates.slice(0, SCANNER_ANALYSIS_SLICE).filter((c) => !isSportsCandidate(c)).length;
-    const cwHead = finalCandidates
-      .slice(0, SCANNER_ANALYSIS_SLICE)
-      .filter((c) => isCryptoScanCandidate(c) || isWeatherScanCandidate(c)).length;
+    const finalCandidates = reorderPoolHighPriorityCategoriesFirst(topCandidates);
+    const head = finalCandidates.slice(0, SCANNER_ANALYSIS_SLICE);
+    const nsHead = head.filter((c) => !isSportsCandidate(c)).length;
+    const sliceLine = `Weather=${head.filter(isWeatherPriorityCandidate).length} | Politics=${head.filter(isPoliticsPriorityCandidate).length} | Mention=${head.filter(isMentionPriorityCandidate).length} | Crypto=${head.filter(isCryptoPriorityCandidate).length} | Sports=${head.filter(isSportsCandidate).length}`;
     console.info(
-      `[Scanner] Analysis slice (first ${SCANNER_ANALYSIS_SLICE}): crypto+weather=${cwHead} | non-sports=${nsHead} (Crypto+Weather ordered before sports)`,
+      `[Scanner] Analysis slice (first ${SCANNER_ANALYSIS_SLICE}): ${sliceLine} | non-sports total=${nsHead} (high-priority categories first)`,
     );
 
     return { candidates: finalCandidates, totalScanned: markets.length, source: "live" };
@@ -686,6 +755,9 @@ export async function scanMarkets(
         const newOnes = sportsCandidates.filter((c) => !seen.has(c.market.ticker));
         cached.candidates.push(...newOnes);
         cached.candidates.sort((a, b) => compositeScore(b) - compositeScore(a));
+        cached.candidates = reorderPoolHighPriorityCategoriesFirst(
+          cached.candidates.slice(0, Math.min(SCANNER_POOL_SIZE, cached.candidates.length)),
+        );
         cached.totalScanned += sportsMarkets.length;
       } catch {}
 

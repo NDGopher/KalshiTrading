@@ -271,8 +271,10 @@ export async function runTradingCycle(): Promise<CycleResult> {
     let scanResult;
     try {
       scanResult = await scanMarkets(settings.sportFilters as string[], {
-        crypto: settings.cryptoPriorityWeight ?? 2.5,
-        weather: settings.weatherPriorityWeight ?? 2.5,
+        crypto: settings.cryptoPriorityWeight ?? 3.2,
+        weather: settings.weatherPriorityWeight ?? 3.2,
+        politics: settings.politicsPriorityWeight ?? 3.2,
+        mention: settings.mentionPriorityWeight ?? 3.2,
         maxSpreadCents: settings.maxSpreadCents ?? 5,
       });
       const scanDuration = (Date.now() - scanStart) / 1000;
@@ -804,8 +806,10 @@ export async function scanAndDiscover(): Promise<ScanDiscoverResult> {
 
   updateAgentStatus("Scanner", "running");
   const scanResult = await scanMarkets(settings.sportFilters as string[], {
-    crypto: settings.cryptoPriorityWeight ?? 2.5,
-    weather: settings.weatherPriorityWeight ?? 2.5,
+    crypto: settings.cryptoPriorityWeight ?? 3.2,
+    weather: settings.weatherPriorityWeight ?? 3.2,
+    politics: settings.politicsPriorityWeight ?? 3.2,
+    mention: settings.mentionPriorityWeight ?? 3.2,
     maxSpreadCents: settings.maxSpreadCents ?? 5,
   });
   updateAgentStatus("Scanner", "idle", `Scanned ${scanResult.totalScanned} markets, found ${scanResult.candidates.length} candidates`);

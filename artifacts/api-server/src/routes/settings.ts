@@ -44,8 +44,10 @@ async function settingsToResponse(settings: typeof tradingSettingsTable.$inferSe
       ],
     targetBetUsd: settings.targetBetUsd ?? 15,
     maxSpreadCents: settings.maxSpreadCents ?? 5,
-    cryptoPriorityWeight: settings.cryptoPriorityWeight ?? 2.5,
-    weatherPriorityWeight: settings.weatherPriorityWeight ?? 2.5,
+    cryptoPriorityWeight: settings.cryptoPriorityWeight ?? 3.2,
+    weatherPriorityWeight: settings.weatherPriorityWeight ?? 3.2,
+    politicsPriorityWeight: settings.politicsPriorityWeight ?? 3.2,
+    mentionPriorityWeight: settings.mentionPriorityWeight ?? 3.2,
     kalshiApiKeySet: !!(settings.kalshiApiKey || process.env.KALSHI_API_KEY),
     kalshiBaseUrl: settings.kalshiBaseUrl || null,
   };
@@ -102,9 +104,23 @@ router.put("/settings", async (req, res): Promise<void> => {
   if (body.targetBetUsd !== undefined)
     updateData.targetBetUsd = clampNum(body.targetBetUsd, 5, 50, current.targetBetUsd ?? 15);
   if (body.cryptoPriorityWeight !== undefined)
-    updateData.cryptoPriorityWeight = clampNum(body.cryptoPriorityWeight, 0.5, 10, current.cryptoPriorityWeight ?? 2.5);
+    updateData.cryptoPriorityWeight = clampNum(body.cryptoPriorityWeight, 0.5, 10, current.cryptoPriorityWeight ?? 3.2);
   if (body.weatherPriorityWeight !== undefined)
-    updateData.weatherPriorityWeight = clampNum(body.weatherPriorityWeight, 0.5, 10, current.weatherPriorityWeight ?? 2.5);
+    updateData.weatherPriorityWeight = clampNum(body.weatherPriorityWeight, 0.5, 10, current.weatherPriorityWeight ?? 3.2);
+  if (body.politicsPriorityWeight !== undefined)
+    updateData.politicsPriorityWeight = clampNum(
+      body.politicsPriorityWeight,
+      0.5,
+      10,
+      current.politicsPriorityWeight ?? 3.2,
+    );
+  if (body.mentionPriorityWeight !== undefined)
+    updateData.mentionPriorityWeight = clampNum(
+      body.mentionPriorityWeight,
+      0.5,
+      10,
+      current.mentionPriorityWeight ?? 3.2,
+    );
   if (body.kalshiApiKey !== undefined && typeof body.kalshiApiKey === "string")
     updateData.kalshiApiKey = body.kalshiApiKey;
   if (body.kalshiBaseUrl !== undefined)

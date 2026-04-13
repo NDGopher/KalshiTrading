@@ -40,6 +40,7 @@ export {
   kalshiMarketBucket,
   kalshiCoarseMacroGroup,
   kalshiIsWeatherTicker,
+  kalshiIsMentionTicker,
   type KalshiCoarseMacro,
 } from "./replay/sport-bucket.js";
 export { kalshiTakerFeeUsd, pnlKalshiTaker, CONSERVATIVE_LIP_USD_PER_CONTRACT } from "./kalshi-fees.js";

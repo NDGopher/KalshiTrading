@@ -38,6 +38,8 @@ interface SettingsData {
   targetBetUsd?: number;
   cryptoPriorityWeight?: number;
   weatherPriorityWeight?: number;
+  politicsPriorityWeight?: number;
+  mentionPriorityWeight?: number;
   kalshiApiKeySet: boolean;
   kalshiBaseUrl: string | null;
 }

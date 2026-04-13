@@ -667,6 +667,9 @@ export async function getAllLiquidMarkets(_maxPages = 10): Promise<KalshiMarket[
 
   const HIGH_VALUE_CATEGORIES = new Set(["Politics", "Economics", "Financials", "Crypto", "Entertainment"]);
 
+  // Earnings / pop-culture mention series (often thin in generic category pages).
+  const MENTION_SERIES = ["KXMENTION", "KXINMENTION", "KXCORPMENTION", "KXSTOCKMENTION"];
+
   // Phase 1: Category sweep (extra page for politics/crypto/economics — backtest-heavy buckets)
   for (const category of CATEGORIES) {
     let cursor: string | undefined;
@@ -677,9 +680,11 @@ export async function getAllLiquidMarkets(_maxPages = 10): Promise<KalshiMarket[
           ? 4
           : category === "Weather"
             ? 4
-            : HIGH_VALUE_CATEGORIES.has(category)
-              ? 3
-              : 2;
+            : category === "Politics"
+              ? 4
+              : HIGH_VALUE_CATEGORIES.has(category)
+                ? 3
+                : 2;
     for (let page = 0; page < maxPages; page++) {
       await delay(300);
       const result = await fetchOnePage(category, cursor);
@@ -710,6 +715,25 @@ export async function getAllLiquidMarkets(_maxPages = 10): Promise<KalshiMarket[
 
   if (seriesCount > 0) {
     console.log(`[Scanner] Game-series sweep: +${seriesCount} game-day markets`);
+  }
+
+  let mentionSeriesCount = 0;
+  for (const seriesTicker of MENTION_SERIES) {
+    await delay(300);
+    try {
+      const params: Parameters<typeof getMarkets>[0] = { limit: 100, status: "open", series_ticker: seriesTicker };
+      const result = await getMarkets(params);
+      if (result.markets && result.markets.length > 0) {
+        allMarketsRaw.push(...result.markets);
+        mentionSeriesCount += result.markets.length;
+        console.log(`[Scanner] series=${seriesTicker}: +${result.markets.length} mention-style markets`);
+      }
+    } catch {
+      // Series absent or rate limited
+    }
+  }
+  if (mentionSeriesCount > 0) {
+    console.log(`[Scanner] Mention-series sweep: +${mentionSeriesCount} markets`);
   }
 
   // Deduplicate by ticker (same market can appear in category and series results)
