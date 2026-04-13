@@ -26,7 +26,7 @@ import { rejectsWideBookForTrading } from "./execution-policy.js";
  * Scanner sizing (live paper + future live) — **no Odds API / sharp lines**.
  * - **Pool 700**: **160–200** non-sports (Weather → Politics → Mention → Crypto, then other macro); **sports fill remainder**.
  * - **Analysis 400**: same high-priority category order at the front of the slice; then other non-sports; then sports.
- * - `isHighPriorityCategory`: explicit KXHIGH/mentions/WTI/gas + ticker/event/series keywords; strict 10–90¢, $50 liq, ghost 4h/10vol/$100 for all; structural junk bypass **only** explicit macro tickers (not broad weather/mention); **5¢ spread** unchanged.
+ * - `isHighPriorityCategory`: explicit KXHIGH/mentions/WTI/gas + ticker/event/series keywords (incl. gas price); strict 10–90¢, $50 liq, ghost 4h/10vol/$100 for all; structural junk bypass = explicit macros **or** same keyword set (not category); **5¢ spread** unchanged.
  * - Relaxed vol/liq for Crypto/Politics/Mention/Weather/Other; Economics uses a tighter relaxed pass. **KXBTCD** boosted.
  * - **Enrich top 400**: price-history only (DB, batched 20 tickers).
  *
@@ -156,10 +156,28 @@ function explicitHighVolumeMacroHp(m: KalshiMarket): HpClassification | null {
   return null;
 }
 
+/** Ticker + event + series (lowercase) — macro keyword HP + junk bypass use the same surface. */
+function macroTickerEventSeriesBlobLower(m: KalshiMarket): string {
+  return `${m.ticker || ""} ${m.event_ticker || ""} ${m.series_ticker || ""}`.toLowerCase();
+}
+
+/** Substrings for backtest-style macro HP classification and structural-junk bypass (ticker/event/series only). */
+const MACRO_HP_SUBSTRING_KEYWORDS = [
+  "election",
+  "president",
+  "climate",
+  "temperature",
+  "forecast",
+  "mention",
+  "earnings",
+  "gas price",
+  "gasprice",
+] as const;
+
 /** Keyword macro HP — skipped for strict sports so NFL/NBA volume is unchanged. */
 function politicsKeywordMacroBlob(m: KalshiMarket): boolean {
   if (isStrictSportsLikeMarket(m)) return false;
-  const blob = `${m.ticker || ""} ${m.event_ticker || ""} ${m.series_ticker || ""}`.toLowerCase();
+  const blob = macroTickerEventSeriesBlobLower(m);
   return blob.includes("election") || blob.includes("president");
 }
 
@@ -177,18 +195,9 @@ function explicitMentionTierBlob(m: KalshiMarket): boolean {
 
 function keywordSubstringMacroHp(m: KalshiMarket): HpClassification | null {
   if (isStrictSportsLikeMarket(m)) return null;
-  const blob = `${m.ticker || ""} ${m.event_ticker || ""} ${m.series_ticker || ""}`.toLowerCase();
-  const keywords = [
-    "election",
-    "president",
-    "climate",
-    "temperature",
-    "forecast",
-    "mention",
-    "earnings",
-  ] as const;
-  for (const k of keywords) {
-    if (blob.includes(k)) return { hp: true, reason: `keyword_${k}` };
+  const blob = macroTickerEventSeriesBlobLower(m);
+  for (const k of MACRO_HP_SUBSTRING_KEYWORDS) {
+    if (blob.includes(k)) return { hp: true, reason: `keyword_${k.replace(/\s+/g, "_")}` };
   }
   return null;
 }
@@ -300,15 +309,18 @@ export function isHighPriorityCategory(market: KalshiMarket): boolean {
 }
 
 /**
- * Structural junk bypass: **only** explicit backtest macro tickers (KXHIGH*, mentions, WTI, KXAAAGASD).
- * Broad weather/mention signals stay subject to multivariate/junk rules so sports volume is unaffected.
+ * Structural junk bypass: explicit KXHIGH/mentions/WTI/gas tickers **or** same macro substring keywords
+ * on ticker/event/series (not category). Strict sports unchanged — no bypass.
  */
-function scannerStructuralJunkBypassExplicitMacrosOnly(m: KalshiMarket): boolean {
-  return explicitHighVolumeMacroHp(m) != null;
+function scannerStructuralJunkBypassKnownGoodMacros(m: KalshiMarket): boolean {
+  if (explicitHighVolumeMacroHp(m) != null) return true;
+  if (isStrictSportsLikeMarket(m)) return false;
+  const blob = macroTickerEventSeriesBlobLower(m);
+  return MACRO_HP_SUBSTRING_KEYWORDS.some((k) => blob.includes(k));
 }
 
 function isStructuralJunkForScanner(m: KalshiMarket): boolean {
-  if (scannerStructuralJunkBypassExplicitMacrosOnly(m)) return false;
+  if (scannerStructuralJunkBypassKnownGoodMacros(m)) return false;
   return isExcludedKalshiStructuralJunk(m);
 }
 
